@@ -2,6 +2,8 @@ import pytest
 
 from mock import Mock
 
+import random
+
 from spinn_partition.pack_tree import PackTree, FreeError
 
 def test_constructor():
@@ -353,6 +355,193 @@ class TestAlloc(object):
         assert p.alloc(3, 1) is None
 
 
+class TestRequest(object):
+    
+    def test_outside(self):
+        # If outside the region, should fail
+        p = PackTree(1, 2, 3, 4)
+        assert p.request(0, 0) is None
+    
+    def test_already_allocated(self):
+        # Should fail if already allocated
+        p = PackTree(1, 2, 3, 4)
+        p.allocated = True
+        assert p.request(1, 2) is None
+        assert p.request(2, 3) is None
+        
+        # No dividing should have occurred...
+        assert p.children is None
+    
+    def test_perfect_fit(self):
+        p = PackTree(1, 2, 1, 1)
+        assert p.request(1, 2) == (1, 2)
+        assert p.allocated is True
+        assert p.children is None
+    
+    def test_try_children(self):
+        p = PackTree(1, 2, 2, 1)
+        p.vsplit(x=2)
+        assert p.request(1, 2) == (1, 2)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        assert p.children[0].allocated is True
+        assert p.children[0].children is None
+        assert p.children[1].allocated is False
+        assert p.children[1].children is None
+        
+        assert p.request(2, 2) == (2, 2)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        assert p.children[0].allocated is True
+        assert p.children[0].children is None
+        assert p.children[1].allocated is True
+        assert p.children[1].children is None
+
+    def test_left_gap_only(self):
+        p = PackTree(1, 2, 3, 1)
+        
+        assert p.request(3, 2) == (3, 2)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        
+        assert p.children[0].allocated is False
+        assert p.children[0].width == 2
+        assert p.children[0].height == 1
+        assert p.children[0].children is None
+        
+        assert p.children[1].allocated is True
+        assert p.children[1].width == 1
+        assert p.children[1].height == 1
+        assert p.children[1].children is None
+
+    def test_right_gap_only(self):
+        p = PackTree(1, 2, 3, 1)
+        
+        assert p.request(1, 2) == (1, 2)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        
+        assert p.children[0].allocated is True
+        assert p.children[0].width == 1
+        assert p.children[0].height == 1
+        assert p.children[0].children is None
+        
+        assert p.children[1].allocated is False
+        assert p.children[1].width == 2
+        assert p.children[1].height == 1
+        assert p.children[1].children is None
+
+    def test_above_gap_only(self):
+        p = PackTree(1, 2, 1, 4)
+        
+        assert p.request(1, 2) == (1, 2)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        
+        assert p.children[0].allocated is True
+        assert p.children[0].width == 1
+        assert p.children[0].height == 1
+        assert p.children[0].children is None
+        
+        assert p.children[1].allocated is False
+        assert p.children[1].width == 1
+        assert p.children[1].height == 3
+        assert p.children[1].children is None
+
+    def test_below_gap_only(self):
+        p = PackTree(1, 2, 1, 4)
+        
+        assert p.request(1, 5) == (1, 5)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        
+        assert p.children[0].allocated is False
+        assert p.children[0].width == 1
+        assert p.children[0].height == 3
+        assert p.children[0].children is None
+        
+        assert p.children[1].allocated is True
+        assert p.children[1].width == 1
+        assert p.children[1].height == 1
+        assert p.children[1].children is None
+
+    def test_all_gaps(self):
+        p = PackTree(0, 0, 10, 10)
+        
+        assert p.request(8, 6) == (8, 6)
+        
+        assert p.allocated is False
+        assert p.children is not None
+        
+        assert p.children[0].allocated is False
+        assert p.children[0].x == 0
+        assert p.children[0].y == 0
+        assert p.children[0].width == 8
+        assert p.children[0].height == 10
+        assert p.children[0].children is None
+        
+        assert p.children[1].allocated is False
+        assert p.children[1].x == 8
+        assert p.children[1].y == 0
+        assert p.children[1].width == 2
+        assert p.children[1].height == 10
+        assert p.children[1].children is not None
+        
+        p = p.children[1]
+        
+        assert p.children[0].allocated is False
+        assert p.children[0].x == 8
+        assert p.children[0].y == 0
+        assert p.children[0].width == 2
+        assert p.children[0].height == 6
+        assert p.children[0].children is None
+        
+        assert p.children[1].allocated is False
+        assert p.children[1].x == 8
+        assert p.children[1].y == 6
+        assert p.children[1].width == 2
+        assert p.children[1].height == 4
+        assert p.children[1].children is not None
+        
+        p = p.children[1]
+        
+        assert p.children[0].allocated is False
+        assert p.children[0].x == 8
+        assert p.children[0].y == 6
+        assert p.children[0].width == 2
+        assert p.children[0].height == 1
+        assert p.children[0].children is not None
+                
+        assert p.children[1].allocated is False
+        assert p.children[1].x == 8
+        assert p.children[1].y == 7
+        assert p.children[1].width == 2
+        assert p.children[1].height == 3
+        assert p.children[1].children is None
+        
+        p = p.children[0]
+        
+        assert p.children[0].allocated is True
+        assert p.children[0].x == 8
+        assert p.children[0].y == 6
+        assert p.children[0].width == 1
+        assert p.children[0].height == 1
+        assert p.children[0].children is None
+                
+        assert p.children[1].allocated is False
+        assert p.children[1].x == 9
+        assert p.children[1].y == 6
+        assert p.children[1].width == 1
+        assert p.children[1].height == 1
+        assert p.children[1].children is None
+
+
 class TestReasonableUsage(object):
     """Tests which ensure easy requirements can be met."""
     
@@ -377,6 +566,33 @@ class TestReasonableUsage(object):
         
         # After freeing everything, we should have a full square
         for x, y in allocations:
+            p.free(x, y)
+        
+        assert p.allocated is False
+        assert p.children is None
+    
+    
+    def test_request_everything(self):
+        # Should be able to request every point individually, in a random
+        # order, and get them.
+        w, h = 10, 20
+        p = PackTree(0, 0, w, h)
+        
+        locations = [(x, y) for x in range(w) for y in range(h)]
+        random.shuffle(locations)
+        
+        # Request every point in some order
+        for x, y in locations:
+            # Should not be able to do this more than once...
+            assert p.request(x, y) == (x, y)
+            assert p.request(x, y) is None
+        
+        # After allocating everything, no spaces should remain
+        assert p.alloc(1, 1) is None
+        
+        # After freeing everything, we should have a full square
+        random.shuffle(locations)
+        for x, y in locations:
             p.free(x, y)
         
         assert p.allocated is False

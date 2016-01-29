@@ -53,6 +53,8 @@ class PackTree(object):
     def hsplit(self, y):
         """Split this node along the X axis.
         
+        The bottom half of split will be just before the "y" position.
+        
         ::
         
                +-----------+
@@ -71,6 +73,8 @@ class PackTree(object):
     
     def vsplit(self, x):
         """Split this node along the Y axis.
+        
+        The left half of split will be just before the "x" position.
         
         ::
         
@@ -195,6 +199,76 @@ class PackTree(object):
         else:
             child.allocated = True
             return (child.x, child.y)
+    
+    def request(self, x, y):
+        """Request the allocation of a specific 1x1 block.
+        
+        This function may be useful when, e.g., specific boards are required
+        for testing.
+        
+        Returns
+        -------
+        allocation : (x, y) or None
+            If the request request was met, the coordinates passed in are
+            returned.
+            
+            If the request could not be met, None is returned and no allocation
+            is made.
+        """
+        # Is the requested location in this region? If not, there's nothing we
+        # can do.
+        if (x, y) not in self:
+            return None
+        
+        # If this node is not a leaf not we can't allocate anything. Find the
+        # child which contains the requested location.
+        if self.children:
+            return (self.children[0].request(x, y) or
+                    self.children[1].request(x, y))
+        
+        # We are a leaf containing the requested point. If we're already
+        # allocated there's nothing we can do.
+        if self.allocated:
+            return None
+        
+        # If this node a 1x1 region just allocate itself
+        if self.width == 1 and self.height == 1:
+            self.allocated = True
+            return (self.x, self.y)
+        
+        # At this point the requested point is somewhere in this region so we
+        # must divide it up such that we can allocate a 1x1 piece. For example
+        # if trying to divvy-up the space to fit something we look for the side
+        # with the greatest amount of space on it to divide on first. This
+        # procedure is then used recursively to divvy the world up until we
+        # have a 1x1 allocation.
+        #
+        #     +---------------+
+        #     |         a     |
+        #     |<---l--->#<-r->|
+        #     |         ^     |
+        #     |         b     |
+        #     |         v     |
+        #     +---------------+
+        l = x - self.x
+        r = (self.x + self.width) - x - 1
+        a = (self.y + self.height) - y - 1
+        b = y - self.y
+        
+        largest = max(l, r, a, b)
+        
+        if l == largest:
+            self.vsplit(x=x)
+            return self.request(x, y)
+        elif r == largest:
+            self.vsplit(x=x + 1)
+            return self.request(x, y)
+        elif a == largest:
+            self.hsplit(y=y + 1)
+            return self.request(x, y)
+        else:  # b == largest
+            self.hsplit(y=y)
+            return self.request(x, y)
     
     def free(self, x, y):
         """Free a previous allocation, allowing the space to be reused.
