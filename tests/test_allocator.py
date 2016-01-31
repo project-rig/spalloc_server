@@ -3,7 +3,7 @@ import pytest
 from rig.links import Links
 
 from spinn_partition.coordinates import board_down_link
-from spinn_partition.allocator import CandidateFilter, Allocator
+from spinn_partition.allocator import AllocationType, CandidateFilter, Allocator
 
 
 class TestCandidateFilter(object):
@@ -547,6 +547,10 @@ class TestAllocator(object):
         assert a.alloc_board_possible(2, 0, 0) is False
         assert a.alloc_board_possible(2, 3, 0) is False
         
+        # Should fail if the required board is dead
+        a.dead_boards.add((0, 0, 1))
+        assert a.alloc_board_possible(0, 0, 1) is False
+        
         # Should fail if all the boards are dead
         a.dead_boards = set((x, y, z)
                             for x in range(2)
@@ -560,3 +564,95 @@ class TestAllocator(object):
         # Otherwise should succeed
         assert a.alloc_board_possible() is True
         assert a.alloc_board_possible(0, 0, 0) is True
+    
+    @pytest.mark.parametrize("specific", [True, False])
+    @pytest.mark.parametrize("add_require_torus_false", [True, False])
+    @pytest.mark.parametrize("max_dead_boards", [None, 0, 2])
+    @pytest.mark.parametrize("max_dead_links", [None, 0, 2])
+    def test_alloc_type_board(self, specific, max_dead_boards, max_dead_links,
+                              add_require_torus_false):
+        a = Allocator(2, 3)
+        
+        if specific:
+            args = (3, 2, 1)
+        else:
+            args = tuple()
+        
+        if add_require_torus_false:
+            kwargs = {"require_torus": False}
+        else:
+            kwargs = {}
+        
+        assert a._alloc_type(*args,
+                             max_dead_boards=max_dead_boards,
+                             max_dead_links=max_dead_links,
+                             **kwargs) is AllocationType.board
+    
+    @pytest.mark.parametrize("specific", [True, False])
+    @pytest.mark.parametrize("max_dead_boards", [None, 0, 2])
+    @pytest.mark.parametrize("max_dead_links", [None, 0, 2])
+    def test_alloc_type_board_bad(self, specific, max_dead_boards, max_dead_links):
+        a = Allocator(2, 3)
+        
+        if specific:
+            args = (3, 2, 1)
+        else:
+            args = tuple()
+        
+        with pytest.raises(ValueError):
+            a._alloc_type(*args,
+                          max_dead_boards=max_dead_boards,
+                          max_dead_links=max_dead_links,
+                          require_torus=True)
+    
+    @pytest.mark.parametrize("max_dead_boards", [None, 0, 2])
+    @pytest.mark.parametrize("max_dead_links", [None, 0, 2])
+    @pytest.mark.parametrize("require_torus", [True, False])
+    def test_alloc_type_triads(self, max_dead_boards, max_dead_links,
+                               require_torus):
+        a = Allocator(2, 3)
+        
+        if require_torus:
+            kwargs = {"require_torus": False}
+        else:
+            kwargs = {}
+        
+        assert a._alloc_type(1, 2,
+                             max_dead_boards=max_dead_boards,
+                             max_dead_links=max_dead_links,
+                             require_torus=require_torus) \
+            is AllocationType.triads
+    
+    def test_alloc_type_triads_bad(self):
+        a = Allocator(2, 3)
+        
+        with pytest.raises(ValueError):
+            a._alloc_type(1)
+        
+        with pytest.raises(ValueError):
+            a._alloc_type(y_or_height=1)
+    
+    def test_alloc_possible(self):
+        # Just make sure the wrapper calls the right functions...
+        a = Allocator(9, 10, dead_boards=set([(3, 2, 1)]))
+        
+        # Allocating boards
+        assert a.alloc_possible() is True
+        assert a.alloc_possible(0, 0, 0) is True
+        assert a.alloc_possible(3, 2, 1) is False
+        
+        # Allocating triads
+        assert a.alloc_possible(1, 1) is True
+        assert a.alloc_possible(1, 1, require_torus=True) is False
+        assert a.alloc_possible(9, 10, require_torus=True) is True
+    
+    def test_alloc(self):
+        # Just make sure the wrapper calls the right functions...
+        a = Allocator(9, 10)
+        
+        # Allocating boards
+        assert len(a.alloc()[1]) == 1
+        assert len(a.alloc(5, 4, 0)[1]) == 1
+       
+        # Allocating triads
+        assert len(a.alloc(2, 3)[1]) == 2 * 3 * 3

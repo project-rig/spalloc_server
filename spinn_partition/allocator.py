@@ -415,6 +415,10 @@ class Allocator(object):
                                    0 <= y < self.height):
             return False
         
+        # If the requested board is dead, this should fail
+        if board_requested and (x, y, z) in self.dead_boards:
+            return False
+        
         # If there are no working boards, we must also fail
         if len(self.dead_boards) >= (self.width * self.height * 3):
             return False
@@ -508,6 +512,153 @@ class Allocator(object):
         
         # Recursing will return a board from the triad
         return self.alloc_board(x, y, z)
+
+    def _alloc_type(self, x_or_width=None, y_or_height=None, z=None,
+                    max_dead_boards=None, max_dead_links=None,
+                    require_torus=False):
+        """Returns the type of allocation the user is attempting to make (and
+        fails if it is invalid.
+        
+        Usage::
+        
+            a.alloc()  # Allocate a single board
+            a.alloc(3, 2, 1)  # Allocate a board (3, 2, 1)
+            a.alloc(2, 3, **kwargs)  # Allocate a 2x3 triad machine
+        
+        Parameters
+        ----------
+        x, y, z OR width, height
+            If all None, allocate a single board.
+            
+            If x, y and z, allocate a specific board.
+            
+            If width and height, allocate a block of this size, in triads.
+        max_dead_boards : int or None
+            The maximum number of broken or unreachable boards to allow in the
+            allocated region. If None, any number of dead boards is permitted,
+            as long as the board on the bottom-left corner is alive (Default:
+            None).
+        max_dead_links : int or None
+            The maximum number of broken links allow in the allocated region.
+            When require_torus is True this includes wrap-around links,
+            otherwise peripheral links are not counted.  If None, any number of
+            broken links is allowed. (Default: None).
+        require_torus : bool
+            If True, only allocate blocks with torus connectivity. In general
+            this will only succeed for requests to allocate an entire machine
+            (when the machine is otherwise not in use!). Must be False when
+            allocating boards. (Default: False)
+        
+        Returns
+        -------
+        :py:class:`.AllocationType`
+        """
+        alloc_board = (x_or_width is None) == (y_or_height is None) == (z is None)
+        
+        if alloc_board:
+            if require_torus:
+                raise ValueError(
+                    "require_torus must be False when allocating boards.")
+            
+            return AllocationType.board
+        else:
+            if x_or_width is None or y_or_height is None:
+                raise ValueError("Both width and height are required.")
+            
+            return AllocationType.triads
+
+    def alloc_possible(self, *args, **kwargs):
+        """Convenience wrapper around alloc_board_possible and
+        alloc_triads_possible.
+        
+        Usage::
+        
+            a.alloc_possible()  # Can allocate a single board?
+            a.alloc_possible(3, 2, 1)  # Can allocate a board (3, 2, 1)?
+            a.alloc_possible(2, 3, **kwargs)  # Can allocate a 2x3 triads?
+        
+        Parameters
+        ----------
+        x, y, z OR width, height
+            If all None, allocate a single board.
+            
+            If x, y and z, allocate a specific board.
+            
+            If width and height, allocate a block of this size, in triads.
+        max_dead_boards : int or None
+            The maximum number of broken or unreachable boards to allow in the
+            allocated region. If None, any number of dead boards is permitted,
+            as long as the board on the bottom-left corner is alive (Default:
+            None).
+        max_dead_links : int or None
+            The maximum number of broken links allow in the allocated region.
+            When require_torus is True this includes wrap-around links,
+            otherwise peripheral links are not counted.  If None, any number of
+            broken links is allowed. (Default: None).
+        require_torus : bool
+            If True, only allocate blocks with torus connectivity. In general
+            this will only succeed for requests to allocate an entire machine
+            (when the machine is otherwise not in use!). Must be False when
+            allocating boards. (Default: False)
+        
+        Returns
+        -------
+        bool
+        """
+        if self._alloc_type(*args, **kwargs) is AllocationType.board:
+            return self.alloc_board_possible(*args, **kwargs)
+        else:
+            return self.alloc_triads_possible(*args, **kwargs)
+
+    def alloc(self, *args, **kwargs):
+        """Convenience wrapper around alloc_board and alloc_triads.
+        
+        Usage::
+        
+            a.alloc()  # Allocate a single board
+            a.alloc(3, 2, 1)  # Allocate a board (3, 2, 1)
+            a.alloc(2, 3, **kwargs)  # Allocate a 2x3 triad machine
+        
+        Parameters
+        ----------
+        x, y, z OR width, height
+            If all None, allocate a single board.
+            
+            If x, y and z, allocate a specific board.
+            
+            If width and height, allocate a block of this size, in triads.
+        max_dead_boards : int or None
+            The maximum number of broken or unreachable boards to allow in the
+            allocated region. If None, any number of dead boards is permitted,
+            as long as the board on the bottom-left corner is alive (Default:
+            None).
+        max_dead_links : int or None
+            The maximum number of broken links allow in the allocated region.
+            When require_torus is True this includes wrap-around links,
+            otherwise peripheral links are not counted.  If None, any number of
+            broken links is allowed. (Default: None).
+        require_torus : bool
+            If True, only allocate blocks with torus connectivity. In general
+            this will only succeed for requests to allocate an entire machine
+            (when the machine is otherwise not in use!). Must be False when
+            allocating boards. (Default: False)
+        
+        Returns
+        -------
+        (allocation_id, boards, periphery) or None
+            If the allocation was successful a three-tuple is returned. If the
+            allocation was not successful None is returned.
+            
+            The ``allocation_id`` is an integer which should be used to free
+            the allocation with the :py:meth:`.free` method. ``boards`` is a
+            set of (x, y, z) tuples giving the locations of to allocated
+            boards.  ``periphery`` is a set of (x, y, z, link) tuples giving
+            the links which leave the allocated set of boards.
+        """
+        if self._alloc_type(*args, **kwargs) is AllocationType.board:
+            return self.alloc_board(*args, **kwargs)
+        else:
+            return self.alloc_triads(*args, **kwargs)
 
     def free(self, allocation_id):
         """Free the resources consumed by the specified allocation."""
