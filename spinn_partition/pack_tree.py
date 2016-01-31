@@ -1,7 +1,5 @@
 """A structure for allocating/packing rectangles into a fixed 2D space."""
 
-from fractions import Fraction
-
 from six import iteritems
 
 

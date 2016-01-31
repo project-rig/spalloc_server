@@ -32,7 +32,7 @@ setup(
     keywords="spinnaker allocation packing management supercomputer",
 
     # Requirements
-    install_requires=["rig", "six"],
+    install_requires=["rig", "six", "enum-compat"],
 
     # Scripts
     entry_points={
