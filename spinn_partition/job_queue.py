@@ -64,6 +64,20 @@ class JobQueue(object):
         # The currently queued or allocated jobs
         # {job_id: Job, ...}
         self._jobs = OrderedDict()
+        
+        # When non-zero, queues are not changed. Set when using this object as
+        # a context manager.
+        self._postpone_queue_management = 0
+    
+    def __enter__(self):
+        """This context manager will cause all changes to machines to be made
+        atomically, without regenerating queues between each change.
+        """
+        self._postpone_queue_management += 1
+    
+    def __exit__(self, type=None, value=None, traceback=None):
+        self._postpone_queue_management -= 1
+        self._regenerate_queues()
     
     def _try_job(self, job, machine):
         """Attempt to allocate a job on a given machine.
@@ -90,6 +104,9 @@ class JobQueue(object):
     
     def _enqueue_job(self, job):
         """Either allocate or enqueue a new job."""
+        if self._postpone_queue_management:
+            return
+        
         # Get the list of machines the job would like to be executed on.
         if job.machine_name is not None:
             # A specific machine was given
@@ -121,6 +138,9 @@ class JobQueue(object):
     
     def _process_queue(self):
         """Try and process any queued jobs."""
+        if self._postpone_queue_management:
+            return
+        
         # Keep going until no more jobs can be started
         changed = True
         while changed:
@@ -146,6 +166,9 @@ class JobQueue(object):
         """If the set of available machines has changed, queued jobs must be
         re-evaluated since they may fit on a different set of machines.
         """
+        if self._postpone_queue_management:
+            return
+        
         # Empty all job queues
         for machine in itervalues(self._machines):
             machine.queue.clear()
@@ -224,20 +247,15 @@ class JobQueue(object):
         """
         machine = self._machines[name]
         
-        # Free all jobs allocated on the machine. Note we must free jobs
-        # starting at the end of the queue and finishing with the running job
-        # to prevent the queue advancing.
-        for job in reversed(machine.queue):
-            if job.pending:
-                self.destroy_job(job.id, "Machine removed.")
-        for job in list(itervalues(self._jobs)):
-            if job.machine is machine:
-                self.destroy_job(job.id, "Machine removed.")
+        # Regenerate the queues only after removing the machine
+        with self:
+            # Free all jobs allocated on the machine.
+            for job in list(itervalues(self._jobs)):
+                if job.machine is machine:
+                    self.destroy_job(job.id, "Machine removed.")
         
-        # Remove the machine from service
-        del self._machines[name]
-        
-        self._regenerate_queues()
+            # Remove the machine from service
+            del self._machines[name]
     
     def create_job(self, *args, **kwargs):
         """Attempt to create a new job.

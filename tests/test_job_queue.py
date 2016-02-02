@@ -148,9 +148,36 @@ def test_remove_machine(q, on_free, on_cancel, monkeypatch):
     q.remove_machine("with_queue")
     assert len(_regenerate_queues.mock_calls) == 3
     on_free.assert_called_once_with(20, "Machine removed.")
-    on_cancel.assert_called_once_with(30, "Machine removed.")
+    on_cancel.assert_called_once_with(30, "No suitable machines available.")
     assert set(q._machines) == set()
     assert set(q._jobs) == set()
+
+
+def test_atomic_machine_change(q, on_allocate, on_free, on_cancel):
+    # When using the atomic machine-change context manager, machine changes
+    # should be atomic and not result in jobs being cancelled due to
+    # unfavourable intermediate states.
+    q.add_machine("m0", 1, 1)
+    q.create_job(1, 1, job_id=10)
+    q.create_job(1, 1, job_id=20)
+    q.create_job(1, 1, job_id=30)
+    q.create_job(1, 1, job_id=40)
+    
+    on_allocate.reset_mock()
+    
+    # Atomically change the system (and make sure the context manager can be
+    # nested)
+    with q:
+        with q:
+            q.remove_machine("m0")
+        q.add_machine("m1", 2, 1)
+    
+    # Only the running job should have been cancelled
+    assert len(on_cancel.mock_calls) == 0
+    on_free.assert_called_once_with(10, "Machine removed.")
+    assert len(on_allocate.mock_calls) == 2
+    assert on_allocate.mock_calls[0][1][0] == 20
+    assert on_allocate.mock_calls[1][1][0] == 30
 
 
 def test_create_job(q, m, monkeypatch):
@@ -197,6 +224,28 @@ def test_create_job(q, m, monkeypatch):
     with pytest.raises(TypeError):
         q.create_job(job_id=10, machine="m", tags=set(["pie"]))
     assert len(_enqueue_job.mock_calls) == 3
+
+
+def test_atomic_create_job(q, on_allocate, on_free, on_cancel):
+    # If inside the atomic context manager, jobs should not be scheduled until
+    # we leave the context manager.
+    with q:
+        # Creating job with no machine would normally fail but since we're
+        # postponing queue management until we've created the machine, this
+        # won't be a problem
+        q.create_job(job_id=10, machine="m1")
+        assert len(on_allocate.mock_calls) == 0
+        assert len(on_free.mock_calls) == 0
+        assert len(on_cancel.mock_calls) == 0
+        
+        q.add_machine("m0", 1, 1)
+        q.remove_machine("m0")
+        q.add_machine("m1", 2, 1)
+    
+    on_allocate.assert_called_once_with(
+        10, "m1", set([(0, 0, 0)]), set((0, 0, 0, link) for link in Links))
+    assert len(on_free.mock_calls) == 0
+    assert len(on_cancel.mock_calls) == 0
 
 
 def test_enqueue_job(q, on_allocate, on_cancel):
