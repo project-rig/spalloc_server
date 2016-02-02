@@ -40,11 +40,15 @@ def test_start_and_stop():
 @pytest.mark.timeout(1.0)
 def test_set_power(abc, bc):
     # Make sure that the set power command works
-    abc.set_power(10, False).wait()
+    e = threading.Event()
+    abc.set_power(10, False, e.set)
+    e.wait()
     bc.set_power.assert_called_once_with(state=False, board=set([10]))
     bc.set_power.reset_mock()
     
-    abc.set_power(11, True).wait()
+    e = threading.Event()
+    abc.set_power(11, True, e.set)
+    e.wait()
     bc.set_power.assert_called_once_with(state=True, board=set([11]))
     bc.set_power.reset_mock()
 
@@ -54,7 +58,9 @@ def test_set_power_fails(abc, bc):
     # fired.
     bc.set_power.side_effect = IOError()
     
-    abc.set_power(10, False).wait()
+    e = threading.Event()
+    abc.set_power(10, False, e.set)
+    e.wait()
 
 @pytest.mark.timeout(1.0)
 def test_set_power_blocks(abc, bc):
@@ -62,7 +68,8 @@ def test_set_power_blocks(abc, bc):
     event = threading.Event()
     bc.set_power.side_effect = (lambda *a, **k: event.wait())
     
-    done_event = abc.set_power(10, False)
+    done_event = threading.Event()
+    abc.set_power(10, False, done_event.set)
     
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -78,11 +85,11 @@ def test_set_power_blocks(abc, bc):
 @pytest.mark.timeout(1.0)
 def test_set_power_merge(abc, bc):
     # Make sure we can queue up several power commands which will get merged.
-    events = []
-    with abc._lock:
-        events.append(abc.set_power(10, False))
-        events.append(abc.set_power(11, False))
-        events.append(abc.set_power(13, False))
+    events = [threading.Event() for _ in range(3)]
+    with abc:
+        abc.set_power(10, False, events[0].set)
+        abc.set_power(11, False, events[1].set)
+        abc.set_power(13, False, events[2].set)
     
     for event in events:
         event.wait()
@@ -92,11 +99,11 @@ def test_set_power_merge(abc, bc):
 @pytest.mark.timeout(1.0)
 def test_set_power_dont_merge(abc, bc):
     # Make sure power commands are only merged with those of the same type
-    events = []
-    with abc._lock:
-        events.append(abc.set_power(10, False))
-        events.append(abc.set_power(11, True))
-        events.append(abc.set_power(12, False))
+    events = [threading.Event() for _ in range(3)]
+    with abc:
+        abc.set_power(10, False, events[0].set)
+        abc.set_power(11, True, events[1].set)
+        abc.set_power(12, False, events[2].set)
     
     for event in events:
         event.wait()
@@ -118,7 +125,9 @@ def test_set_power_dont_merge(abc, bc):
                           (Links.north_east, 2, 0x0001005C)])
 def test_set_link_enable(abc, bc, link, fpga, addr, enable, value):
     # Make sure that the set link command works
-    abc.set_link_enable(10, link, enable).wait()
+    e = threading.Event()
+    abc.set_link_enable(10, link, enable, e.set)
+    e.wait()
     bc.write_fpga_reg.assert_called_once_with(fpga, addr, value, board=10)
     bc.write_fpga_reg.reset_mock()
 
@@ -128,7 +137,9 @@ def test_set_link_enable_fails(abc, bc):
     # fired.
     bc.write_fpga_reg.side_effect = IOError()
     
-    abc.set_link_enable(10, Links.east, False).wait()
+    e = threading.Event()
+    abc.set_link_enable(10, Links.east, False, e.set)
+    e.wait()
 
 @pytest.mark.timeout(1.0)
 def test_set_link_enable_blocks(abc, bc):
@@ -136,7 +147,8 @@ def test_set_link_enable_blocks(abc, bc):
     event = threading.Event()
     bc.write_fpga_reg.side_effect = (lambda *a, **k: event.wait())
     
-    done_event = abc.set_link_enable(10, Links.east, True)
+    done_event = threading.Event()
+    abc.set_link_enable(10, Links.east, True, done_event.set)
     
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -158,10 +170,11 @@ def test_power_priority(abc, bc):
         lambda e=power_events[:], *a, **k: e.pop().wait())
     bc.write_fpga_reg.side_effect = (lambda *a, **k: link_event.wait())
     
-    with abc._lock:
-        e1 = abc.set_power(10, True)
-        e2 = abc.set_link_enable(11, Links.east, True)
-        e3 = abc.set_power(12, False)
+    with abc:
+        e1, e2, e3 = (threading.Event() for _ in range(3))
+        abc.set_power(10, True, e1.set)
+        abc.set_link_enable(11, Links.east, True, e2.set)
+        abc.set_power(12, False, e3.set)
     
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -204,9 +217,11 @@ def test_power_priority(abc, bc):
 def test_stop_drains(abc, bc):
     # Make sure that the queues are emptied before the stop command is
     # processed
-    with abc._lock:
-        set_power_done = abc.set_power(10, False)
-        set_link_enable_done = abc.set_link_enable(11, Links.east, False)
+    set_power_done = threading.Event()
+    set_link_enable_done = threading.Event()
+    with abc:
+        abc.set_power(10, False, set_power_done.set)
+        abc.set_link_enable(11, Links.east, False, set_link_enable_done.set)
         abc.stop()
 
     # Both of these should be carried out

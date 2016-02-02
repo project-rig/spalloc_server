@@ -11,7 +11,7 @@ from rig.machine_control import BMPController
 
 import logging
 
-class PowerRequest(namedtuple("PowerRequest", "state board done_event")):
+class PowerRequest(namedtuple("PowerRequest", "state board on_done")):
     """Reuqests that a specific board should have its power state set to a
     particular value.
     
@@ -21,11 +21,11 @@ class PowerRequest(namedtuple("PowerRequest", "state board done_event")):
         On (True) or off (False).
     board : int
         Board to change the state of
-    done_event : :py:class:`threading.Event`
-        An event which must be set once the request has been completed.
+    on_done : function()
+        A function to call when the request has been completed.
     """
 
-class LinkRequest(namedtuple("LinkRequest", "board link enable done_event")):
+class LinkRequest(namedtuple("LinkRequest", "board link enable on_done")):
     """Reuqests that a specific board should have its power state set to a
     particular value.
     
@@ -37,8 +37,8 @@ class LinkRequest(namedtuple("LinkRequest", "board link enable done_event")):
         The link whose state should be changed
     enable : bool
         State of the link: Enabled (True), disabled (False).
-    done_event : :py:class:`threading.Event`
-        An event which must be set once the request has been completed.
+    on_done : function()
+        A function to call when the request has been completed.
     """
 
 # Gives the FPGA number and register addresses for the STOP register (which
@@ -80,44 +80,59 @@ class AsyncBMPController(object):
             name="<BMP control thread for {}>".format(hostname))
         self._thread.start()
     
-    def set_power(self, board, state):
+    def __enter__(self):
+        """When used as a context manager, make requests 'atomic'."""
+        self._lock.acquire()
+    
+    def __exit__(self, type, value, traceback):
+        self._lock.release()
+    
+    def set_power(self, board, state, on_done):
         """Set the power state of a single board.
         
-        Returns
-        -------
-        :py:class:`threading.Event`
-            An event which will be set once the power command has been sent.
+        Parameters
+        ----------
+        board : int
+            The board to control.
+        state : bool
+            True = on, False = off.
+        on_done : function()
+            Function to call when the command completes. May be called from
+            another thread.
         """
         with self._lock:
             assert not self._stop
             
             # Enqueue the request
-            done_event = threading.Event()
-            self._power_requests.append(PowerRequest(state, board, done_event))
+            self._power_requests.append(PowerRequest(state, board, on_done))
             self._requests_pending.set()
-            
-            return done_event
     
-    def set_link_enable(self, board, link, enable):
+    def set_link_enable(self, board, link, enable, on_done):
         """Enable or disable a link.
         
-        Returns
-        -------
-        :py:class:`threading.Event`
-            An event which will be set once the command has been sent.
+        Parameters
+        ----------
+        board : int
+            The board on which the link resides.
+        link : :py:class:`rig.links.Links`
+            The link to configure.
+        enable : bool
+            True = link enabled, False = link disabled.
+        on_done : function()
+            Function to call when the command completes. May be called from
+            another thread.
         """
         with self._lock:
             assert not self._stop
             
             # Enqueue the request
-            done_event = threading.Event()
-            self._link_requests.append(LinkRequest(board, link, enable, done_event))
+            self._link_requests.append(LinkRequest(board, link, enable, on_done))
             self._requests_pending.set()
-            
-            return done_event
     
     def stop(self):
-        """Stop the background thread, as soon as possible."""
+        """Stop the background thread, as soon as possible after completing all
+        queued actions.
+        """
         with self._lock:
             self._stop = True
             self._requests_pending.set()
@@ -146,8 +161,8 @@ class AsyncBMPController(object):
                         logging.exception("Failed to set board power.")
                     
                     # Alert all waiting threads
-                    for done_event in power_request.done_event:
-                        done_event.set()
+                    for on_done in power_request.on_done:
+                        on_done()
                     
                     continue
                 
@@ -167,7 +182,7 @@ class AsyncBMPController(object):
                         logging.exception("Failed to set link state.")
                     
                     # Alert waiting thread
-                    link_request.done_event.set()
+                    link_request.on_done()
                     
                     continue
                 
@@ -205,13 +220,13 @@ class AsyncBMPController(object):
             # Otherwise, accumulate as many boards as possible
             state = self._power_requests[0].state
             boards = set()
-            done_events = []
+            on_done = []
             while (self._power_requests and
                    self._power_requests[0].state == state):
                 request = self._power_requests.popleft()
                 boards.add(request.board)
-                done_events.append(request.done_event)
-            return PowerRequest(state, boards, done_events)
+                on_done.append(request.on_done)
+            return PowerRequest(state, boards, on_done)
     
     def _get_atomic_link_request(self):
         """Pop the latest link state change request, if one exists."""
