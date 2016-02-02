@@ -79,3 +79,32 @@ def board_down_link(x1, y1, z1, link, width, height):
     wrapped = not (x2_ == x2 and y2_ == y2)
     
     return (x2, y2, z2, wrapped)
+
+
+def board_to_chip(x, y, z):
+    """Convert a board coordinate into a chip coordinate.
+    
+    Assumes a regular torus composed of SpiNN-5 boards.
+    
+    Parameters
+    ----------
+    x, y, z : int
+        Board coordinates.
+    
+    Returns
+    -------
+    x, y : int
+        Chip coordinates.
+    """
+    
+    x *= 12
+    y *= 12
+    
+    if z == 1:
+        x += 8
+        y += 4
+    elif z == 2:
+        x += 4
+        y += 8
+    
+    return (x, y)
