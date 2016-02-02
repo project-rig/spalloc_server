@@ -68,6 +68,28 @@ def test_add_machine(q, monkeypatch):
     assert len(_regenerate_queues.mock_calls) == 2
 
 
+def test_move_machine_to_end(q, on_allocate):
+    # Create some machines in order
+    q.add_machine("m0", 1, 1)
+    q.add_machine("m1", 1, 1)
+    q.add_machine("m2", 1, 1)
+    
+    # First job should go to first machine
+    q.create_job(1, 1, job_id=10)
+    assert len(on_allocate.mock_calls) == 1
+    assert on_allocate.mock_calls[0][1][1] == "m0"
+    
+    # Reordering should make next job go on m2
+    q.move_machine_to_end("m1")
+    
+    # First job should go to first machine
+    on_allocate.reset_mock()
+    q.create_job(1, 1, job_id=20)
+    assert len(on_allocate.mock_calls) == 1
+    assert on_allocate.mock_calls[0][1][1] == "m2"
+
+
+
 def test_modify_machine(q, monkeypatch):
     _regenerate_queues = Mock(side_effect=q._regenerate_queues)
     monkeypatch.setattr(q, "_regenerate_queues", _regenerate_queues)

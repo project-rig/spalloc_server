@@ -208,6 +208,13 @@ class JobQueue(object):
         
         self._regenerate_queues()
     
+    def move_machine_to_end(self, name):
+        """Move the specified machine to the end of the OrderedDict of
+        machines.
+        """
+        self._machines.move_to_end(name)
+        # NB: No queue regeneration required
+    
     def modify_machine(self, name, tags=None,
                        dead_boards=None, dead_links=None):
         """Make minor modifications to the description of an existing machine.
