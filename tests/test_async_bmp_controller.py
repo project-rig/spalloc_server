@@ -27,14 +27,18 @@ def bc(abc, monkeypatch):
 
 
 @pytest.mark.timeout(1.0)
-def test_start_and_stop():
+@pytest.mark.parametrize("on_thread_start", [None, Mock()])
+def test_start_and_stop(on_thread_start):
     # Make sure that if a BMP controller is started, we can stop it immediately
-    abc = AsyncBMPController("localhost")
+    abc = AsyncBMPController("localhost", on_thread_start=on_thread_start)
     assert abc._stop is False
     
     abc.stop()
     abc.join()
     assert abc._stop is True
+    
+    if on_thread_start is not None:
+        on_thread_start.assert_called_once_with()
 
 
 @pytest.mark.timeout(1.0)

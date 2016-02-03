@@ -57,7 +57,21 @@ FPGA_LINK_STOP_REGISTERS = {
 
 class AsyncBMPController(object):
     
-    def __init__(self, hostname):
+    def __init__(self, hostname, on_thread_start=None):
+        """Start a new asynchronous BMP Controller
+        
+        Parameters
+        ----------
+        hostname : str
+            The hostname/IP of the BMP to connect to.
+        on_thread_start : function() or None
+            *Optional.* A function to be called by the controller's background
+            thread before it starts. This can be used to ensure propper
+            sequencing/handing-over between two AsyncBMPControllers connected
+            to the same machine.
+        """
+        self._on_thread_start = on_thread_start
+        
         self._bc = BMPController(hostname)
         
         self._stop = False
@@ -84,7 +98,7 @@ class AsyncBMPController(object):
         """When used as a context manager, make requests 'atomic'."""
         self._lock.acquire()
     
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type=None, value=None, traceback=None):
         self._lock.release()
     
     def set_power(self, board, state, on_done):
@@ -137,14 +151,17 @@ class AsyncBMPController(object):
             self._stop = True
             self._requests_pending.set()
     
-    def join(self, *args, **kwargs):
+    def join(self):
         """Wait for the thread to actually stop."""
-        self._thread.join(*args, **kwargs)
+        self._thread.join()
     
     def _run(self):
         """The background thread for interacting with the BMP.
         """
         try:
+            if self._on_thread_start is not None:
+                self._on_thread_start()
+            
             while True:
                 self._requests_pending.wait()
                 
