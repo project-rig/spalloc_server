@@ -28,12 +28,49 @@ class Controller(object):
     queueing and execution of jobs on several SpiNNaker machines at once. It is
     designed with the intention 
     
+    Attributes
+    ----------
+    max_retired_jobs : int
+        Maximum number of retired jobs to retain the state of.
+    machines : {name: :py:class:`.Machine`, ...} or similar OrderedDict
+        Defines the machines now available to the controller.
+    changed_jobs : set([job_id, ...])
+        The set of job_ids whose state has changed since the last time this set
+        was accessed. Reading this value clears it.
+    changed_machines : set([machine_name, ...])
+        The set of machine names whose state has changed since the last time
+        this set was accessed. Reading this value clears it. For example,
+        machines are marked as changed if their tags are changed, if they are
+        added or removed or if a job is allocated or freed on them.
+    on_background_state_change : function() or None
+        A function which is called (from any thread) when any state changes
+        occur in a background process and not as a direct result of calling a
+        method of the controller.
+        
+        The callback function *must not* call any methods of the controller
+        object.
+        
+        Note that this attribute is not pickled and unpicking a controller sets
+        this attribute to None.
     """
     
-    def __init__(self, next_id=1, timeout_check_interval=5.0,
-                 max_retired_jobs=1200):
+    def __init__(self, next_id=1, max_retired_jobs=1200,
+                 on_background_state_change=None):
+        """Create a new controller.
+        
+        Parameters
+        ----------
+        next_id : int
+            The next Job ID to assign
+        max_retired_jobs : int
+            See attribute of same name.
+        on_background_state_change : function
+            See attribute of same name.
+        """
         # The next job ID to assign
         self._next_id = next_id
+        
+        self._on_background_state_change = on_background_state_change
         
         # The job queue which manages the scheduling and
         # allocation of all jobs.
@@ -57,8 +94,9 @@ class Controller(object):
         self._max_retired_jobs = max_retired_jobs
         self._retired_jobs = OrderedDict()
         
-        # The interval at which to check for timed-out jobs (seconds)
-        self._timeout_check_interval = timeout_check_interval
+        # Underlying sets containing changed jobs and machines
+        self._changed_jobs = set()
+        self._changed_machines = set()
         
         # All the attributes set below are "dynamic state" and cannot be
         # pickled. They are initialised by calling to _init_dynamic_state and
@@ -71,29 +109,21 @@ class Controller(object):
         # {machine_name: {(c, f): AsyncBMPController, ...}, ...}
         self._bmp_controllers = None
         
-        # A background thread which periodically destroys any jobs which have
-        # timed out due to inactivity.
-        self._stop_timeout_thread = None
-        self._timeout_thread = None
-        
         self._init_dynamic_state()
     
     def __getstate__(self):
         """Called when pickling this object.
         
-        When pickling, all outstanding BMP requests are flushed and background
-        threads are stopped. During pickling no calls may be made to the
-        Controller.
+        This object may only be pickled once .stop() and .join() have returned.
         """
-        self._del_dynamic_state()
         state = self.__dict__.copy()
         
-        # NB: This function starts all the background threads up again but
-        # since we copied the __dict__, the pickled version of the object will
-        # not contain references to them. Starting the background threads
-        # *should* not modify any state referenced by the copied dictionary
-        # thus making pickling quite safe...
-        self._init_dynamic_state()
+        # Do not keep the reference to any state-change callbacks
+        state["_on_background_state_change"] = None
+        
+        # Do not keep references to unpickleable dynamic state
+        state["_bmp_controllers"] = None
+        state["_lock"] = None
         
         return state
     
@@ -110,9 +140,6 @@ class Controller(object):
         Use .join to wait for the threads to actually terminate.
         """
         with self._lock:
-            # Stop the timeout thread
-            self._stop_timeout_thread.set()
-            
             # Stop the BMP controllers
             for machine in itervalues(self._machines):
                 self._destroy_machine_bmp_controllers(machine)
@@ -125,15 +152,40 @@ class Controller(object):
             When using this function, no functions of the controller may be
             called between the stop() call and join() may be made.
         """
-        # Wait for the timeout thread
-        self._timeout_thread.join()
-        
         # Wait for the BMP controller threads
         for controllers in itervalues(self._bmp_controllers):
             for controller in itervalues(controllers):
                 controller.join()
     
-    def set_machines(self, machines):
+    @property
+    def on_background_state_change(self):
+        with self._lock:
+            return self._on_background_state_change
+    
+    @on_background_state_change.setter
+    def on_background_state_change(self, value):
+        with self._lock:
+            self._on_background_state_change = value
+    
+    @property
+    def max_retired_jobs(self):
+        with self._lock:
+            return self._max_retired_jobs
+    
+    @max_retired_jobs.setter
+    def max_retired_jobs(self, value):
+        with self._lock:
+            self._max_retired_jobs = value
+            while len(self._retired_jobs) > self._max_retired_jobs:
+                self._retired_jobs.pop(next(iter(self._retired_jobs)))
+    
+    @property
+    def machines(self):
+        with self._lock:
+            return self._machines.copy()
+    
+    @machines.setter
+    def machines(self, machines):
         """Update the set of machines available to the controller.
         
         Attempt to update the information about available machines without
@@ -232,6 +284,25 @@ class Controller(object):
                 for name in machines:
                     self._machines.move_to_end(name)
                     self._job_queue.move_machine_to_end(name)
+            
+            # Mark all effected machines as changed
+            self._changed_machines.update(added)
+            self._changed_machines.update(changed)
+            self._changed_machines.update(removed)
+    
+    @property
+    def changed_jobs(self):
+        with self._lock:
+            changed_jobs = self._changed_jobs
+            self._changed_jobs = set()
+            return changed_jobs
+    
+    @property
+    def changed_machines(self):
+        with self._lock:
+            changed_machines = self._changed_machines
+            self._changed_machines = set()
+            return changed_machines
     
     def create_job(self, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
@@ -303,6 +374,8 @@ class Controller(object):
                        args=args, kwargs=kwargs)
             self._jobs[job_id] = job
             self._job_queue.create_job(*args, **kwargs)
+            
+            self._changed_jobs.add(job_id)
             
             return job_id
     
@@ -521,6 +594,16 @@ class Controller(object):
                 for machine in itervalues(self._machines)
             ]
     
+    def destroy_timed_out_jobs(self):
+        """Destroy any jobs which have timed out."""
+        with self._lock:
+            now = time.time()
+            for job in list(itervalues(self._jobs)):
+                if (job.keepalive is not None and
+                        job.keepalive_until < now):
+                    # Job timed out, destroy it
+                    self.destroy_job(job.id, "Job timed out.")
+    
     @contextmanager
     def _all_bmps_in_machine(self, machine):
         """Act atomically on all BMPs in a machine.
@@ -558,6 +641,12 @@ class Controller(object):
             assert job.bmp_requests_until_ready >= 0
             if job.bmp_requests_until_ready == 0:
                 job.state = JobState.ready
+                
+                # Report state changes for jobs which are stlil running
+                if job.id in self._jobs:
+                    self._changed_jobs.add(job.id)
+                    if self._on_background_state_change is not None:
+                        self._on_background_state_change()
     
     def _set_job_power_and_links(self, job, power, link_enable=None):
         """Power on/off and configure links for the boards associated with a
@@ -580,6 +669,7 @@ class Controller(object):
             
             with self._all_bmps_in_machine(machine) as controllers:
                 job.state = JobState.power
+                self._changed_jobs.add(job.id)
                 
                 # Send power commands
                 job.bmp_requests_until_ready += len(job.boards)
@@ -604,12 +694,15 @@ class Controller(object):
             job.allocated_machine = self._machines[machine_name]
             job.boards = boards
             job.periphery = periphery
+            self._changed_jobs.add(job.id)
+            self._changed_machines.add(machine_name)
             
             # Initialise the boards
             self.power_on_job_boards(job_id)
     
     def _job_queue_on_free(self, job_id, reason):
         """Called when a job is freed."""
+        self._changed_machines.add(self._jobs[job_id].allocated_machine.name)
         self._teardown_job(job_id, reason)
     
     def _job_queue_on_cancel(self, job_id, reason):
@@ -624,6 +717,7 @@ class Controller(object):
         with self._lock:
             job = self._jobs.pop(job_id)
             self._retired_jobs[job_id] = reason
+            self._changed_jobs.add(job.id)
             
             # Keep the number of retired jobs limited to prevent
             # accumulating memory consumption forever.
@@ -654,23 +748,6 @@ class Controller(object):
                 for controller in itervalues(controllers):
                     controller.stop()
     
-    def _timeout_thread_run(self):
-        """A background thread which periodically destroys any jobs whose
-        keepalive_until has expired.
-        
-        This thread is stopped by setting the self._stop_timeout_thread event.
-        
-        The check is run every self._timeout_check_interval seconds.
-        """
-        while not self._stop_timeout_thread.wait(self._timeout_check_interval):
-            now = time.time()
-            with self._lock:
-                for job in itervalues(self._jobs):
-                    if (job.keepalive is not None and
-                            job.keepalive_until < now):
-                        # Job timed out, destroy it
-                        self.destroy_job(job.id, "Job timed out.")
-    
     def _init_dynamic_state(self):
         """Initialise all dynamic (non-pickleable) state.
         
@@ -680,7 +757,6 @@ class Controller(object):
         * Creates connections to BMPs.
         * Reset keepalive_until on all existing jobs (e.g. allowing remote
           devices a chance to reconnect before terminating their jobs).
-        * Starts up background thread to destroy timed out jobs.
         """
         # Recreate the lock
         assert self._lock is None
@@ -696,14 +772,6 @@ class Controller(object):
             # Reset keepalives to allow remote clients time to reconnect
             for job_id in self._jobs:
                 self.job_keepalive(job_id)
-            
-            # Start up background thread to destroy timed out jobs
-            assert self._timeout_thread is None
-            self._stop_timeout_thread = threading.Event()
-            self._timeout_thread = threading.Thread(
-                name="<Job timeout thread>",
-                target=self._timeout_thread_run)
-            self._timeout_thread.start()
     
     def _del_dynamic_state(self):
         """Flush and shut down all dynamic (non-pickleable) state.
@@ -713,7 +781,6 @@ class Controller(object):
         
         Specifically:
         
-        * Stop the timeout thread
         * Flush and remove all BMP controllers
         * Destroy the global controller lock
         """
@@ -721,8 +788,6 @@ class Controller(object):
         self.join()
         
         # Finally, destroy the lock and all references to dynamic state
-        self._stop_timeout_thread = None
-        self._timeout_thread = None
         self._bmp_controllers = None
         self._lock = None
     
@@ -745,36 +810,6 @@ class JobState(IntEnum):
     
     # The job has been destroyed
     destroyed = 4
-
-class Machine(namedtuple("Machine", "name,tags,width,height,"
-                                    "dead_boards,dead_links,"
-                                    "board_locations,"
-                                    "bmp_ips,spinnaker_ips")):
-    """Defines a SpiNNaker machine.
-    
-    Attributes
-    ----------
-    name : str
-        The name of the machine.
-    tags : set([str, ...])
-        A set of tags which jobs may use to filter machines by.
-    width, height : int
-        The dimensions of the machine in triads of boards.
-    dead_boards : set([(x, y, z), ...])
-        The coordinates of all dead boards in the machine.
-    dead_links : set([(x, y, z, link), ...])
-        The coordinates of all dead links in the machine. Links to dead
-        boards are implicitly dead and may or may not be included in this
-        set.
-    board_locations : {(x, y, z): (c, f, b), ...}
-        Lookup from board coordinate to its physical in a SpiNNaker
-        machine in terms of cabinet, frame and board position.
-    bmp_ips : {(c, f): hostname, ...}
-        The IP address of a BMP in every frame of the machine.
-    spinnaker_ips : {(x, y, z): hostname, ...}
-        For every board gives the IP address of the SpiNNaker board's
-        Ethernet connected chip.
-    """
 
 class _Job(object):
     """The metadata for a job."""

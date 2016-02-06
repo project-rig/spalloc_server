@@ -15,7 +15,8 @@ import pickle
 from six import itervalues, iteritems
 
 from spinn_partition.coordinates import board_down_link
-from spinn_partition.controller import Controller, Machine, JobState
+from spinn_partition.machine import Machine
+from spinn_partition.controller import Controller, JobState
 
 
 def simple_machine(name, width, height, tags=set(["default"]),
@@ -130,22 +131,15 @@ def MockABC(monkeypatch):
     return MockAsyncBMPController
 
 @pytest.fixture
-def timeout_check_interval():
-    """A list containing the timeout checking interval to use."""
-    return [5.0]
-
-
-@pytest.fixture
-def timeout_0_2(timeout_check_interval):
-    """Set the timeout interval to 0.2 seconds."""
-    timeout_check_interval[0] = 0.2
-
+def on_background_state_change():
+    """The callback called by on_background_state_change."""
+    return Mock()
 
 @pytest.yield_fixture
-def conn(MockABC, timeout_check_interval):
+def conn(MockABC, on_background_state_change):
     """Auto-stop a controller."""
-    conn = Controller(timeout_check_interval=timeout_check_interval[0],
-                      max_retired_jobs=2)
+    conn = Controller(max_retired_jobs=2,
+                      on_background_state_change=on_background_state_change)
     yield conn
     conn.stop()
     conn.join()
@@ -153,7 +147,7 @@ def conn(MockABC, timeout_check_interval):
 @pytest.fixture
 def m(conn):
     """Add a simple 1x2 machine to the controller."""
-    conn.set_machines({"m": simple_machine("m", 1, 2)})
+    conn.machines = {"m": simple_machine("m", 1, 2)}
     return "m"
 
 
@@ -223,9 +217,9 @@ def test_controller_set_machines(conn, MockABC):
                                      for x in range(1 + num)
                                      for y in range(2)
                                      for z in range(3)},
-                    bmp_ips={(x, y): "10.1.{}.{}".format(x, y)
-                             for x in range(1 + num)
-                             for y in range(2)},
+                    bmp_ips={(c*10, f*10): "10.1.{}.{}".format(c, f)
+                             for c in range(1 + num)
+                             for f in range(2)},
                     spinnaker_ips={(x, y, z): "11.{}.{}.{}".format(x, y, z)
                                    for x in range(1 + num)
                                    for y in range(2)
@@ -237,7 +231,7 @@ def test_controller_set_machines(conn, MockABC):
     
     # Special case: Setting no machines should not break anything
     machines = OrderedDict()
-    conn.set_machines(machines)
+    conn.machines = machines
     assert len(conn._machines) == 0
     assert len(conn._job_queue._machines) == 0
     assert len(conn._bmp_controllers) == 0
@@ -246,7 +240,7 @@ def test_controller_set_machines(conn, MockABC):
     # Try adding a pair of machines
     machines["m1"] = m1
     machines["m0"] = m0
-    conn.set_machines(machines)
+    conn.machines = machines
     
     # Check that the set of machines copies across
     assert conn._machines == machines
@@ -272,14 +266,14 @@ def test_controller_set_machines(conn, MockABC):
     for m_name, controllers in iteritems(conn._bmp_controllers):
         for c in range(machines[m_name].width):
             for f in range(machines[m_name].height):
-                assert controllers[(c, f)].hostname \
+                assert controllers[(c*10, f*10)].hostname \
                     == "10.1.{}.{}".format(c, f)
     assert MockABC.running_theads \
         == MockABC.num_created \
         == ((m1.width * m1.height) + (m0.width * m0.height))
     
     # If we pass in the same machines in, nothing should get changed
-    conn.set_machines(machines)
+    conn.machines = machines
     assert conn._machines == machines
     assert list(conn._job_queue._machines) == list(machines)
     assert MockABC.running_theads \
@@ -291,7 +285,7 @@ def test_controller_set_machines(conn, MockABC):
     machines = OrderedDict()
     machines["m0"] = m0
     machines["m1"] = m1
-    conn.set_machines(machines)
+    conn.machines = machines
     assert conn._machines == machines
     assert list(conn._job_queue._machines) == list(machines)
     assert MockABC.running_theads \
@@ -304,7 +298,7 @@ def test_controller_set_machines(conn, MockABC):
     machines["m0"] = m0
     machines["m1"] = m1
     machines["m2"] = m2
-    conn.set_machines(machines)
+    conn.machines = machines
     assert conn._machines == machines
     assert list(conn._job_queue._machines) == list(machines)
     assert MockABC.running_theads \
@@ -324,7 +318,7 @@ def test_controller_set_machines(conn, MockABC):
                  bmp_ips=m0.bmp_ips,
                  spinnaker_ips=m0.spinnaker_ips)
     machines["m0"] = m0
-    conn.set_machines(machines)
+    conn.machines = machines
     
     # Machine list should be updated
     assert conn._machines == machines
@@ -346,7 +340,7 @@ def test_controller_set_machines(conn, MockABC):
     
     # Removing a machine should result in things being spun down
     del machines["m0"]
-    conn.set_machines(machines)
+    conn.machines = machines
     
     # Machine list should be updated
     assert conn._machines == machines
@@ -382,7 +376,7 @@ def test_controller_set_machines(conn, MockABC):
     m1_alloc_before = conn._job_queue._machines["m1"].allocator
     m2_alloc_before = conn._job_queue._machines["m2"].allocator
     
-    conn.set_machines(machines)
+    conn.machines = machines
     
     m1_alloc_after = conn._job_queue._machines["m1"].allocator
     m2_alloc_after = conn._job_queue._machines["m2"].allocator
@@ -417,13 +411,13 @@ def test_set_machines_sequencing(conn):
     m1 = simple_machine("m1", 1, 1)
     
     # If m0 is taking a long time to do much...
-    conn.set_machines({"m0": m0})
+    conn.machines = {"m0": m0}
     controller_m0 = conn._bmp_controllers["m0"][(0, 0)]
     with controller_m0.handler_lock:
         conn.create_job(owner="me")
         
         # ... and we swap the machine out for another ...
-        conn.set_machines({"m1": m1})
+        conn.machines = {"m1": m1}
         
         # Our newly created job should be blocked in power-on until the
         # previous machine finishes shutting down.
@@ -436,6 +430,11 @@ def test_set_machines_sequencing(conn):
     time.sleep(0.05)
     assert conn.get_job_state(job_id)[0] is JobState.ready
 
+
+def test_get_machines(conn, m):
+    # Should return a copy... No surprise changes allowed!
+    assert conn.machines == conn._machines
+    assert conn.machines is not conn._machines
 
 def test_create_job(conn, m):
     controller = conn._bmp_controllers[m][(0, 0)]
@@ -480,7 +479,7 @@ def test_create_job(conn, m):
     assert conn.get_job_state(job_id3)[2] \
         == "Cancelled: No suitable machines available."
 
-def test_job_keepalive(timeout_0_2, conn, m):
+def test_destroy_timed_out_jobs(conn, m):
     job_id = conn.create_job(owner="me", keepalive=0.1)
     
     # This job should not get timed out even though we never prod it
@@ -489,16 +488,19 @@ def test_job_keepalive(timeout_0_2, conn, m):
     # Make sure that jobs can be kept alive on demand
     for _ in range(4):
         time.sleep(0.05)
+        conn.destroy_timed_out_jobs()
         conn.job_keepalive(job_id)
     assert conn.get_job_state(job_id)[0] == JobState.ready
     
     # Make sure jobs are kept alive by checking their state
     for _ in range(4):
         time.sleep(0.05)
+        conn.destroy_timed_out_jobs()
         assert conn.get_job_state(job_id)[0] == JobState.ready
     
     # Make sure jobs can timeout
-    time.sleep(0.25)
+    time.sleep(0.15)
+    conn.destroy_timed_out_jobs()
     assert conn.get_job_state(job_id)[0] == JobState.destroyed
     assert conn.get_job_state(job_id)[2] == "Job timed out."
     
@@ -522,7 +524,7 @@ def test_get_job_state(conn, m):
     assert reason is None
     
     # If the job is killed, this should be reported.
-    conn.set_machines({})
+    conn.machines = {}
     state, keepalive, reason = conn.get_job_state(job_id1)
     assert state is JobState.destroyed
     assert keepalive is None
@@ -711,7 +713,7 @@ def test_list_machines(conn):
                               dead_boards=set([(0, 0, 1)]),
                               dead_links=set([(0, 0, 0, Links.west)]))),
     ])
-    conn.set_machines(machines)
+    conn.machines = machines
     
     machine_list = conn.list_machines()
     
@@ -746,7 +748,7 @@ def test_all_bmps_in_machine(MockABC, conn):
         ("m0", simple_machine("m0", 1, 2)),
         ("m1", simple_machine("m1", 1, 2)),
     ])
-    conn.set_machines(machines)
+    conn.machines = machines
     
     controller_m0_0 = conn._bmp_controllers["m0"][(0, 0)]
     controller_m0_1 = conn._bmp_controllers["m0"][(0, 1)]
@@ -849,66 +851,21 @@ def test_set_job_power_and_links(MockABC, conn, m, power, link_enable):
             assert len(controller.set_link_enable_calls) == 0
 
 
-def test_dynamic_state_control(MockABC, timeout_0_2, conn, m):
-    # Should be able to shut-down and restart all dynamic state safely
-    
-    # For a single machine we should have two background threads running BMP
-    # Connections.
-    assert MockABC.running_theads == 2
-    assert MockABC.num_created == 2
-    
-    # We'll create a job with a short timeout which we'll let almost expire and
-    # hopefully find that after restoring the keepalive is reset.
-    job_id = conn.create_job(owner="me", keepalive=0.3)
-    time.sleep(0.2)
-    
-    conn._del_dynamic_state()
-    
-    # All background threads and dynamic stuff should now be down and
-    # dereferenced
-    assert MockABC.running_theads == 0
-    assert MockABC.num_created == 2
-    assert conn._lock is None
-    assert conn._bmp_controllers is None
-    assert conn._timeout_thread is None
-    assert conn._stop_timeout_thread is None
-    
-    
-    conn._init_dynamic_state()
-    
-    # Restarting should restore everything and our job should not find itself
-    # timed out!
-    assert MockABC.running_theads == 2
-    assert MockABC.num_created == 4
-    assert conn._lock is not None
-    assert conn._bmp_controllers is not None
-    assert conn._timeout_thread is not None
-    assert conn._stop_timeout_thread is not None
-    
-    time.sleep(0.25)
-    assert conn.get_job_state(job_id)[0] is JobState.ready
-
-
 def test_pickle(MockABC):
     # Create a controller, with a running job and some threads etc.
     conn = Controller()
-    conn.set_machines({"m": simple_machine("m", 1, 2)})
+    conn.machines = {"m": simple_machine("m", 1, 2)}
     job_id = conn.create_job(owner="me")
     
     assert MockABC.running_theads == 2
     
     # Pickling the controller should succeed
-    pickled_conn = pickle.dumps(conn)
-    
-    assert MockABC.running_theads == 2
-    
-    # Should be able to stop the conn (since it should not have been left in a
-    # stopped state)
     conn.stop()
     conn.join()
-    del conn
-    
     assert MockABC.running_theads == 0
+    
+    pickled_conn = pickle.dumps(conn)
+    del conn
     
     # Unpickling should succeed
     conn2 = pickle.loads(pickled_conn)
@@ -921,3 +878,165 @@ def test_pickle(MockABC):
     
     conn2.stop()
     conn2.join()
+
+
+def test_max_retired_jobs(conn):
+    # Should be able to access the number of retired jobs
+    assert conn.max_retired_jobs == 2
+    conn.max_retired_jobs = 3
+    assert conn.max_retired_jobs == 3
+    
+    # Should have an effect. Create a number of impossible jobs which will be
+    # immediately retired.
+    job_id0 = conn.create_job(owner="me")
+    job_id1 = conn.create_job(owner="me")
+    job_id2 = conn.create_job(owner="me")
+    job_id3 = conn.create_job(owner="me")
+    
+    assert conn.get_job_state(job_id0)[0] == JobState.unknown
+    assert conn.get_job_state(job_id1)[0] == JobState.destroyed
+    assert conn.get_job_state(job_id2)[0] == JobState.destroyed
+    assert conn.get_job_state(job_id3)[0] == JobState.destroyed
+    
+    # Should be able to change the value and have some jobs be forgotten disappear
+    conn.max_retired_jobs = 1
+    assert conn.get_job_state(job_id0)[0] == JobState.unknown
+    assert conn.get_job_state(job_id1)[0] == JobState.unknown
+    assert conn.get_job_state(job_id2)[0] == JobState.unknown
+    assert conn.get_job_state(job_id3)[0] == JobState.destroyed
+    
+    # Special case: 0
+    conn.max_retired_jobs = 0
+    assert conn.get_job_state(job_id0)[0] == JobState.unknown
+    assert conn.get_job_state(job_id1)[0] == JobState.unknown
+    assert conn.get_job_state(job_id2)[0] == JobState.unknown
+    assert conn.get_job_state(job_id3)[0] == JobState.unknown
+    
+    job_id4 = conn.create_job(owner="me")
+    assert conn.get_job_state(job_id3)[0] == JobState.unknown
+
+
+def test_changed_jobs(conn, m):
+    # Make sure changes to job state are tracked
+    assert conn.changed_jobs == set()
+    
+    controller = conn._bmp_controllers[m][(0, 0)]
+    
+    with controller.handler_lock:
+        # Job allocation (pre-power on)
+        job_id0 = conn.create_job(1, 2, owner="me")
+        assert conn.changed_jobs == set([job_id0])
+        assert conn.changed_jobs == set()
+    
+    time.sleep(0.05)
+    
+    # Power-on complete
+    assert conn.changed_jobs == set([job_id0])
+    assert conn.changed_jobs == set()
+    
+    # Job queued
+    job_id1 = conn.create_job(owner="me")
+    assert conn.changed_jobs == set([job_id1])
+    assert conn.changed_jobs == set()
+    
+    with controller.handler_lock:
+        # Job freed, another job un-queued but awaiting power-on
+        conn.destroy_job(job_id0)
+        assert conn.changed_jobs == set([job_id0, job_id1])
+        assert conn.changed_jobs == set()
+    
+    time.sleep(0.05)
+    
+    # Job now powered-on
+    assert conn.changed_jobs == set([job_id1])
+    assert conn.changed_jobs == set()
+    
+    with controller.handler_lock:
+        # Job power-control should result in event
+        conn.power_off_job_boards(job_id1)
+        assert conn.changed_jobs == set([job_id1])
+        assert conn.changed_jobs == set()
+    
+    time.sleep(0.05)
+    
+    # Post power-off...
+    assert conn.changed_jobs == set([job_id1])
+    assert conn.changed_jobs == set()
+    
+    # Impossible job should just fail
+    job_id2 = conn.create_job(2, 3, owner="me")
+    assert conn.changed_jobs == set([job_id2])
+    assert conn.changed_jobs == set()
+
+
+def test_changed_machines(conn):
+    # Make sure changes to machines are tracked
+    assert conn.changed_jobs == set()
+    
+    # Adding machines
+    conn.machines = {"m0": simple_machine("m0", 1, 2),
+                     "m1": simple_machine("m1", 1, 2)}
+    assert conn.changed_machines == set(["m0", "m1"])
+    assert conn.changed_machines == set()
+    
+    # Changing machines slightly
+    conn.machines = {"m0": simple_machine("m0", 1, 2, tags=set(["foo"])),
+                     "m1": simple_machine("m1", 1, 2)}
+    assert conn.changed_machines == set(["m0"])
+    assert conn.changed_machines == set()
+    
+    # Changing machines significantly
+    conn.machines = {"m0": simple_machine("m0", 1, 2, tags=set(["foo"])),
+                     "m1": simple_machine("m1", 2, 2)}
+    assert conn.changed_machines == set(["m1"])
+    assert conn.changed_machines == set()
+    
+    # Remvoing machines
+    conn.machines = {"m1": simple_machine("m1", 2, 2)}
+    assert conn.changed_machines == set(["m0"])
+    assert conn.changed_machines == set()
+    
+    # Allocating jobs
+    job_id = conn.create_job(owner="me")
+    assert conn.changed_machines == set(["m1"])
+    assert conn.changed_machines == set()
+    
+    # Not power cycling jobs...
+    conn.power_off_job_boards(job_id)
+    time.sleep(0.05)
+    assert conn.changed_machines == set()
+    
+    # Destroying jobs
+    conn.destroy_job(job_id)
+    assert conn.changed_machines == set(["m1"])
+    assert conn.changed_machines == set()
+
+
+def test_on_background_state_change(conn, m, on_background_state_change):
+    controller0 = conn._bmp_controllers[m][(0, 0)]
+    controller1 = conn._bmp_controllers[m][(0, 1)]
+    assert len(on_background_state_change.mock_calls) == 0
+    
+    with controller0.handler_lock:
+        with controller1.handler_lock:
+            job_id = conn.create_job(1, 2, owner="me")
+            
+            # Should not get called because not powered on yet
+            time.sleep(0.05)
+            assert len(on_background_state_change.mock_calls) == 0
+        
+        # Should not get called because still not powered on yet
+        time.sleep(0.05)
+        assert len(on_background_state_change.mock_calls) == 0
+    
+    # Should now be called since power on should have finished
+    time.sleep(0.05)
+    assert len(on_background_state_change.mock_calls) == 1
+    
+    # Should be able to unregister said callback
+    assert conn.on_background_state_change is on_background_state_change
+    conn.on_background_state_change = None
+    assert conn.on_background_state_change is None
+    
+    # Shouldn't break anything
+    conn.destroy_job(job_id)
