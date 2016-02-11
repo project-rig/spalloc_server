@@ -56,3 +56,9 @@ target/
 # Vi[m] swap files
 *.swp
 *.swo
+
+# Hidden files
+.*
+
+# Virtualenv nonsense
+pip-selfcheck.json
