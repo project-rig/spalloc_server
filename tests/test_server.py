@@ -202,7 +202,7 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
     try:
         job_id = s.create_job(None, owner="me")
         time.sleep(0.05)
-        assert s.get_job_state(None, job_id)[0] == JobState.ready
+        assert s.get_job_state(None, job_id)["state"] == JobState.ready
     finally:
         s.stop_and_join()
         
@@ -219,9 +219,9 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
     try:
         # Should have the same state as before, if doing a hot start
         if cold_start or corrupt_state:
-            assert s.get_job_state(None, job_id)[0] == JobState.unknown
+            assert s.get_job_state(None, job_id)["state"] == JobState.unknown
         else:
-            assert s.get_job_state(None, job_id)[0] == JobState.ready
+            assert s.get_job_state(None, job_id)["state"] == JobState.ready
     finally:
         s.stop_and_join()
 
@@ -348,10 +348,13 @@ def test_job_management(MockABC, simple_config, s, c):
     c.call("job_keepalive", job_id2)
     
     # State should be visible
-    assert c.call("get_job_state", job_id0) == [JobState.ready, 60.0, None]
-    assert c.call("get_job_state", job_id1) == [JobState.queued, 60.0, None]
-    assert c.call("get_job_state", job_id2) == [
-        JobState.destroyed, None, "Cancelled: No suitable machines available."]
+    assert c.call("get_job_state", job_id0) == {
+        "state": JobState.ready, "keepalive": 60.0, "reason": None}
+    assert c.call("get_job_state", job_id1) == {
+        "state": JobState.queued, "keepalive": 60.0, "reason": None}
+    assert c.call("get_job_state", job_id2) == {
+        "state": JobState.destroyed, "keepalive": None,
+        "reason": "Cancelled: No suitable machines available."}
     
     # Ethernet connections should be visible, where defined
     assert c.call("get_job_ethernet_connections", job_id0) == [[
@@ -372,43 +375,37 @@ def test_job_management(MockABC, simple_config, s, c):
     jobs = c.call("list_jobs")
     assert len(jobs) == 2
     
-    # job_id
-    assert jobs[0][0] == job_id0
-    assert jobs[1][0] == job_id1
+    assert jobs[0]["job_id"] == job_id0
+    assert jobs[1]["job_id"] == job_id1
     
-    # owner
-    assert jobs[0][1] == "me"
-    assert jobs[1][1] == "me"
+    assert jobs[0]["owner"] == "me"
+    assert jobs[1]["owner"] == "me"
     
-    # Keepalive
-    assert jobs[0][3] == 60.0
-    assert jobs[1][3] == 60.0
+    assert jobs[0]["keepalive"] == 60.0
+    assert jobs[1]["keepalive"] == 60.0
     
-    # state
-    assert jobs[0][4] == JobState.ready
-    assert jobs[1][4] == JobState.queued
+    assert jobs[0]["state"] == JobState.ready
+    assert jobs[1]["state"] == JobState.queued
     
-    # args
-    assert jobs[0][5] == []
-    assert jobs[1][5] == [1, 2]
+    assert jobs[0]["args"] == []
+    assert jobs[1]["args"] == [1, 2]
     
-    # kwargs
-    assert jobs[0][6] == {}
-    assert jobs[1][6] == {"require_torus": True}
+    assert jobs[0]["kwargs"] == {}
+    assert jobs[1]["kwargs"] == {"require_torus": True}
     
-    # allocated_machine_name
-    assert jobs[0][7] == "m"
-    assert jobs[1][7] == None
+    assert jobs[0]["allocated_machine_name"] == "m"
+    assert jobs[1]["allocated_machine_name"] == None
     
-    # boards
-    assert jobs[0][8] == [[0, 0, 0]]
-    assert jobs[1][8] == None
+    assert jobs[0]["boards"] == [[0, 0, 0]]
+    assert jobs[1]["boards"] == None
     
     # Destroying jobs should work
     c.call("destroy_job", job_id0, "Test reason...")
-    assert c.call("get_job_state", job_id0) == [
-        JobState.destroyed, None, "Test reason..."]
-    assert c.call("get_job_state", job_id1) == [JobState.ready, 60.0, None]
+    assert c.call("get_job_state", job_id0) == {
+        "state": JobState.destroyed, "keepalive": None,
+        "reason": "Test reason..."}
+    assert c.call("get_job_state", job_id1) == {
+        "state": JobState.ready, "keepalive": 60.0, "reason": None}
 
 @pytest.mark.timeout(1.0)
 def test_list_machines(MockABC, double_config, s, c):
@@ -416,29 +413,23 @@ def test_list_machines(MockABC, double_config, s, c):
     
     assert len(machines) == 2
     
-    # name
-    assert machines[0][0] == "m0"
-    assert machines[1][0] == "m1"
+    assert machines[0]["name"] == "m0"
+    assert machines[1]["name"] == "m1"
     
-    # tags
-    assert machines[0][1] == ["default"]
-    assert machines[1][1] == ["default"]
+    assert machines[0]["tags"] == ["default"]
+    assert machines[1]["tags"] == ["default"]
     
-    # width
-    assert machines[0][2] == 1
-    assert machines[1][2] == 3
+    assert machines[0]["width"] == 1
+    assert machines[1]["width"] == 3
     
-    # height
-    assert machines[0][3] == 2
-    assert machines[1][3] == 4
+    assert machines[0]["height"] == 2
+    assert machines[1]["height"] == 4
     
-    # dead_boards
-    assert machines[0][4] == []
-    assert machines[1][4] == [[0, 0, 1]]
+    assert machines[0]["dead_boards"] == []
+    assert machines[1]["dead_boards"] == [[0, 0, 1]]
     
-    # dead_links
-    assert machines[0][5] == []
-    assert machines[1][5] == [[1, 1, 1, Links.north]]
+    assert machines[0]["dead_links"] == []
+    assert machines[1]["dead_links"] == [[1, 1, 1, Links.north]]
 
 
 @pytest.mark.timeout(1.0)

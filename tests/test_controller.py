@@ -314,12 +314,12 @@ def test_set_machines_sequencing(conn):
         # previous machine finishes shutting down.
         job_id = conn.create_job(owner="me")
         time.sleep(0.05)
-        assert conn.get_job_state(job_id)[0] is JobState.power
+        assert conn.get_job_state(job_id).state is JobState.power
     
     # The old machine machine's controller has now finally finished what it was
     # doing, this should unblock the new machine and in turn let our job start
     time.sleep(0.05)
-    assert conn.get_job_state(job_id)[0] is JobState.ready
+    assert conn.get_job_state(job_id).state is JobState.ready
 
 
 def test_get_machines(conn, m):
@@ -350,23 +350,23 @@ def test_create_job(conn, m):
         
         # Job should be waiting for power-on since the BMP is blocked
         time.sleep(0.05)
-        assert conn.get_job_state(job_id1)[0] is JobState.power
+        assert conn.get_job_state(job_id1).state is JobState.power
     
     # Job should be powered on once the BMP process returns
     time.sleep(0.05)
-    assert conn.get_job_state(job_id1)[0] is JobState.ready
+    assert conn.get_job_state(job_id1).state is JobState.ready
     
     # Adding another job which will be queued should result in a job in the
     # right state.
     job_id2 = conn.create_job(1, 2, owner="me", keepalive=10.0)
     assert conn._jobs[job_id2].keepalive == 10.0
     assert job_id1 != job_id2
-    assert conn.get_job_state(job_id2)[0] is JobState.queued
+    assert conn.get_job_state(job_id2).state is JobState.queued
     
     # Adding a job which cannot fit should come out immediately cancelled
     job_id3 = conn.create_job(2, 2, owner="me")
     assert job_id1 != job_id3 and job_id2 != job_id3
-    assert conn.get_job_state(job_id3)[0] is JobState.destroyed
+    assert conn.get_job_state(job_id3).state is JobState.destroyed
     assert conn.get_job_state(job_id3)[2] \
         == "Cancelled: No suitable machines available."
 
@@ -381,26 +381,26 @@ def test_destroy_timed_out_jobs(conn, m):
         time.sleep(0.05)
         conn.destroy_timed_out_jobs()
         conn.job_keepalive(job_id)
-    assert conn.get_job_state(job_id)[0] == JobState.ready
+    assert conn.get_job_state(job_id).state == JobState.ready
     
     # Make sure jobs are kept alive by checking their state
     for _ in range(4):
         time.sleep(0.05)
         conn.destroy_timed_out_jobs()
-        assert conn.get_job_state(job_id)[0] == JobState.ready
+        assert conn.get_job_state(job_id).state == JobState.ready
     
     # Make sure jobs can timeout
     time.sleep(0.15)
     conn.destroy_timed_out_jobs()
-    assert conn.get_job_state(job_id)[0] == JobState.destroyed
+    assert conn.get_job_state(job_id).state == JobState.destroyed
     assert conn.get_job_state(job_id)[2] == "Job timed out."
     
     # No amount polling should bring it back to life...
     conn.job_keepalive(job_id)
-    assert conn.get_job_state(job_id)[0] == JobState.destroyed
+    assert conn.get_job_state(job_id).state == JobState.destroyed
     
     # Non-keepalive job should not have been destroyed
-    assert conn.get_job_state(job_id_forever)[0] == JobState.ready
+    assert conn.get_job_state(job_id_forever).state == JobState.ready
 
 def test_get_job_state(conn, m):
     job_id1 = conn.create_job(owner="me", keepalive=123.0)
@@ -423,13 +423,13 @@ def test_get_job_state(conn, m):
     
     # Jobs which are not live should be kept but eventually forgotten
     job_id2 = conn.create_job(owner="me", keepalive=123.0)
-    assert conn.get_job_state(job_id1)[0] is JobState.destroyed
-    assert conn.get_job_state(job_id2)[0] is JobState.destroyed
+    assert conn.get_job_state(job_id1).state is JobState.destroyed
+    assert conn.get_job_state(job_id2).state is JobState.destroyed
     
     job_id3 = conn.create_job(owner="me", keepalive=123.0)
-    assert conn.get_job_state(job_id1)[0] is JobState.unknown
-    assert conn.get_job_state(job_id2)[0] is JobState.destroyed
-    assert conn.get_job_state(job_id3)[0] is JobState.destroyed
+    assert conn.get_job_state(job_id1).state is JobState.unknown
+    assert conn.get_job_state(job_id2).state is JobState.destroyed
+    assert conn.get_job_state(job_id3).state is JobState.destroyed
     
     # Jobs which don't exist should report as unknown
     state, keepalive, reason = conn.get_job_state(1234)
@@ -525,7 +525,7 @@ def test_destroy_job(conn, m):
     # Should be able to kill queued jobs (and reasons should be prefixed to
     # indicate the job never started)
     conn.destroy_job(job_id2, reason="Because.")
-    assert conn.get_job_state(job_id2)[0] is JobState.destroyed
+    assert conn.get_job_state(job_id2).state is JobState.destroyed
     assert conn.get_job_state(job_id2)[2] == "Cancelled: Because."
     
     # ...without powering anything down
@@ -536,7 +536,7 @@ def test_destroy_job(conn, m):
     
     # Should be able to kill live jobs
     conn.destroy_job(job_id1, reason="Because you too.")
-    assert conn.get_job_state(job_id1)[0] is JobState.destroyed
+    assert conn.get_job_state(job_id1).state is JobState.destroyed
     assert conn.get_job_state(job_id1)[2] == "Because you too."
     
     # ...powering anything down that was in use
@@ -561,41 +561,32 @@ def test_list_jobs(conn, m):
     
     jobs = conn.list_jobs()
     
-    # job_id
-    assert jobs[0][0] == job_id1
-    assert jobs[1][0] == job_id2
+    assert jobs[0].job_id == job_id1
+    assert jobs[1].job_id == job_id2
     
-    # owner
-    assert jobs[0][1] == "me"
-    assert jobs[1][1] == "you"
+    assert jobs[0].owner == "me"
+    assert jobs[1].owner == "you"
     
-    # start_time
-    assert time.time() - 1.0 <= jobs[0][2] <= time.time()
-    assert time.time() - 1.0 <= jobs[1][2] <= time.time()
+    assert time.time() - 1.0 <= jobs[0].start_time <= time.time()
+    assert time.time() - 1.0 <= jobs[1].start_time <= time.time()
     
-    # keepalive
-    assert jobs[0][3] == 60.0
-    assert jobs[1][3] is None
+    assert jobs[0].keepalive == 60.0
+    assert jobs[1].keepalive is None
     
-    # state
-    assert jobs[0][4] is JobState.ready
-    assert jobs[1][4] is JobState.queued
+    assert jobs[0].state is JobState.ready
+    assert jobs[1].state is JobState.queued
     
-    # args
-    assert jobs[0][5] == tuple()
-    assert jobs[1][5] == (1, 2)
+    assert jobs[0].args == tuple()
+    assert jobs[1].args == (1, 2)
     
-    # kwargs
-    assert jobs[0][6] == {}
-    assert jobs[1][6] == {"require_torus": True}
+    assert jobs[0].kwargs == {}
+    assert jobs[1].kwargs == {"require_torus": True}
     
-    # allocated_machine_name
-    assert jobs[0][7] == m
-    assert jobs[1][7] is None
+    assert jobs[0].allocated_machine_name == m
+    assert jobs[1].allocated_machine_name is None
     
-    # boards
-    assert jobs[0][8] == set([(0, 0, 0)])
-    assert jobs[1][8] is None
+    assert jobs[0].boards == set([(0, 0, 0)])
+    assert jobs[1].boards is None
 
 def test_list_machines(conn):
     machines = OrderedDict([
@@ -608,29 +599,23 @@ def test_list_machines(conn):
     
     machine_list = conn.list_machines()
     
-    # name
-    assert machine_list[0][0] == "m0"
-    assert machine_list[1][0] == "m1"
+    assert machine_list[0].name == "m0"
+    assert machine_list[1].name == "m1"
     
-    # tags
-    assert machine_list[0][1] == set(["default"])
-    assert machine_list[1][1] == set(["foo", "bar"])
+    assert machine_list[0].tags == set(["default"])
+    assert machine_list[1].tags == set(["foo", "bar"])
     
-    # width
-    assert machine_list[0][2] == 1
-    assert machine_list[1][2] == 1
+    assert machine_list[0].width == 1
+    assert machine_list[1].width == 1
     
-    # height
-    assert machine_list[0][3] == 1
-    assert machine_list[1][3] == 2
+    assert machine_list[0].height == 1
+    assert machine_list[1].height == 2
     
-    # dead_boards
-    assert machine_list[0][4] == set()
-    assert machine_list[1][4] == set([(0, 0, 1)])
+    assert machine_list[0].dead_boards == set()
+    assert machine_list[1].dead_boards == set([(0, 0, 1)])
     
-    # dead_links
-    assert machine_list[0][5] == set()
-    assert machine_list[1][5] == set([(0, 0, 0, Links.west)])
+    assert machine_list[0].dead_links == set()
+    assert machine_list[1].dead_links == set([(0, 0, 0, Links.west)])
 
 
 def test_all_bmps_in_machine(MockABC, conn):
@@ -765,7 +750,7 @@ def test_pickle(MockABC):
     assert MockABC.running_theads == 2
     
     # And our job should still be there
-    assert conn2.get_job_state(job_id)[0] == JobState.ready
+    assert conn2.get_job_state(job_id).state == JobState.ready
     
     conn2.stop()
     conn2.join()
@@ -784,27 +769,27 @@ def test_max_retired_jobs(conn):
     job_id2 = conn.create_job(owner="me")
     job_id3 = conn.create_job(owner="me")
     
-    assert conn.get_job_state(job_id0)[0] == JobState.unknown
-    assert conn.get_job_state(job_id1)[0] == JobState.destroyed
-    assert conn.get_job_state(job_id2)[0] == JobState.destroyed
-    assert conn.get_job_state(job_id3)[0] == JobState.destroyed
+    assert conn.get_job_state(job_id0).state == JobState.unknown
+    assert conn.get_job_state(job_id1).state == JobState.destroyed
+    assert conn.get_job_state(job_id2).state == JobState.destroyed
+    assert conn.get_job_state(job_id3).state == JobState.destroyed
     
     # Should be able to change the value and have some jobs be forgotten disappear
     conn.max_retired_jobs = 1
-    assert conn.get_job_state(job_id0)[0] == JobState.unknown
-    assert conn.get_job_state(job_id1)[0] == JobState.unknown
-    assert conn.get_job_state(job_id2)[0] == JobState.unknown
-    assert conn.get_job_state(job_id3)[0] == JobState.destroyed
+    assert conn.get_job_state(job_id0).state == JobState.unknown
+    assert conn.get_job_state(job_id1).state == JobState.unknown
+    assert conn.get_job_state(job_id2).state == JobState.unknown
+    assert conn.get_job_state(job_id3).state == JobState.destroyed
     
     # Special case: 0
     conn.max_retired_jobs = 0
-    assert conn.get_job_state(job_id0)[0] == JobState.unknown
-    assert conn.get_job_state(job_id1)[0] == JobState.unknown
-    assert conn.get_job_state(job_id2)[0] == JobState.unknown
-    assert conn.get_job_state(job_id3)[0] == JobState.unknown
+    assert conn.get_job_state(job_id0).state == JobState.unknown
+    assert conn.get_job_state(job_id1).state == JobState.unknown
+    assert conn.get_job_state(job_id2).state == JobState.unknown
+    assert conn.get_job_state(job_id3).state == JobState.unknown
     
     job_id4 = conn.create_job(owner="me")
-    assert conn.get_job_state(job_id3)[0] == JobState.unknown
+    assert conn.get_job_state(job_id3).state == JobState.unknown
 
 
 def test_changed_jobs(conn, m):

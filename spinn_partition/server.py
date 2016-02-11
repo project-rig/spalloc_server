@@ -311,6 +311,9 @@ class Server(object):
             events = self._poll.poll(
                 self._configuration.timeout_check_interval)
             
+            # Check for timeouts
+            self._controller.destroy_timed_out_jobs()
+            
             # Handle all network events
             for fd, event in events:
                 if fd == self._server_socket.fileno():
@@ -328,9 +331,6 @@ class Server(object):
                     self._config_inotify.read()
                     self._watch_config_file()
                     self._read_config_file()
-            
-            # Check for timeouts
-            self._controller.destroy_timed_out_jobs()
             
             # Send pending change notifications
             self._send_change_notifications()
@@ -513,32 +513,39 @@ class Server(object):
         
         Returns
         -------
-        state : :py:class:`.JobState`
-            The current state of the queried job.
-        keepalive : float or None
-            The Job's keepalive value: the number of seconds between queries
-            about the job before it is automatically destroyed. None if no
-            timeout is active (or when the job has been destroyed).
-        reason : str or None
-            If the job has been destroyed, this may be a string describing the
-            reason the job was terminated.
+        {"state": state, "keepalive": keepalive, "reason": reason}
+            Where:
+            
+            state : :py:class:`.JobState`
+                The current state of the queried job.
+            keepalive : float or None
+                The Job's keepalive value: the number of seconds between
+                queries about the job before it is automatically destroyed.
+                None if no timeout is active (or when the job has been
+                destroyed).
+            reason : str or None
+                If the job has been destroyed, this may be a string describing
+                the reason the job was terminated.
         """
-        return self._controller.get_job_state(job_id)
+        return self._controller.get_job_state(job_id)._asdict()
     
     def get_job_ethernet_connections(self, client, job_id):
         """Get the list of Ethernet connections to the allocated machine.
         
         Returns
         -------
-        connections : [((x, y), hostname), ...] or None
-            A list giving Ethernet-connected chip coordinates in the machine to
-            hostname.
+        {"connections": connections, "hostname": hostname}
+            Where:
             
-            None if no boards are allocated to the job (e.g. it is still
-            queued or has been destroyed).
-        machine_name : str or None
-            The name of the machine the job is allocated on or None if the job
-            is not currently allocated.
+            connections : [((x, y), hostname), ...] or None
+                A list giving Ethernet-connected chip coordinates in the
+                machine to hostname.
+                
+                None if no boards are allocated to the job (e.g. it is still
+                queued or has been destroyed).
+            machine_name : str or None
+                The name of the machine the job is allocated on or None if the
+                job is not currently allocated.
         """
         connections, machine_name = \
             self._controller.get_job_ethernet_connections(job_id)
@@ -576,47 +583,42 @@ class Server(object):
         
         Returns
         -------
-        jobs : [(job_id, owner, start_time, keepalive, state, \
-                 args, kwargs, allocated_machine_name, boards), ...]
+        jobs : [{...}, ...]
             A list of allocated/queued jobs in order of creation from oldest
-            (first) to newest (last).
+            (first) to newest (last). Each job is described by a dictionary
+            with the following keys:
             
-            ``job_id`` is the ID of the job.
+            "job_id" is the ID of the job.
             
-            ``owner`` is the string giving the name of the Job's owner.
+            "owner" is the string giving the name of the Job's owner.
             
-            ``start_time`` is the time the job was created.
+            "start_time" is the time the job was created.
             
-            ``keepalive`` is the maximum time allowed between queries for this
+            "keepalive" is the maximum time allowed between queries for this
             job before it is automatically destroyed (or None if the job can
             remain allocated indefinitely).
             
-            ``machine`` is the name of the machine the job was specified to run
+            "machine" is the name of the machine the job was specified to run
             on (or None if not specified).
             
-            ``tags`` is the set of tags the job was specified to require
+            "tags" is the set of tags the job was specified to require
             (value unspecified if machine is not None).
             
-            ``state`` is the current :py:class:`.JobState` of the job.
+            "state" is the current :py:class:`.JobState` of the job.
             
-            ``args`` and ``kwargs`` are the arguments to the alloc function
+            "args" and "kwargs" are the arguments to the alloc function
             which specifies the type/size of allocation requested and the
             restrictions on dead boards, links and torus connectivity.
             
-            ``allocated_machine_name`` is the name of the machine the job has
+            "allocated_machine_name" is the name of the machine the job has
             been allocated to run on (or None if not allocated yet).
             
-            ``boards`` is a list [(x, y, z), ...] of boards allocated to the job.
-            
-            This tuple may be extended in future versions.
+            "boards" is a list [(x, y, z), ...] of boards allocated to the job.
         """
         return [
-            [job_id, owner, start_time, keepalive, state,
-             args, kwargs, allocated_machine_name,
-             list(boards) if boards is not None else None]
-            for job_id, owner, start_time, keepalive, state,
-                args, kwargs, allocated_machine_name, boards
-            in self._controller.list_jobs()
+            {k: list(v) if isinstance(v, set) else v
+             for k, v in iteritems(job._asdict())}
+            for job in self._controller.list_jobs()
         ]
     
     def list_machines(self, client):
@@ -624,9 +626,10 @@ class Server(object):
         
         Returns
         -------
-        machines : [(name, tags, width, height, dead_boards, dead_links), ...]
+        machines : [{...}, ...]
             The list of machines known to the system in order of priority from
-            highest (first) to lowest (last).
+            highest (first) to lowest (last). Each machine is described by a
+            dictionary with the following keys:
             
             ``name`` is the name of the machine.
             
@@ -643,9 +646,9 @@ class Server(object):
             Links to dead boards may or may not be included in this list.
         """
         return [
-            [name, list(tags), width, height, list(dead_boards), list(dead_links)]
-            for name, tags, width, height, dead_boards, dead_links
-            in self._controller.list_machines()
+            {k: list(v) if isinstance(v, set) else v
+             for k, v in iteritems(machine._asdict())}
+            for machine in self._controller.list_machines()
         ]
     
     """A dictionary from command names to (unbound) methods of this class."""

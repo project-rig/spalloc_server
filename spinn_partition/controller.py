@@ -394,15 +394,7 @@ class Controller(object):
         
         Returns
         -------
-        state : :py:class:`.JobState`
-            The current state of the queried job.
-        keepalive : float or None
-            The Job's keepalive value: the number of seconds between queries
-            about the job before it is automatically destroyed. None if no
-            timeout is active (or when the job has been destroyed).
-        reason : str or None
-            If the job has been destroyed, this may be a string describing the
-            reason the job was terminated.
+        :py:class:`.JobStateTuple`
         """
         with self._lock:
             self.job_keepalive(job_id)
@@ -424,22 +416,14 @@ class Controller(object):
                 keepalive = None
                 reason = None
             
-            return (state, keepalive, reason)
+            return JobStateTuple(state, keepalive, reason)
     
     def get_job_ethernet_connections(self, job_id):
         """Get the list of Ethernet connections to the allocated machine.
         
         Returns
         -------
-        connections : {(x, y): hostname, ...} or None
-            A dictionary mapping from SpiNNaker Ethernet-connected chip
-            coordinates in the machine to hostname.
-            
-            None if no boards are allocated to the job (e.g. it is still
-            queued or has been destroyed).
-        machine_name : str or None
-            The name of the machine the job is allocated on or None if the job
-            is not currently allocated.
+        :py:class:`.JobEthernetConnectionsTuple`
         """
         with self._lock:
             self.job_keepalive(job_id)
@@ -464,7 +448,7 @@ class Controller(object):
                 connections = None
                 machine_name = None
             
-            return (connections, machine_name)
+            return JobEthernetConnectionsTuple(connections, machine_name)
     
     def power_on_job_boards(self, job_id):
         """Power on (or reset if already on) boards associated with a job."""
@@ -513,39 +497,9 @@ class Controller(object):
         
         Returns
         -------
-        jobs : [(job_id, owner, start_time, keepalive, state, \
-                 args, kwargs, allocated_machine_name, boards), ...]
+        jobs : [:py:class`.JobTuple`, ...]
             A list of allocated/queued jobs in order of creation from oldest
             (first) to newest (last).
-            
-            ``job_id`` is the ID of the job.
-            
-            ``owner`` is the string giving the name of the Job's owner.
-            
-            ``start_time`` is the time the job was created.
-            
-            ``keepalive`` is the maximum time allowed between queries for this
-            job before it is automatically destroyed (or None if the job can
-            remain allocated indefinitely).
-            
-            ``machine`` is the name of the machine the job was specified to run
-            on (or None if not specified).
-            
-            ``tags`` is the set of tags the job was specified to require
-            (value unspecified if machine is not None).
-            
-            ``state`` is the current :py:class:`.JobState` of the job.
-            
-            ``args`` and ``kwargs`` are the arguments to the alloc function
-            which specifies the type/size of allocation requested and the
-            restrictions on dead boards, links and torus connectivity.
-            
-            ``allocated_machine_name`` is the name of the machine the job has
-            been allocated to run on (or None if not allocated yet).
-            
-            ``boards`` the set([(x, y, z), ...]) of boards allocated to the job.
-            
-            This tuple may be extended in future versions.
         """
         with self._lock:
             job_list = []
@@ -558,7 +512,7 @@ class Controller(object):
                 if job.allocated_machine is not None:
                     allocated_machine_name = job.allocated_machine.name
                 
-                job_list.append((
+                job_list.append(JobTuple(
                     job.id, job.owner, job.start_time, job.keepalive, job.state,
                     job.args, kwargs, allocated_machine_name, job.boards))
             
@@ -569,28 +523,15 @@ class Controller(object):
         
         Returns
         -------
-        machines : [(name, tags, width, height, dead_boards, dead_links), ...]
+        machines : [:py:class:`.MachineTuple`, ...]
             The list of machines known to the system in order of priority from
             highest (first) to lowest (last).
-            
-            ``name`` is the name of the machine.
-            
-            ``tags`` is the set(['tag', ...]) of tags the machine has.
-            
-            ``width`` and ``height`` are the dimensions of the machine in
-            triads.
-            
-            ``dead_boards`` is a set([(x, y, z), ...]) giving the coordinates
-            of known-dead boards.
-            
-            ``dead_links`` is a set([(x, y, z, links), ...]) giving the
-            locations of known-dead links from the perspective of the sender.
-            Links to dead boards may or may not be included in this list.
         """
         with self._lock:
             return [
-                (machine.name, machine.tags, machine.width, machine.height,
-                 machine.dead_boards, machine.dead_links)
+                MachineTuple(machine.name, machine.tags,
+                             machine.width, machine.height,
+                             machine.dead_boards, machine.dead_links)
                 for machine in itervalues(self._machines)
             ]
     
@@ -810,6 +751,112 @@ class JobState(IntEnum):
     
     # The job has been destroyed
     destroyed = 4
+
+class JobStateTuple(namedtuple("JobStateTuple",
+                               "state,keepalive,reason")):
+    """Tuple describing the state of a particular job, returned by
+    get_job_state.
+    
+    Attributes
+    ----------
+    state : :py:class:`.JobState`
+        The current state of the queried job.
+    keepalive : float or None
+        The Job's keepalive value: the number of seconds between queries
+        about the job before it is automatically destroyed. None if no
+        timeout is active (or when the job has been destroyed).
+    reason : str or None
+        If the job has been destroyed, this may be a string describing the
+        reason the job was terminated.
+    """
+
+class JobEthernetConnectionsTuple(namedtuple("JobEthernetConnectionsTuple",
+                                             "connections,machine_name")):
+    """Tuple describing the machine alloated to a job.
+    
+    Attributes
+    ----------
+    connections : {(x, y): hostname, ...} or None
+        A dictionary mapping from SpiNNaker Ethernet-connected chip
+        coordinates in the machine to hostname.
+        
+        None if no boards are allocated to the job (e.g. it is still
+        queued or has been destroyed).
+    machine_name : str or None
+        The name of the machine the job is allocated on or None if the job
+        is not currently allocated.
+    """
+
+class JobTuple(namedtuple("JobTuple",
+                          "job_id,owner,start_time,keepalive,state,"
+                          "args, kwargs, allocated_machine_name, boards")):
+    """Tuple describing a job in the list of jobs returned by list_jobs.
+    
+    Attributes
+    ----------
+    job_id
+        The ID of the job.
+    
+    owner
+        The string giving the name of the Job's owner.
+    
+    start_time
+        The time the job was created.
+    
+    keepalive
+        The maximum time allowed between queries for this job before it is
+        automatically destroyed (or None if the job can remain allocated
+        indefinitely).
+    
+    machine
+        The name of the machine the job was specified to run on (or None if not
+        specified).
+    
+    tags
+        The set of tags the job was specified to require (value unspecified if
+        machine is not None).
+    
+    state
+        The current :py:class:`.JobState` of the job.
+    
+    args, kwargs
+        The arguments to the alloc function which specifies the type/size of
+        allocation requested and the restrictions on dead boards, links and
+        torus connectivity.
+    
+    allocated_machine_name
+        The name of the machine the job has been allocated to run on (or None
+        if not allocated yet).
+    
+    boards
+        The set([(x, y, z), ...]) of boards allocated to the job.
+    """
+
+class MachineTuple(namedtuple("MachineTuple",
+                              "name,tags,width,height,"
+                              "dead_boards,dead_links")):
+    """Tuple describing a machine in the list of machines returned by
+    list_machines.
+    
+    Attributes
+    ----------
+    name
+        The name of the machine.
+    
+    tags
+        The set(['tag', ...]) of tags the machine has.
+    
+    width and height
+        The dimensions of the machine in triads.
+    
+    dead_boards
+        A set([(x, y, z), ...]) giving the coordinates of known-dead boards.
+    
+    dead_links
+        A set([(x, y, z, links), ...]) giving the locations of known-dead links
+        from the perspective of the sender.  Links to dead boards may or may
+        not be included in this list.
+    """
 
 class _Job(object):
     """The metadata for a job."""
