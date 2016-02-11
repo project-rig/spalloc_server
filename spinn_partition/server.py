@@ -679,22 +679,18 @@ def main(args=None):
         description="Start a SpiNNaker machine partitioning server.")
     parser.add_argument("--version", "-V", action="version",
                         version="%(prog)s {}".format(__version__))
-    parser.add_argument("--verbose", "-v", action="count", default=0,
-                        help="increase verbosity")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="hide non-error output")
     parser.add_argument("config", type=str,
                         help="configuration filename to use for the server.")
-    parser.add_argument("--cold-start", "-c", action="store_true",
+    parser.add_argument("--cold-start", action="store_true",
                         default=False,
                         help="force a cold start, erasing any existing "
                              "saved state")
     args = parser.parse_args(args)
     
-    if args.verbose >= 3:
-        logging.basicConfig(level=logging.DEBUG)
-    elif args.verbose >= 2:
+    if not args.quiet:
         logging.basicConfig(level=logging.INFO)
-    elif args.verbose >= 1:
-        logging.basicConfig(level=logging.WARNING)
     
     server = Server(config_filename=args.config,
                     cold_start=args.cold_start)
