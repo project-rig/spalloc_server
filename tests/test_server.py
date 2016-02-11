@@ -1,0 +1,683 @@
+import pytest
+
+from mock import Mock
+
+import threading
+import tempfile
+import shutil
+import os.path
+import logging
+import time
+import socket
+import json
+
+from six import itervalues
+
+from rig.links import Links
+
+from spinn_partition.controller import JobState
+from spinn_partition.server import Server, main
+from spinn_partition.machine import Machine
+from spinn_partition.configuration import Configuration
+
+from spinn_partition import __version__
+
+from common import MockABC, simple_machine
+
+
+logging.basicConfig(level=logging.INFO)
+
+
+class SimpleClient(object):
+    """A simple line receiving and sending client."""
+    
+    def __init__(self):
+        self.sock = socket.socket(socket.AF_INET,
+                                  socket.SOCK_STREAM)
+        self.sock.connect(("127.0.0.1", 22244))
+        self.buf = b""
+        self.notifications = []
+
+    def recv_line(self, length=1024):
+        while b"\n" not in self.buf:
+            data = self.sock.recv(length)
+            if not data:
+                raise Exception("Socket disconnected!")
+            self.buf += data
+        line, _, self.buf = self.buf.partition(b"\n")
+        return line
+    
+    def close(self):
+        self.sock.close()
+    
+    
+    def send_call(self, cmd, *args, **kwargs):
+        call = json.dumps({"command": cmd,
+                           "args": args,
+                           "kwargs": kwargs})
+        self.sock.send(call.encode("utf-8") + b"\n")
+    
+    
+    def get_return(self):
+        while True:
+            line = self.recv_line()
+            resp = json.loads(line.decode("utf-8"))
+            if "return" in resp:
+                return resp["return"]
+            else:
+                self.notifications.append(resp)
+    
+    def call(self, cmd, *args, **kwargs):
+        self.send_call(cmd, *args, **kwargs)
+        return self.get_return()
+    
+    def get_notification(self):
+        if self.notifications:
+            return self.notifications.pop(0)
+        else:
+            line = self.recv_line()
+            return json.loads(line.decode("utf-8"))
+
+
+@pytest.yield_fixture
+def config_dir():
+    # Directory for configuration files etc.
+    dirname = tempfile.mkdtemp()
+    
+    yield dirname
+    
+    # Cleanup
+    shutil.rmtree(dirname)
+
+
+@pytest.fixture
+def config_file(config_dir):
+    # The config filename used by the server
+    return os.path.join(config_dir, "test_config.cfg")
+
+
+@pytest.fixture
+def state_file(config_dir):
+    # The filename of the state filename
+    return os.path.join(config_dir, ".test_config.cfg.state")
+
+
+@pytest.fixture
+def simple_config(config_file):
+    # A simple config file which defines a single machine.
+    with open(config_file, "w") as f:
+        f.write(
+            "configuration = Configuration(\n"
+            "    machines=[\n"
+            "        Machine('m', set(['default']), 1, 2,\n"
+            "                set(), set(),\n"
+            "                {(x, y, z): (x*10, y*10, z*10)\n"
+            "                 for x in range(1)\n"
+            "                 for y in range(2)\n"
+            "                 for z in range(3)},\n"
+            "                {(c*10, f*10): '10.0.{}.{}'.format(c, f)\n"
+            "                 for c in range(1)\n"
+            "                 for f in range(2)},\n"
+            "                {(x, y, z): '11.{}.{}.{}'.format(x, y, z)\n"
+            "                 for x in range(1)\n"
+            "                 for y in range(2)\n"
+            "                 for z in range(3)})\n"
+            "    ]\n"
+            ")\n")
+    
+    return config_file
+
+
+@pytest.fixture
+def double_config(config_file):
+    # A simple two-machine config file which defines a two machines.
+    with open(config_file, "w") as f:
+        f.write(
+            "configuration = Configuration(\n"
+            "    machines=[\n"
+            "        Machine('m0', set(['default']), 1, 2,\n"
+            "                set(), set(),\n"
+            "                {(x, y, z): (x*10, y*10, z*10)\n"
+            "                 for x in range(1)\n"
+            "                 for y in range(2)\n"
+            "                 for z in range(3)},\n"
+            "                {(c*10, f*10): '10.0.{}.{}'.format(c, f)\n"
+            "                 for c in range(1)\n"
+            "                 for f in range(2)},\n"
+            "                {(x, y, z): '11.{}.{}.{}'.format(x, y, z)\n"
+            "                 for x in range(1)\n"
+            "                 for y in range(2)\n"
+            "                 for z in range(3)}),\n"
+            "        Machine('m1', set(['default']), 3, 4,\n"
+            "                set([(0, 0, 1)]), \n"
+            "                set([(1, 1, 1, Links.north)]),\n"
+            "                {(x, y, z): (x*10, y*10, z*10)\n"
+            "                 for x in range(3)\n"
+            "                 for y in range(4)\n"
+            "                 for z in range(3)},\n"
+            "                {(c*10, f*10): '12.0.{}.{}'.format(c, f)\n"
+            "                 for c in range(3)\n"
+            "                 for f in range(4)},\n"
+            "                {(x, y, z): '13.{}.{}.{}'.format(x, y, z)\n"
+            "                 for x in range(3)\n"
+            "                 for y in range(4)\n"
+            "                 for z in range(3)}),\n"
+            "    ]\n"
+            ")\n")
+    
+    return config_file
+
+
+@pytest.yield_fixture
+def s(MockABC, config_file):
+    # A server which is created and shut down with each use.
+    s = Server(config_file)
+    
+    yield s
+    
+    s.stop_and_join()
+
+@pytest.yield_fixture
+def c():
+    c = SimpleClient()
+    yield c
+    c.close()
+
+
+@pytest.mark.timeout(1.0)
+def test_startup_shutdown(simple_config, s):
+    pass
+
+
+@pytest.mark.timeout(1.0)
+@pytest.mark.parametrize("cold_start", [True, False])
+@pytest.mark.parametrize("corrupt_state", [True, False])
+def test_hot_start(MockABC, simple_config, state_file, cold_start,
+                   corrupt_state):
+    # Initially start up the server without a state file. Should be cold
+    # started.
+    assert not os.path.lexists(state_file)
+    s = Server(simple_config, cold_start)
+    
+    try:
+        job_id = s.create_job(None, owner="me")
+        time.sleep(0.05)
+        assert s.get_job_state(None, job_id)[0] == JobState.ready
+    finally:
+        s.stop_and_join()
+        
+    # State should be dumped
+    assert os.path.lexists(state_file)
+    
+    # Corrupt the state if required
+    if corrupt_state:
+        # Just leave the file empty...
+        open(state_file, "w").close()
+        
+    # Start a new server
+    s = Server(simple_config, cold_start)
+    try:
+        # Should have the same state as before, if doing a hot start
+        if cold_start or corrupt_state:
+            assert s.get_job_state(None, job_id)[0] == JobState.unknown
+        else:
+            assert s.get_job_state(None, job_id)[0] == JobState.ready
+    finally:
+        s.stop_and_join()
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_no_initial_config_file(MockABC, config_file, missing):
+    # Should fail if config file is not valid/missing first time
+    
+    if missing:
+        pass  # Don't create a file!
+    else:
+        with open(config_file, "w") as f:
+            f.write("foo=123")
+    
+    with pytest.raises(Exception):
+        Server(config_file)
+
+
+def test_read_config_file(MockABC, simple_config, s):
+    initial_socket_id = id(s._server_socket)
+    
+    # Should fail if config file is missing
+    os.remove(simple_config)
+    assert s._read_config_file() is False
+    
+    # Should fail if config file is syntactically invalid
+    with open(simple_config, "w") as f:
+        f.write("1_2_3")
+    assert s._read_config_file() is False
+    
+    # Should fail if no configuration variable is set
+    with open(simple_config, "w") as f:
+        f.write("config = 123")
+    assert s._read_config_file() is False
+    
+    # Should succeed otherwise!
+    with open(simple_config, "w") as f:
+        # Make a simple config file
+        f.write("configuration = {}".format(repr(Configuration())))
+    assert s._read_config_file() is True
+    
+    # Should restart server only if IP/port change
+    assert initial_socket_id == id(s._server_socket)
+    with open(simple_config, "w") as f:
+        f.write("configuration = {}".format(repr(Configuration(port=30201))))
+    assert s._read_config_file() is True
+    assert initial_socket_id != id(s._server_socket)
+    initial_socket_id = id(s._server_socket)
+    
+    assert initial_socket_id == id(s._server_socket)
+    with open(simple_config, "w") as f:
+        f.write("configuration = {}".format(repr(
+            Configuration(ip="127.0.0.1", port=30201))))
+    assert s._read_config_file() is True
+    assert initial_socket_id != id(s._server_socket)
+    initial_socket_id = id(s._server_socket)
+    
+    assert initial_socket_id == id(s._server_socket)
+    with open(simple_config, "w") as f:
+        f.write("configuration = {}".format(repr(Configuration())))
+    assert s._read_config_file() is True
+    assert initial_socket_id != id(s._server_socket)
+    initial_socket_id = id(s._server_socket)
+    
+    # Should pass on parameters to controller
+    with open(simple_config, "w") as f:
+        f.write("configuration = {}".format(repr(
+            Configuration(max_retired_jobs=123))))
+    assert s._read_config_file() is True
+    assert s._controller.max_retired_jobs == 123
+    
+    # Should pass on machines to controller in right order
+    with open(simple_config, "w") as f:
+        f.write("configuration = {}".format(repr(
+            Configuration(machines=[simple_machine("m0", ip_prefix="0"),
+                                    simple_machine("m1", ip_prefix="1"),
+                                    simple_machine("m2", ip_prefix="2"),
+                                    simple_machine("m3", ip_prefix="3"),
+                                    simple_machine("m4", ip_prefix="4")]))))
+    assert s._read_config_file() is True
+    assert list(s._controller.machines) == "m0 m1 m2 m3 m4".split()
+
+
+def test_reread_config_file(MockABC, simple_config, s):
+    # Make sure config re-reading works
+    assert list(s._controller.machines) == ["m"]
+    
+    # Modify config file
+    with open(simple_config, "w") as f:
+        f.write("configuration = {}".format(repr(Configuration())))
+    time.sleep(0.2)
+    
+    # Configuration should have changed accordingly
+    assert list(s._controller.machines) == []
+
+
+@pytest.mark.timeout(1.0)
+def test_version_command(MockABC, simple_config, s, c):
+    # First basic test of calling a remote method
+    assert c.call("version") == __version__
+
+
+@pytest.mark.timeout(1.0)
+def test_job_management(MockABC, simple_config, s, c):
+    # First more complete test of calling a remote method with complex
+    # arguments
+    
+    # Should get allocated
+    job_id0 = c.call("create_job", owner="me")
+    
+    # Should be queued
+    job_id1 = c.call("create_job", 1, 2, owner="me", require_torus=True)
+    
+    # Should be impossible
+    job_id2 = c.call("create_job", 2, 2, owner="me")
+    
+    assert job_id0 != job_id1
+    assert job_id0 != job_id2
+    assert job_id1 != job_id2
+    
+    # Keepalive should work
+    c.call("job_keepalive", job_id0)
+    c.call("job_keepalive", job_id1)
+    c.call("job_keepalive", job_id2)
+    
+    # State should be visible
+    assert c.call("get_job_state", job_id0) == [JobState.ready, 60.0, None]
+    assert c.call("get_job_state", job_id1) == [JobState.queued, 60.0, None]
+    assert c.call("get_job_state", job_id2) == [
+        JobState.destroyed, None, "Cancelled: No suitable machines available."]
+    
+    # Ethernet connections should be visible, where defined
+    assert c.call("get_job_ethernet_connections", job_id0) == [[
+        [[0, 0], "11.0.0.0"],
+    ], "m"]
+    assert c.call("get_job_ethernet_connections", job_id1) == [None, None]
+    assert c.call("get_job_ethernet_connections", job_id2) == [None, None]
+    
+    # Power commands should work
+    c.call("power_on_job_boards", job_id0)
+    c.call("power_on_job_boards", job_id1)
+    c.call("power_on_job_boards", job_id2)
+    c.call("power_off_job_boards", job_id0)
+    c.call("power_off_job_boards", job_id1)
+    c.call("power_off_job_boards", job_id2)
+    
+    # Job listing should work
+    jobs = c.call("list_jobs")
+    assert len(jobs) == 2
+    
+    # job_id
+    assert jobs[0][0] == job_id0
+    assert jobs[1][0] == job_id1
+    
+    # owner
+    assert jobs[0][1] == "me"
+    assert jobs[1][1] == "me"
+    
+    # Keepalive
+    assert jobs[0][3] == 60.0
+    assert jobs[1][3] == 60.0
+    
+    # state
+    assert jobs[0][4] == JobState.ready
+    assert jobs[1][4] == JobState.queued
+    
+    # args
+    assert jobs[0][5] == []
+    assert jobs[1][5] == [1, 2]
+    
+    # kwargs
+    assert jobs[0][6] == {}
+    assert jobs[1][6] == {"require_torus": True}
+    
+    # allocated_machine_name
+    assert jobs[0][7] == "m"
+    assert jobs[1][7] == None
+    
+    # boards
+    assert jobs[0][8] == [[0, 0, 0]]
+    assert jobs[1][8] == None
+    
+    # Destroying jobs should work
+    c.call("destroy_job", job_id0, "Test reason...")
+    assert c.call("get_job_state", job_id0) == [
+        JobState.destroyed, None, "Test reason..."]
+    assert c.call("get_job_state", job_id1) == [JobState.ready, 60.0, None]
+
+@pytest.mark.timeout(1.0)
+def test_list_machines(MockABC, double_config, s, c):
+    machines = c.call("list_machines")
+    
+    assert len(machines) == 2
+    
+    # name
+    assert machines[0][0] == "m0"
+    assert machines[1][0] == "m1"
+    
+    # tags
+    assert machines[0][1] == ["default"]
+    assert machines[1][1] == ["default"]
+    
+    # width
+    assert machines[0][2] == 1
+    assert machines[1][2] == 3
+    
+    # height
+    assert machines[0][3] == 2
+    assert machines[1][3] == 4
+    
+    # dead_boards
+    assert machines[0][4] == []
+    assert machines[1][4] == [[0, 0, 1]]
+    
+    # dead_links
+    assert machines[0][5] == []
+    assert machines[1][5] == [[1, 1, 1, Links.north]]
+
+
+@pytest.mark.timeout(1.0)
+def test_job_notifications(MockABC, simple_config, s):
+    c0 = SimpleClient()
+    c1 = SimpleClient()
+    
+    # Listen for *all* job changes
+    c1.call("notify_job")
+    
+    # Should be notified new jobs being created and powered on
+    with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
+        job_id0 = c0.call("create_job", owner="me")
+        assert c1.get_notification() == {"jobs_changed": [job_id0]}
+    assert c1.get_notification() == {"jobs_changed": [job_id0]}
+    
+    # c0 should subscribe to its own job
+    c0.call("notify_job", job_id0)
+    
+    # New job being created should not go to clients not listening to a
+    # specific job
+    job_id1 = c0.call("create_job", 1, 2, owner="me")
+    assert c1.get_notification() == {"jobs_changed": [job_id1]}
+    
+    # Job being dequeued should result in an event on that job and the other
+    # job being queued and powered on. c0 should only see dequed job.
+    with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
+        c0.call("destroy_job", job_id0)
+        assert c0.get_notification() == {"jobs_changed": [job_id0]}
+        assert c1.get_notification() in ({"jobs_changed": [job_id0, job_id1]},
+                                         {"jobs_changed": [job_id1, job_id0]})
+    assert c1.get_notification() == {"jobs_changed": [job_id1]}
+
+
+@pytest.mark.timeout(1.0)
+def test_machine_notifications(MockABC, double_config, s):
+    c0 = SimpleClient()
+    c1 = SimpleClient()
+    
+    c0.call("notify_machine", "m0")
+    c1.call("notify_machine")
+    
+    job_id0 = c0.call("create_job", 1, 2, owner="me")
+    time.sleep(0.05)
+    
+    # Should be notified new jobs being scheduled
+    assert c0.get_notification() == {"machines_changed": ["m0"]}
+    assert c1.get_notification() == {"machines_changed": ["m0"]}
+    
+    job_id1 = c0.call("create_job", owner="me")
+    time.sleep(0.05)
+    
+    # Make sure filtering works
+    assert c1.get_notification() == {"machines_changed": ["m1"]}
+    
+    # Should be notified on job completion
+    c0.call("destroy_job", job_id0)
+    assert c0.get_notification() == {"machines_changed": ["m0"]}
+    assert c1.get_notification() == {"machines_changed": ["m0"]}
+    
+    # Should be notified on job completion
+    c1.call("destroy_job", job_id1)
+    assert c1.get_notification() == {"machines_changed": ["m1"]}
+    
+    # Make sure machine changes get announced
+    with open(double_config, "w") as f:
+        f.write("configuration = {}".format(repr(Configuration())))
+    
+    assert c0.get_notification() == {"machines_changed": ["m0"]}
+    assert c1.get_notification() in ({"machines_changed": ["m0", "m1"]},
+                                     {"machines_changed": ["m1", "m0"]})
+
+@pytest.mark.timeout(1.0)
+def test_job_notify_register_unregister(MockABC, simple_config, s):
+    # Make sure the registration/unregistration commands for job notifications
+    # work correctly
+    
+    c0 = SimpleClient()
+    c1 = SimpleClient()
+    
+    # Make sure the clients are connected
+    assert c0.call("version") == __version__
+    assert c1.call("version") == __version__
+    
+    # Get the sockets connected to the clients
+    s0, s1 = itervalues(s._client_sockets)
+    if s0.getpeername() != c0.sock.getsockname():
+        s0, s1 = s1, s0
+    
+    # Initially no matches should be present
+    assert s._client_job_watches == {}
+    
+    # Notification on all
+    c0.call("notify_job")
+    assert s._client_job_watches == {s0: None}
+    
+    # Notification on just a specific job ID
+    c1.call("notify_job", 123)
+    assert s._client_job_watches == {s0: None, s1: set([123])}
+    
+    # Adding more jobs to a notify-all should result in no change
+    c0.call("notify_job", 321)
+    assert s._client_job_watches == {s0: None, s1: set([123])}
+    
+    # Adding more jobs otherwise should add to the set
+    c1.call("notify_job", 321)
+    assert s._client_job_watches == {s0: None, s1: set([123, 321])}
+    
+    # Removing jobs from a notify-all should do nothing
+    c0.call("no_notify_job", 321)
+    assert s._client_job_watches == {s0: None, s1: set([123, 321])}
+    
+    # Removing jobs which aren't matched should do nothing
+    c1.call("no_notify_job", 0)
+    assert s._client_job_watches == {s0: None, s1: set([123, 321])}
+    
+    # Removing jobs which are watched should remove them
+    c1.call("no_notify_job", 123)
+    assert s._client_job_watches == {s0: None, s1: set([321])}
+    
+    # Removing the last job should remove the watch entirely
+    c1.call("no_notify_job", 321)
+    assert s._client_job_watches == {s0: None}
+    
+    c1.call("notify_job", 123)
+    assert s._client_job_watches == {s0: None, s1: set([123])}
+    
+    # Removing all should work on notify-all
+    c0.call("no_notify_job")
+    assert s._client_job_watches == {s1: set([123])}
+    
+    # Removing all should work on individual jobs
+    c1.call("no_notify_job")
+    assert s._client_job_watches == {}
+
+@pytest.mark.timeout(1.0)
+def test_machine_notify_register_unregister(MockABC, simple_config, s):
+    # Make sure the registration/unregistration commands for machine notifications
+    # work correctly
+    
+    c0 = SimpleClient()
+    c1 = SimpleClient()
+    
+    # Make sure the clients are connected
+    assert c0.call("version") == __version__
+    assert c1.call("version") == __version__
+    
+    # Get the sockets connected to the clients
+    s0, s1 = itervalues(s._client_sockets)
+    if s0.getpeername() != c0.sock.getsockname():
+        s0, s1 = s1, s0
+    
+    # Initially no matches should be present
+    assert s._client_machine_watches == {}
+    
+    # Notification on all
+    c0.call("notify_machine")
+    assert s._client_machine_watches == {s0: None}
+    
+    # Notification on just a specific machine
+    c1.call("notify_machine", "m0")
+    assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
+    
+    # Adding more machines to a notify-all should result in no change
+    c0.call("notify_machine", "m1")
+    assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
+    
+    # Adding more machines otherwise should add to the set
+    c1.call("notify_machine", "m1")
+    assert s._client_machine_watches == {s0: None, s1: set(["m0", "m1"])}
+    
+    # Removing machines from a notify-all should do nothing
+    c0.call("no_notify_machine", "m1")
+    assert s._client_machine_watches == {s0: None, s1: set(["m0", "m1"])}
+    
+    # Removing machines which aren't matched should do nothing
+    c1.call("no_notify_machine", "m")
+    assert s._client_machine_watches == {s0: None, s1: set(["m0", "m1"])}
+    
+    # Removing machines which are watched should remove them
+    c1.call("no_notify_machine", "m0")
+    assert s._client_machine_watches == {s0: None, s1: set(["m1"])}
+    
+    # Removing the last machines should remove the watch entirely
+    c1.call("no_notify_machine", "m1")
+    assert s._client_machine_watches == {s0: None}
+    
+    c1.call("notify_machine", "m0")
+    assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
+    
+    # Removing all should work on notify-all
+    c0.call("no_notify_machine")
+    assert s._client_machine_watches == {s1: set(["m0"])}
+    
+    # Removing all should work on individual machines
+    c1.call("no_notify_machine")
+    assert s._client_machine_watches == {}
+
+
+@pytest.mark.parametrize("args,cold_start",
+                         [("{}", False),
+                          ("{} --cold-start", True),
+                          ("{} -c", True)])
+def test_commandline(monkeypatch, config_file, args, cold_start):
+    Server = Mock()
+    import spinn_partition.server
+    monkeypatch.setattr(spinn_partition.server,
+                        "Server", Server)
+    
+    main(args.format(config_file).split())
+    
+    Server.assert_called_once_with(config_filename=config_file,
+                                   cold_start=cold_start)
+
+
+def test_keyboard_interrupt(monkeypatch, config_file):
+    s = Mock()
+    Server = Mock(return_value=s)
+    import spinn_partition.server
+    monkeypatch.setattr(spinn_partition.server,
+                        "Server", Server)
+    
+    s.join.side_effect = KeyboardInterrupt
+    main([config_file])
+    
+    Server.assert_called_once_with(config_filename=config_file,
+                                   cold_start=False)
+    s.join.assert_called_once_with()
+    s.stop_and_join.assert_called_once_with()
+
+
+@pytest.mark.parametrize("args", ["", "--cold-start" "-c"])
+def test_bad_args(monkeypatch, args):
+    Server = Mock()
+    import spinn_partition.server
+    monkeypatch.setattr(spinn_partition.server,
+                        "Server", Server)
+    
+    with pytest.raises(SystemExit):
+        main(args.split())
+    
+    assert len(Server.mock_calls) == 0

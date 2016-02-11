@@ -11,7 +11,7 @@ class Configuration(namedtuple("Configuration",
                                "machines,port,ip,timeout_check_interval,"
                                "max_retired_jobs")):
     
-    def __new__(cls, machines=[], port=10203, ip="",
+    def __new__(cls, machines=[], port=22244, ip="",
                 timeout_check_interval=5.0,
                 max_retired_jobs=1200):
         """Defines a server configuration.
