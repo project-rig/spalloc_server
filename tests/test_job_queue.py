@@ -4,8 +4,8 @@ from mock import Mock
 
 from rig.links import Links
 
-from spinn_partition.coordinates import board_down_link
-from spinn_partition.job_queue import JobQueue
+from spinn_partition_server.coordinates import board_down_link
+from spinn_partition_server.job_queue import JobQueue
 
 @pytest.fixture
 def on_allocate():

@@ -1,7 +1,7 @@
 import pytest
 
-from spinn_partition.machine import Machine
-from spinn_partition.configuration import Configuration
+from spinn_partition_server.machine import Machine
+from spinn_partition_server.configuration import Configuration
 
 
 def test_machine(name="m", bmp_prefix=None, spinnaker_prefix=None):

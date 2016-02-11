@@ -16,10 +16,10 @@ from six import itervalues, iteritems
 
 import time
 
-from spinn_partition.coordinates import \
+from spinn_partition_server.coordinates import \
     board_to_chip, triad_dimensions_to_chips
-from spinn_partition.job_queue import JobQueue
-from spinn_partition.async_bmp_controller import AsyncBMPController
+from spinn_partition_server.job_queue import JobQueue
+from spinn_partition_server.async_bmp_controller import AsyncBMPController
 
 
 class Controller(object):

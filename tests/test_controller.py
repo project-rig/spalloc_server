@@ -14,9 +14,9 @@ import pickle
 
 from six import itervalues, iteritems
 
-from spinn_partition.coordinates import board_down_link
-from spinn_partition.machine import Machine
-from spinn_partition.controller import Controller, JobState
+from spinn_partition_server.coordinates import board_down_link
+from spinn_partition_server.machine import Machine
+from spinn_partition_server.controller import Controller, JobState
 
 from common import MockABC, simple_machine
 

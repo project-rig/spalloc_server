@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 
 setup(
-    name="spinn_partition",
-    version="v0.0.0",
+    name="spinn_partition_server",
+    version="v0.0.1",
     packages=find_packages(),
 
     # Metadata for PyPi
@@ -37,6 +37,7 @@ setup(
     # Scripts
     entry_points={
         "console_scripts": [
+            "spinn-partition-server = spinn_partition_server.server:main",
         ],
     }
 )

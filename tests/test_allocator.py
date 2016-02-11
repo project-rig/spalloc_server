@@ -2,8 +2,9 @@ import pytest
 
 from rig.links import Links
 
-from spinn_partition.coordinates import board_down_link
-from spinn_partition.allocator import AllocationType, CandidateFilter, Allocator
+from spinn_partition_server.coordinates import board_down_link
+from spinn_partition_server.allocator import \
+    AllocationType, CandidateFilter, Allocator
 
 
 class TestCandidateFilter(object):

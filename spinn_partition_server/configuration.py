@@ -2,7 +2,7 @@
 
 from collections import namedtuple
 
-from spinn_partition.machine import Machine
+from spinn_partition_server.machine import Machine
 
 from six import iteritems, itervalues
 
@@ -18,7 +18,7 @@ class Configuration(namedtuple("Configuration",
         
         Paramters
         ----------
-        machines : [:py:class:`~spinn_partition.machine.Machine`, ...]
+        machines : [:py:class:`~spinn_partition_server.machine.Machine`, ...]
             The list of machines, highest priority first, the server is to
             manage.
         port : int

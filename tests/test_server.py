@@ -15,12 +15,12 @@ from six import itervalues
 
 from rig.links import Links
 
-from spinn_partition.controller import JobState
-from spinn_partition.server import Server, main
-from spinn_partition.machine import Machine
-from spinn_partition.configuration import Configuration
+from spinn_partition_server.controller import JobState
+from spinn_partition_server.server import Server, main
+from spinn_partition_server.machine import Machine
+from spinn_partition_server.configuration import Configuration
 
-from spinn_partition import __version__
+from spinn_partition_server import __version__
 
 from common import MockABC, simple_machine
 
@@ -99,7 +99,9 @@ def config_file(config_dir):
 @pytest.fixture
 def state_file(config_dir):
     # The filename of the state filename
-    return os.path.join(config_dir, ".test_config.cfg.state")
+    return os.path.join(
+        config_dir,
+        ".test_config.cfg.state.{}".format(__version__))
 
 
 @pytest.fixture
@@ -638,12 +640,11 @@ def test_machine_notify_register_unregister(MockABC, simple_config, s):
 
 @pytest.mark.parametrize("args,cold_start",
                          [("{}", False),
-                          ("{} --cold-start", True),
-                          ("{} -c", True)])
+                          ("{} --cold-start", True)])
 def test_commandline(monkeypatch, config_file, args, cold_start):
     Server = Mock()
-    import spinn_partition.server
-    monkeypatch.setattr(spinn_partition.server,
+    import spinn_partition_server.server
+    monkeypatch.setattr(spinn_partition_server.server,
                         "Server", Server)
     
     main(args.format(config_file).split())
@@ -655,8 +656,8 @@ def test_commandline(monkeypatch, config_file, args, cold_start):
 def test_keyboard_interrupt(monkeypatch, config_file):
     s = Mock()
     Server = Mock(return_value=s)
-    import spinn_partition.server
-    monkeypatch.setattr(spinn_partition.server,
+    import spinn_partition_server.server
+    monkeypatch.setattr(spinn_partition_server.server,
                         "Server", Server)
     
     s.join.side_effect = KeyboardInterrupt
@@ -671,8 +672,8 @@ def test_keyboard_interrupt(monkeypatch, config_file):
 @pytest.mark.parametrize("args", ["", "--cold-start" "-c"])
 def test_bad_args(monkeypatch, args):
     Server = Mock()
-    import spinn_partition.server
-    monkeypatch.setattr(spinn_partition.server,
+    import spinn_partition_server.server
+    monkeypatch.setattr(spinn_partition_server.server,
                         "Server", Server)
     
     with pytest.raises(SystemExit):

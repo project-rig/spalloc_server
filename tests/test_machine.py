@@ -1,6 +1,6 @@
 import pytest
 
-from spinn_partition.machine import Machine
+from spinn_partition_server.machine import Machine
 
 from rig.links import Links
 

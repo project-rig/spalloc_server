@@ -6,7 +6,7 @@ from enum import Enum
 
 from six import iteritems, itervalues
 
-from spinn_partition.allocator import Allocator
+from spinn_partition_server.allocator import Allocator
 
 
 class JobQueue(object):
@@ -283,7 +283,7 @@ class JobQueue(object):
         
         Parameters
         ----------
-        See :py:meth:`spinn_partition.allocator.Allocator.alloc`.
+        See :py:meth:`spinn_partition_server.allocator.Allocator.alloc`.
         
         Other Parameters
         ----------------
@@ -409,7 +409,7 @@ class _Machine(object):
     tags : set([str, ...])
         The set of tags the machine has. For a job to be allocated on a machine
         all of its tags must also be tags of the machine.
-    allocator : :py:class:`spinn_partition.allocator.Allocator`
+    allocator : :py:class:`spinn_partition_server.allocator.Allocator`
         An allocator for boards in this machine.
     queue : deque([:py:class:`.Job`, ...])
         A queue for jobs tentatively scheduled for this machine. Note that a

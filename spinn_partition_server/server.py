@@ -21,15 +21,15 @@ from rig.links import Links
 
 from six import itervalues, iteritems
 
-from spinn_partition import __version__
-from spinn_partition.configuration import Configuration
-from spinn_partition.machine import Machine
-from spinn_partition.controller import Controller
+from spinn_partition_server import __version__
+from spinn_partition_server.configuration import Configuration
+from spinn_partition_server.machine import Machine
+from spinn_partition_server.controller import Controller
 
 
 class Server(object):
     
-    def __init__(self, config_filename="spinn_partition.cfg", cold_start=False):
+    def __init__(self, config_filename, cold_start=False):
         """Create a TCP server.
         
         Parameters
@@ -83,7 +83,8 @@ class Server(object):
         # Infer the saved-state location
         self._state_filename = os.path.join(
             os.path.dirname(self._config_filename),
-            ".{}.state".format(os.path.basename(self._config_filename))
+            ".{}.state.{}".format(os.path.basename(self._config_filename),
+                                  __version__)
         )
         
         # Attempt to restore saved state if required

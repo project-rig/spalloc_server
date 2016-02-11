@@ -4,8 +4,8 @@ import threading
 
 from collections import deque
 
-from spinn_partition.machine import Machine
-from spinn_partition.controller import Controller
+from spinn_partition_server.machine import Machine
+from spinn_partition_server.controller import Controller
 
 
 def simple_machine(name, width=1, height=2, tags=set(["default"]),
@@ -116,8 +116,8 @@ def MockABC(monkeypatch):
         def join(self):
             self._thread.join()
     
-    import spinn_partition.controller
-    monkeypatch.setattr(spinn_partition.controller, "AsyncBMPController",
+    import spinn_partition_server.controller
+    monkeypatch.setattr(spinn_partition_server.controller, "AsyncBMPController",
                         MockAsyncBMPController)
     
     return MockAsyncBMPController

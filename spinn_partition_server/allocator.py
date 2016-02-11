@@ -8,8 +8,8 @@ from six import next
 
 from rig.links import Links
 
-from spinn_partition.pack_tree import PackTree
-from spinn_partition.coordinates import board_down_link
+from spinn_partition_server.pack_tree import PackTree
+from spinn_partition_server.coordinates import board_down_link
 
 
 class AllocationType(Enum):
