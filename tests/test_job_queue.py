@@ -265,7 +265,8 @@ def test_atomic_create_job(q, on_allocate, on_free, on_cancel):
         q.add_machine("m1", 2, 1)
     
     on_allocate.assert_called_once_with(
-        10, "m1", set([(0, 0, 0)]), set((0, 0, 0, link) for link in Links))
+        10, "m1", set([(0, 0, 0)]), set((0, 0, 0, link) for link in Links),
+        False)
     assert len(on_free.mock_calls) == 0
     assert len(on_cancel.mock_calls) == 0
 
@@ -289,7 +290,8 @@ def test_enqueue_job(q, on_allocate, on_cancel):
         set((0, 0, z, link)
             for z in range(3)
             for link in Links
-            if board_down_link(0, 0, z, link, 1, 4)[:2] != (0, 0)))
+            if board_down_link(0, 0, z, link, 1, 4)[:2] != (0, 0)),
+        True)
     on_allocate.reset_mock()
     
     # We should make use of the first machine which fits and skip over anything

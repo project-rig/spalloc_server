@@ -16,7 +16,8 @@ from six import itervalues, iteritems
 
 import time
 
-from spinn_partition.coordinates import board_to_chip
+from spinn_partition.coordinates import \
+    board_to_chip, triad_dimensions_to_chips
 from spinn_partition.job_queue import JobQueue
 from spinn_partition.async_bmp_controller import AsyncBMPController
 
@@ -418,12 +419,12 @@ class Controller(object):
             
             return JobStateTuple(state, keepalive, reason)
     
-    def get_job_ethernet_connections(self, job_id):
-        """Get the list of Ethernet connections to the allocated machine.
+    def get_job_machine_info(self, job_id):
+        """Get information about the machine the job has been allocated.
         
         Returns
         -------
-        :py:class:`.JobEthernetConnectionsTuple`
+        :py:class:`.JobMachineInfoTuple`
         """
         with self._lock:
             self.job_keepalive(job_id)
@@ -433,22 +434,36 @@ class Controller(object):
                 machine = job.allocated_machine
                 machine_name = machine.name
                 
-                # Note that the formula used below for converting from board to
+                # Note that the formulae used below for converting from board to
                 # chip coordinates is only valid when either 'oz' is zero or
                 # only a single board is allocated. Since we only allocate
                 # multi-board regions by the triad this will be the case.
-                ox, oy, oz = min(job.boards)
+                ox, oy, oz = min(job.boards)  # Origin
+                bx, by, bz = max(job.boards)  # Top-right bound
+                
+                # Get system bounds in chips
+                if len(job.boards) > 1:
+                    width, height = triad_dimensions_to_chips((bx-ox) + 1,
+                                                              (by-oy) + 1,
+                                                              job.torus)
+                else:
+                    # Special case: single board allocations are always 8x8
+                    width = height = 8
+                
+                # Get SpiNNaker chip Ethernet IPs (enumerated in terms of chip
+                # coordinates)
                 connections = {
                     board_to_chip(x-ox, y-oy, z-oz):
                     machine.spinnaker_ips[(x, y, z)]
                     for (x, y, z) in job.boards
                 }
+                
+                return JobMachineInfoTuple(width, height,
+                                           connections, machine_name)
             else:
                 # Job doesn't exist or no boards allocated yet
-                connections = None
-                machine_name = None
+                return JobMachineInfoTuple(None, None, None, None)
             
-            return JobEthernetConnectionsTuple(connections, machine_name)
     
     def power_on_job_boards(self, job_id):
         """Power on (or reset if already on) boards associated with a job."""
@@ -627,7 +642,8 @@ class Controller(object):
                                                             link_enable,
                                                             on_done)
     
-    def _job_queue_on_allocate(self, job_id, machine_name, boards, periphery):
+    def _job_queue_on_allocate(self, job_id, machine_name, boards,
+                               periphery, torus):
         """Called when a job is successfully allocated to a machine."""
         with self._lock:
             # Update job metadata
@@ -635,6 +651,7 @@ class Controller(object):
             job.allocated_machine = self._machines[machine_name]
             job.boards = boards
             job.periphery = periphery
+            job.torus = torus
             self._changed_jobs.add(job.id)
             self._changed_machines.add(machine_name)
             
@@ -770,21 +787,22 @@ class JobStateTuple(namedtuple("JobStateTuple",
         reason the job was terminated.
     """
 
-class JobEthernetConnectionsTuple(namedtuple("JobEthernetConnectionsTuple",
-                                             "connections,machine_name")):
-    """Tuple describing the machine alloated to a job.
+class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
+                                     "width,height,connections,machine_name")):
+    """Tuple describing the machine alloated to a job, returned by
+    get_job_machine_info.
     
     Attributes
     ----------
+    width, height : int or None
+        The dimensions of the machine in *chips* or None if no machine
+        allocated.
     connections : {(x, y): hostname, ...} or None
-        A dictionary mapping from SpiNNaker Ethernet-connected chip
-        coordinates in the machine to hostname.
-        
-        None if no boards are allocated to the job (e.g. it is still
-        queued or has been destroyed).
+        A dictionary mapping from SpiNNaker Ethernet-connected chip coordinates
+        in the machine to hostname or None if no machine allocated.
     machine_name : str or None
-        The name of the machine the job is allocated on or None if the job
-        is not currently allocated.
+        The name of the machine the job is allocated on or None if no machine
+        allocated.
     """
 
 class JobTuple(namedtuple("JobTuple",
@@ -869,6 +887,7 @@ class _Job(object):
                  allocated_machine=None,
                  boards=None,
                  periphery=None,
+                 torus=None,
                  bmp_requests_until_ready=0):
         self.id = id
         
@@ -895,6 +914,7 @@ class _Job(object):
         self.allocated_machine = allocated_machine
         self.boards = boards
         self.periphery = periphery
+        self.torus = torus
         
         # The number of BMP requests which must complete before this job may
         # return to the ready state.

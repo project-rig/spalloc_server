@@ -438,9 +438,10 @@ def test_get_job_state(conn, m):
     assert reason is None
 
 
-def test_get_job_ethernet_connections(conn, m):
+def test_get_job_machine_info(conn, m):
     job_id = conn.create_job(1, 1, owner="me")
-    connections, machine_name = conn.get_job_ethernet_connections(job_id)
+    w, h, connections, machine_name = \
+        conn.get_job_machine_info(job_id)
     assert machine_name == m
     assert connections == {
         (0, 0): "11.0.0.0",
@@ -449,7 +450,21 @@ def test_get_job_ethernet_connections(conn, m):
     }
     
     # Bad ID should just get Nones
-    assert conn.get_job_ethernet_connections(1234) == (None, None)
+    assert conn.get_job_machine_info(1234) == (None, None, None, None)
+
+@pytest.mark.parametrize("args,width,height",
+                         [([], 8, 8),         # Single board
+                          ([1, 1], 16, 16),   # Isolated triad
+                          ([2, 3], 24, 36)])  # Torus
+def test_get_job_machine_info_width_height(conn, args, width, height):
+    conn.machines = {"m": simple_machine("m", 2, 3)}
+    
+    job_id = conn.create_job(*args, owner="me")
+    w, h, connections, machine_name = \
+        conn.get_job_machine_info(job_id)
+    
+    assert w == width
+    assert h == height
 
 
 def test_power_on_job_boards(conn, m):

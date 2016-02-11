@@ -19,7 +19,7 @@ class JobQueue(object):
         
         Parameters
         ----------
-        on_allocate : f(job_id, machine_name, boards, periphery)
+        on_allocate : f(job_id, machine_name, boards, periphery, torus)
             A callback function which is called when a job is successfully
             allocated resources on a machine.
             
@@ -33,6 +33,9 @@ class JobQueue(object):
             
             ``periphery`` is a set([(x, y, z, :py:class:`rig.links.Links`),
             ...]) enumerating the links which leave the set of allocated boards.
+            
+            ``torus`` is True iff the allocation has at least one working
+            wrap-around link.
         
         on_free : f(job_id, reason)
             A callback called when a job which was previously allocated
@@ -92,13 +95,13 @@ class JobQueue(object):
             return False
         
         # Allocation succeeded!
-        allocation_id, boards, periphery = allocation
+        allocation_id, boards, periphery, torus = allocation
         job.pending = False
         job.machine = machine
         job.allocation_id = allocation_id
         
         # Report this to the user
-        self.on_allocate(job.id, machine.name, boards, periphery)
+        self.on_allocate(job.id, machine.name, boards, periphery, torus)
         
         return True
     

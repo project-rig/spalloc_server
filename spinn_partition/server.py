@@ -529,31 +529,37 @@ class Server(object):
         """
         return self._controller.get_job_state(job_id)._asdict()
     
-    def get_job_ethernet_connections(self, client, job_id):
+    def get_job_machine_info(self, client, job_id):
         """Get the list of Ethernet connections to the allocated machine.
         
         Returns
         -------
-        {"connections": connections, "hostname": hostname}
+        {"width": width, "height": height,
+         "connections": connections, "machine_name": machine_name}
             Where:
             
+            width, height : int or None
+                The dimensions of the machine in chips, e.g. for booting.
+                
+                None if no boards are allocated to the job.
             connections : [((x, y), hostname), ...] or None
                 A list giving Ethernet-connected chip coordinates in the
                 machine to hostname.
                 
-                None if no boards are allocated to the job (e.g. it is still
-                queued or has been destroyed).
+                None if no boards are allocated to the job.
             machine_name : str or None
-                The name of the machine the job is allocated on or None if the
-                job is not currently allocated.
+                The name of the machine the job is allocated on.
+                
+                None if no boards are allocated to the job.
         """
-        connections, machine_name = \
-            self._controller.get_job_ethernet_connections(job_id)
+        width, height, connections, machine_name = \
+            self._controller.get_job_machine_info(job_id)
         
         if connections is not None:
             connections = list(iteritems(connections))
         
-        return connections, machine_name
+        return {"width": width, "height": height,
+                "connections": connections, "machine_name": machine_name}
     
     def power_on_job_boards(self, client, job_id):
         """Power on (or reset if already on) boards associated with a job."""
@@ -660,7 +666,7 @@ class Server(object):
                                                 create_job,
                                                 job_keepalive,
                                                 get_job_state,
-                                                get_job_ethernet_connections,
+                                                get_job_machine_info,
                                                 power_on_job_boards,
                                                 power_off_job_boards,
                                                 destroy_job,

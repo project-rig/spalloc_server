@@ -3,7 +3,7 @@ import pytest
 from rig.links import Links
 
 from spinn_partition.coordinates import \
-    link_to_vector, board_down_link, board_to_chip
+    link_to_vector, board_down_link, board_to_chip, triad_dimensions_to_chips
 
 
 def test_link_to_vector():
@@ -70,3 +70,15 @@ def test_board_down_link(x1, y1, z1, link, width, height, x2, y2, z2, wrapped):
                          ])
 def test_coordinates(bxyz, cxy):
     assert board_to_chip(*bxyz) == cxy
+
+
+@pytest.mark.parametrize("wht,wh",
+                         [((1, 1, False), (16, 16)),
+                          ((1, 1, True), (12, 12)),
+                          ((2, 1, False), (28, 16)),
+                          ((2, 1, True), (24, 12)),
+                          ((1, 2, False), (16, 28)),
+                          ((1, 2, True), (12, 24)),
+                         ])
+def test_coordinates(wht, wh):
+    assert triad_dimensions_to_chips(*wht) == wh

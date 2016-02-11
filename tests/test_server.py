@@ -338,6 +338,9 @@ def test_job_management(MockABC, simple_config, s, c):
     # Should be impossible
     job_id2 = c.call("create_job", 2, 2, owner="me")
     
+    # Allow time for jobs to start
+    time.sleep(0.05)
+    
     assert job_id0 != job_id1
     assert job_id0 != job_id2
     assert job_id1 != job_id2
@@ -357,11 +360,15 @@ def test_job_management(MockABC, simple_config, s, c):
         "reason": "Cancelled: No suitable machines available."}
     
     # Ethernet connections should be visible, where defined
-    assert c.call("get_job_ethernet_connections", job_id0) == [[
-        [[0, 0], "11.0.0.0"],
-    ], "m"]
-    assert c.call("get_job_ethernet_connections", job_id1) == [None, None]
-    assert c.call("get_job_ethernet_connections", job_id2) == [None, None]
+    assert c.call("get_job_machine_info", job_id0) == {
+        "width": 8, "height": 8,
+        "connections": [[[0, 0], "11.0.0.0"]], "machine_name": "m"}
+    assert c.call("get_job_machine_info", job_id1) == {
+        "width": None, "height": None,
+        "connections": None, "machine_name": None}
+    assert c.call("get_job_machine_info", job_id2) == {
+        "width": None, "height": None,
+        "connections": None, "machine_name": None}
     
     # Power commands should work
     c.call("power_on_job_boards", job_id0)

@@ -195,6 +195,20 @@ class TestCandidateFilter(object):
             (0, 0, z, link)
             for z in range(3) for link in Links
             if board_down_link(0, 0, z, link, w, h)[:2] != (0, 0))
+        
+    def test_torus(self):
+        # Should notice if a torus is allocated
+        w, h = 10, 9
+        cf = CandidateFilter(w, h, set(), set(), None, None, False)
+        assert cf(0, 0, 1, 1) is True
+        assert cf.torus is False
+        
+        assert cf(0, 0, w, 1) is True
+        assert cf.torus is True
+        assert cf(0, 0, 1, h) is True
+        assert cf.torus is True
+        assert cf(0, 0, w, h) is True
+        assert cf.torus is True
 
 
 class TestAllocator(object):
@@ -231,7 +245,9 @@ class TestAllocator(object):
         a = Allocator(w, h, next_id=next_id)
         
         for _ in range(w * h):
-            allocation_id, boards, periphery = a.alloc_triads(1, 1)
+            allocation_id, boards, periphery, torus = a.alloc_triads(1, 1)
+            
+            assert torus is False
             
             assert allocation_id == next_id
             next_id += 1
@@ -258,7 +274,7 @@ class TestAllocator(object):
         next_id = 10
         a = Allocator(w, h, next_id=next_id)
         
-        allocation_id, boards, periphery = a.alloc_triads(
+        allocation_id, boards, periphery, torus = a.alloc_triads(
             w, h, require_torus=require_torus)
         
         assert allocation_id == next_id
@@ -267,6 +283,7 @@ class TestAllocator(object):
                              for y in range(h)
                              for z in range(3))
         assert periphery == set()
+        assert torus is True
         
         # Should get full
         assert a.alloc_triads(1, 1, require_torus=require_torus) is None
@@ -291,7 +308,7 @@ class TestAllocator(object):
             assert (0, 0) in a.single_board_triads
             assert (0, 0) not in a.full_single_board_triads
             
-            allocation_id, boards, periphery = a.alloc_board()
+            allocation_id, boards, periphery, torus = a.alloc_board()
             
             assert allocation_id == next_id
             next_id += 1
@@ -304,6 +321,8 @@ class TestAllocator(object):
             all_boards.add((x, y, z))
             
             assert periphery == set((x, y, z, link) for link in Links)
+            
+            assert torus is False
         
         assert all_boards == set((0, 0, z) for z in range(3))
         
@@ -323,7 +342,7 @@ class TestAllocator(object):
         a.single_board_triads[(0, 0)] = set([1] if last_remaining else range(3))
         
         # Should be able to get the board we want!
-        allocation_id, boards, periphery = a.alloc_board(0, 0, 1)
+        allocation_id, boards, periphery, torus = a.alloc_board(0, 0, 1)
         
         assert allocation_id == next_id
         
@@ -331,6 +350,8 @@ class TestAllocator(object):
         assert next(iter(boards)) == (0, 0, 1)
         
         assert periphery == set((0, 0, 1, link) for link in Links)
+        
+        assert torus is False
         
         # If exhausted, the boards should be removed from the single board
         # triad set.
@@ -363,7 +384,7 @@ class TestAllocator(object):
         # Should get two boards in total
         all_boards = set()
         for _ in range(2):
-            allocation_id, boards, periphery = a.alloc_board()
+            allocation_id, boards, periphery, torus = a.alloc_board()
             
             assert allocation_id == next_id
             next_id += 1
@@ -374,6 +395,8 @@ class TestAllocator(object):
             all_boards.add((x, y, z))
             
             assert periphery == set((x, y, z, link) for link in Links)
+            
+            assert torus is False
         
         assert all_boards == set([(1, 0, 0), (1, 0, 2)])
         
@@ -387,7 +410,7 @@ class TestAllocator(object):
         a = Allocator(1, 1, next_id=next_id)
         
         # Should get two boards in total
-        allocation_id, boards, periphery = a.alloc_board(0, 0, 1)
+        allocation_id, boards, periphery, torus = a.alloc_board(0, 0, 1)
         
         assert allocation_id == next_id
         
@@ -398,18 +421,20 @@ class TestAllocator(object):
         
         # Should not be able to allocate that board any more!
         assert a.alloc_board(0, 0, 1) is None
+        
+        assert torus is False
 
     def test_free_board(self):
         a = Allocator(2, 1, dead_boards=set([(0, 0, 1)]))
         
         # Allocate the two boards on triad 0, 0
-        id00, _1, _2 = a.alloc_board(0, 0, 0)
-        id02, _1, _2 = a.alloc_board(0, 0, 2)
+        id00, _1, _2, _3 = a.alloc_board(0, 0, 0)
+        id02, _1, _2, _3 = a.alloc_board(0, 0, 2)
         
         # Allocate the three boards on triad 1, 0
-        id10, _1, _2 = a.alloc_board(1, 0, 0)
-        id11, _1, _2 = a.alloc_board(1, 0, 1)
-        id12, _1, _2 = a.alloc_board(1, 0, 2)
+        id10, _1, _2, _3 = a.alloc_board(1, 0, 0)
+        id11, _1, _2, _3 = a.alloc_board(1, 0, 1)
+        id12, _1, _2, _3 = a.alloc_board(1, 0, 2)
         
         # No board triads should be available
         assert len(a.single_board_triads) == 0
@@ -481,8 +506,8 @@ class TestAllocator(object):
     def test_free_triad(self):
         a = Allocator(2, 1)
         
-        id0, _0, _1 = a.alloc_triads(1, 1)
-        id1, _0, _1 = a.alloc_triads(1, 1)
+        id0, _0, _1, _2 = a.alloc_triads(1, 1)
+        id1, _0, _1, _2 = a.alloc_triads(1, 1)
         
         # The pack tree should be full
         assert a.pack_tree.allocated is False

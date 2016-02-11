@@ -108,3 +108,36 @@ def board_to_chip(x, y, z):
         y += 8
     
     return (x, y)
+
+
+def triad_dimensions_to_chips(w, h, torus):
+    """Convert the dimensions of a system from numbers of triads to numbers of
+    chips in the underlying network.
+    
+    Assumes a regular torus composed of SpiNN-5 boards.
+    
+    Parameters
+    ----------
+    w, h : int
+        Dimensions of the system in triads.
+    torus : bool
+        Are wrap-around connections present?
+    
+    Returns
+    -------
+    w, h : int
+        Dimensions of the SpiNNaker chip network in the specified machine, e.g.
+        for booting.
+    """
+    
+    w *= 12
+    h *= 12
+    
+    # If not a torus topology, the pieces of boards which would wrap-around and
+    # "tuck in" to the opposing sides of the network will be left poking out.
+    # Compensate for this.
+    if not torus:
+        w += 4
+        h += 4
+    
+    return (w, h)

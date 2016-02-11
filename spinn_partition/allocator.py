@@ -34,6 +34,9 @@ class CandidateFilter(object):
         The links around the periphery of the selection of boards which should
         be disabled to isolate the system. None if no candidate has been
         accepted.
+    torus : bool
+        If True, the accepted candidate has at least one working wrap-around
+        link, if False, the accepted candidate has no wrap around links.
     """
     
     def __init__(self, width, height, dead_boards, dead_links,
@@ -77,6 +80,7 @@ class CandidateFilter(object):
         
         self.boards = None
         self.periphery = None
+        self.torus = None
     
     def _enumerate_boards(self, x, y, width, height):
         """Starting from board (x, y, 0), enumerate as many reachable and
@@ -213,6 +217,7 @@ class CandidateFilter(object):
         # peripheral links
         self.boards = boards
         self.periphery = periphery
+        self.torus = bool(wrap) or bool(dead_wrap)
         return True
 
 
@@ -358,15 +363,16 @@ class Allocator(object):
         
         Returns
         -------
-        (allocation_id, boards, periphery) or None
-            If the allocation was successful a three-tuple is returned. If the
+        (allocation_id, boards, periphery, torus) or None
+            If the allocation was successful a four-tuple is returned. If the
             allocation was not successful None is returned.
             
             The ``allocation_id`` is an integer which should be used to free
             the allocation with the :py:meth:`.free` method. ``boards`` is a
             set of (x, y, z) tuples giving the locations of the (working)
             boards in the allocation. ``periphery`` is a set of (x, y, z, link)
-            tuples giving the links which leave the allocated region.
+            tuples giving the links which leave the allocated region. ``torus``
+            is True iff at least one torus link is working.
         """
         # Special case: If a torus is required this is only deliverable when
         # the requirements match the size of the machine exactly.
@@ -391,7 +397,7 @@ class Allocator(object):
         x, y = xy
         self.allocation_board[allocation_id] = (x, y, 0)
         
-        return (allocation_id, cf.boards, cf.periphery)
+        return (allocation_id, cf.boards, cf.periphery, cf.torus)
     
     def alloc_board_possible(self, x=None, y=None, z=None):
         """Is it guaranteed that the specified allocation *could* succeed if
@@ -439,15 +445,16 @@ class Allocator(object):
         
         Returns
         -------
-        (allocation_id, boards, periphery) or None
-            If the allocation was successful a three-tuple is returned. If the
+        (allocation_id, boards, periphery, torus) or None
+            If the allocation was successful a four-tuple is returned. If the
             allocation was not successful None is returned.
             
             The ``allocation_id`` is an integer which should be used to free
             the allocation with the :py:meth:`.free` method. ``boards`` is a
             set of (x, y, z) tuples giving the location of to allocated board.
             ``periphery`` is a set of (x, y, z, link) tuples giving the links
-            which leave the board.
+            which leave the board. ``torus`` is True iff at least one torus
+            link is working. This should always be False for single boards.
         """
         assert (x is None) == (y is None) == (z is None)
         board_requested = x is not None
@@ -481,8 +488,10 @@ class Allocator(object):
             self.next_id += 1
             self.allocation_types[allocation_id] = AllocationType.board
             self.allocation_board[allocation_id] = (x, y, z)
-            return (allocation_id, set([(x, y, z)]),
-                    set((x, y, z, link) for link in Links))
+            return (allocation_id,
+                    set([(x, y, z)]),
+                    set((x, y, z, link) for link in Links),
+                    False)
         
         # The desired board was not available in an already-allocated triad.
         # Attempt to request that triad.
@@ -645,15 +654,16 @@ class Allocator(object):
         
         Returns
         -------
-        (allocation_id, boards, periphery) or None
-            If the allocation was successful a three-tuple is returned. If the
+        (allocation_id, boards, periphery, torus) or None
+            If the allocation was successful a four-tuple is returned. If the
             allocation was not successful None is returned.
             
             The ``allocation_id`` is an integer which should be used to free
             the allocation with the :py:meth:`.free` method. ``boards`` is a
             set of (x, y, z) tuples giving the locations of to allocated
             boards.  ``periphery`` is a set of (x, y, z, link) tuples giving
-            the links which leave the allocated set of boards.
+            the links which leave the allocated set of boards. ``torus`` is
+            True iff at least one torus link is working.
         """
         if self._alloc_type(*args, **kwargs) is AllocationType.board:
             return self.alloc_board(*args, **kwargs)
