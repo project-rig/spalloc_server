@@ -4,7 +4,7 @@ from rig.links import Links
 
 from spinn_partition_server.coordinates import board_down_link
 from spinn_partition_server.allocator import \
-    AllocationType, CandidateFilter, Allocator
+    _AllocationType, _CandidateFilter, Allocator
 
 
 class TestCandidateFilter(object):
@@ -19,7 +19,7 @@ class TestCandidateFilter(object):
             (1, 2, 0, Links.north),
         ])
         
-        cf = CandidateFilter(w, h, dead_boards, dead_links, 0, 0, False)
+        cf = _CandidateFilter(w, h, dead_boards, dead_links, 0, 0, False)
         
         # From 0, 0 we should not be able to reach anything else unless we have
         # wrap-around links
@@ -53,7 +53,7 @@ class TestCandidateFilter(object):
             (1, 1, 0, Links.south_west),
         ])
         
-        cf = CandidateFilter(w, h, dead_boards, dead_links, 0, 0, False)
+        cf = _CandidateFilter(w, h, dead_boards, dead_links, 0, 0, False)
         
         # For 1x1 we should have just peripheral links all of which are listed
         # even if they're dead.
@@ -144,8 +144,8 @@ class TestCandidateFilter(object):
             (1, 2, 0, Links.north),
         ])
         
-        cf = CandidateFilter(w, h, dead_boards, dead_links,
-                             max_dead_boards, 0, False)
+        cf = _CandidateFilter(w, h, dead_boards, dead_links,
+                              max_dead_boards, 0, False)
         
         assert cf(0, 0, w, h) is False
 
@@ -159,8 +159,8 @@ class TestCandidateFilter(object):
         ])
         
         max_dead_links = 0
-        cf = CandidateFilter(w, h, dead_boards, dead_links,
-                             0, max_dead_links, require_torus)
+        cf = _CandidateFilter(w, h, dead_boards, dead_links,
+                              0, max_dead_links, require_torus)
         
         expected = not require_torus and dead_on_torus
         
@@ -174,8 +174,8 @@ class TestCandidateFilter(object):
         # Should never allow allocation when bottom-left board is dead
         dead_boards = set([(0, 0, 0)])
         dead_links = set()
-        cf = CandidateFilter(1, 1, dead_boards, dead_links,
-                             max_dead_boards, None, False)
+        cf = _CandidateFilter(1, 1, dead_boards, dead_links,
+                              max_dead_boards, None, False)
         
         assert cf(0, 0, 1, 1) is False
 
@@ -187,8 +187,8 @@ class TestCandidateFilter(object):
         w, h = 10, 9
         dead_boards = set([0, 0, 1]) if have_dead_boards else set()
         dead_links = set([0, 0, 0, Links.north]) if have_dead_links else set()
-        cf = CandidateFilter(w, h, dead_boards, dead_links,
-                             None, None, False)
+        cf = _CandidateFilter(w, h, dead_boards, dead_links,
+                              None, None, False)
         
         assert cf(0, 0, 1, 1) is True
         assert cf.boards == set((0, 0, z) for z in range(3))
@@ -200,7 +200,7 @@ class TestCandidateFilter(object):
     def test_torus(self):
         # Should notice if a torus is allocated
         w, h = 10, 9
-        cf = CandidateFilter(w, h, set(), set(), None, None, False)
+        cf = _CandidateFilter(w, h, set(), set(), None, None, False)
         assert cf(0, 0, 1, 1) is True
         assert cf.torus is False
         
@@ -217,27 +217,27 @@ class TestAllocator(object):
     def test_alloc_triads_dead_boards(self):
         # Should not be able to allocate if too many boards are dead
         a = Allocator(3, 4, dead_boards=set([(0, 0, 0)]))
-        assert a.alloc_triads(3, 4, max_dead_boards=0) is None
+        assert a._alloc_triads(3, 4, max_dead_boards=0) is None
     
     def test_alloc_triads_dead_links(self):
         # Should not be able to allocate if too many links are dead
         a = Allocator(3, 4, dead_links=set([(0, 0, 0, Links.north)]))
-        assert a.alloc_triads(3, 4, max_dead_links=0) is None
+        assert a._alloc_triads(3, 4, max_dead_links=0) is None
     
     def test_alloc_triads_bad_torus(self):
         # Should not be able to allocate a torus unless requesting the full
         # machine
         a = Allocator(3, 4)
-        assert a.alloc_triads(1, 2, require_torus=True) is None
-        assert a.alloc_triads(3, 2, require_torus=True) is None
-        assert a.alloc_triads(2, 4, require_torus=True) is None
+        assert a._alloc_triads(1, 2, require_torus=True) is None
+        assert a._alloc_triads(3, 2, require_torus=True) is None
+        assert a._alloc_triads(2, 4, require_torus=True) is None
     
     def test_alloc_triads_too_big(self):
         # Should fail if something too big is requested
         a = Allocator(3, 4)
-        assert a.alloc_triads(4, 4) is None
-        assert a.alloc_triads(3, 5) is None
-        assert a.alloc_triads(4, 5) is None
+        assert a._alloc_triads(4, 4) is None
+        assert a._alloc_triads(3, 5) is None
+        assert a._alloc_triads(4, 5) is None
     
     def test_alloc_triads_single(self):
         # Should be able to allocate single blocks
@@ -246,7 +246,7 @@ class TestAllocator(object):
         a = Allocator(w, h, next_id=next_id)
         
         for _ in range(w * h):
-            allocation_id, boards, periphery, torus = a.alloc_triads(1, 1)
+            allocation_id, boards, periphery, torus = a._alloc_triads(1, 1)
             
             assert torus is False
             
@@ -266,7 +266,7 @@ class TestAllocator(object):
                                        != (x, y))
         
         # Should get full
-        assert a.alloc_triads(1, 1) is None
+        assert a._alloc_triads(1, 1) is None
     
     @pytest.mark.parametrize("require_torus", [True, False])
     def test_alloc_triads_torus(self, require_torus):
@@ -275,7 +275,7 @@ class TestAllocator(object):
         next_id = 10
         a = Allocator(w, h, next_id=next_id)
         
-        allocation_id, boards, periphery, torus = a.alloc_triads(
+        allocation_id, boards, periphery, torus = a._alloc_triads(
             w, h, require_torus=require_torus)
         
         assert allocation_id == next_id
@@ -287,12 +287,12 @@ class TestAllocator(object):
         assert torus is True
         
         # Should get full
-        assert a.alloc_triads(1, 1, require_torus=require_torus) is None
+        assert a._alloc_triads(1, 1, require_torus=require_torus) is None
     
     def test_alloc_board_dead(self):
         # Should fail if a dead board is requested
         a = Allocator(3, 4, dead_boards=set([(3, 2, 1)]))
-        assert a.alloc_board(3, 2, 1) is None
+        assert a._alloc_board(3, 2, 1) is None
     
     def test_alloc_existing_triad(self):
         # Attempt to allocate based on an already allocated triad.
@@ -309,7 +309,7 @@ class TestAllocator(object):
             assert (0, 0) in a.single_board_triads
             assert (0, 0) not in a.full_single_board_triads
             
-            allocation_id, boards, periphery, torus = a.alloc_board()
+            allocation_id, boards, periphery, torus = a._alloc_board()
             
             assert allocation_id == next_id
             next_id += 1
@@ -343,7 +343,7 @@ class TestAllocator(object):
         a.single_board_triads[(0, 0)] = set([1] if last_remaining else range(3))
         
         # Should be able to get the board we want!
-        allocation_id, boards, periphery, torus = a.alloc_board(0, 0, 1)
+        allocation_id, boards, periphery, torus = a._alloc_board(0, 0, 1)
         
         assert allocation_id == next_id
         
@@ -373,7 +373,7 @@ class TestAllocator(object):
         
         # Shouldn't be able to get the board we want since it is already
         # allocated.
-        assert a.alloc_board(0, 0, 1) == None
+        assert a._alloc_board(0, 0, 1) == None
     
     def test_alloc_board(self):
         # If no single boards have been allocated yet, a whole triad should be
@@ -385,7 +385,7 @@ class TestAllocator(object):
         # Should get two boards in total
         all_boards = set()
         for _ in range(2):
-            allocation_id, boards, periphery, torus = a.alloc_board()
+            allocation_id, boards, periphery, torus = a._alloc_board()
             
             assert allocation_id == next_id
             next_id += 1
@@ -402,7 +402,7 @@ class TestAllocator(object):
         assert all_boards == set([(1, 0, 0), (1, 0, 2)])
         
         # Should not be able to allocate any more!
-        assert a.alloc_board() is None
+        assert a._alloc_board() is None
     
     def test_alloc_board_specific(self):
         # If no triad containing the requested board is already allocated, we
@@ -411,7 +411,7 @@ class TestAllocator(object):
         a = Allocator(1, 1, next_id=next_id)
         
         # Should get two boards in total
-        allocation_id, boards, periphery, torus = a.alloc_board(0, 0, 1)
+        allocation_id, boards, periphery, torus = a._alloc_board(0, 0, 1)
         
         assert allocation_id == next_id
         
@@ -421,7 +421,7 @@ class TestAllocator(object):
         assert periphery == set((0, 0, 1, link) for link in Links)
         
         # Should not be able to allocate that board any more!
-        assert a.alloc_board(0, 0, 1) is None
+        assert a._alloc_board(0, 0, 1) is None
         
         assert torus is False
 
@@ -429,13 +429,13 @@ class TestAllocator(object):
         a = Allocator(2, 1, dead_boards=set([(0, 0, 1)]))
         
         # Allocate the two boards on triad 0, 0
-        id00, _1, _2, _3 = a.alloc_board(0, 0, 0)
-        id02, _1, _2, _3 = a.alloc_board(0, 0, 2)
+        id00, _1, _2, _3 = a._alloc_board(0, 0, 0)
+        id02, _1, _2, _3 = a._alloc_board(0, 0, 2)
         
         # Allocate the three boards on triad 1, 0
-        id10, _1, _2, _3 = a.alloc_board(1, 0, 0)
-        id11, _1, _2, _3 = a.alloc_board(1, 0, 1)
-        id12, _1, _2, _3 = a.alloc_board(1, 0, 2)
+        id10, _1, _2, _3 = a._alloc_board(1, 0, 0)
+        id11, _1, _2, _3 = a._alloc_board(1, 0, 1)
+        id12, _1, _2, _3 = a._alloc_board(1, 0, 2)
         
         # No board triads should be available
         assert len(a.single_board_triads) == 0
@@ -507,8 +507,8 @@ class TestAllocator(object):
     def test_free_triad(self):
         a = Allocator(2, 1)
         
-        id0, _0, _1, _2 = a.alloc_triads(1, 1)
-        id1, _0, _1, _2 = a.alloc_triads(1, 1)
+        id0, _0, _1, _2 = a._alloc_triads(1, 1)
+        id1, _0, _1, _2 = a._alloc_triads(1, 1)
         
         # The pack tree should be full
         assert a.pack_tree.allocated is False
@@ -532,24 +532,24 @@ class TestAllocator(object):
         a = Allocator(3, 4)
         
         # Fail too big
-        assert a.alloc_triads_possible(4, 4) is False
-        assert a.alloc_triads_possible(3, 5) is False
-        assert a.alloc_triads_possible(4, 5) is False
+        assert a._alloc_triads_possible(4, 4) is False
+        assert a._alloc_triads_possible(3, 5) is False
+        assert a._alloc_triads_possible(4, 5) is False
         
         # Fail torus wrong size
-        assert a.alloc_triads_possible(2, 4, require_torus=True) is False
-        assert a.alloc_triads_possible(3, 3, require_torus=True) is False
-        assert a.alloc_triads_possible(2, 3, require_torus=True) is False
+        assert a._alloc_triads_possible(2, 4, require_torus=True) is False
+        assert a._alloc_triads_possible(3, 3, require_torus=True) is False
+        assert a._alloc_triads_possible(2, 3, require_torus=True) is False
         
         # Fail due to (0, 0, 0) being dead
         a.dead_boards.add((0, 0, 0))
-        assert a.alloc_triads_possible(3, 4) is False
+        assert a._alloc_triads_possible(3, 4) is False
         
         # Fail due to corners being dead and requiring nothing to be dead
         a.dead_boards.add((0, 3, 0))
         a.dead_boards.add((2, 0, 0))
         a.dead_boards.add((2, 3, 0))
-        assert a.alloc_triads_possible(2, 2, max_dead_boards=0) is False
+        assert a._alloc_triads_possible(2, 2, max_dead_boards=0) is False
         
         # Fail due to all working links being required
         a.dead_boards = set()
@@ -557,39 +557,39 @@ class TestAllocator(object):
         a.dead_links.add((0, 3, 0, Links.north))
         a.dead_links.add((2, 0, 0, Links.north))
         a.dead_links.add((2, 3, 0, Links.north))
-        assert a.alloc_triads_possible(2, 2, max_dead_links=0) is False
+        assert a._alloc_triads_possible(2, 2, max_dead_links=0) is False
         
         # Finally, should be possible to succeed when we relax the criteria
-        assert a.alloc_triads_possible(2, 2) is True
+        assert a._alloc_triads_possible(2, 2) is True
     
     def test_alloc_board_possible(self):
         a = Allocator(2, 3)
         
         # Should fail if the board is outside the system
-        assert a.alloc_board_possible(-1, 0, 0) is False
-        assert a.alloc_board_possible(0, -1, 0) is False
-        assert a.alloc_board_possible(-1, -1, 0) is False
-        assert a.alloc_board_possible(0, 3, 0) is False
-        assert a.alloc_board_possible(2, 0, 0) is False
-        assert a.alloc_board_possible(2, 3, 0) is False
+        assert a._alloc_board_possible(-1, 0, 0) is False
+        assert a._alloc_board_possible(0, -1, 0) is False
+        assert a._alloc_board_possible(-1, -1, 0) is False
+        assert a._alloc_board_possible(0, 3, 0) is False
+        assert a._alloc_board_possible(2, 0, 0) is False
+        assert a._alloc_board_possible(2, 3, 0) is False
         
         # Should fail if the required board is dead
         a.dead_boards.add((0, 0, 1))
-        assert a.alloc_board_possible(0, 0, 1) is False
+        assert a._alloc_board_possible(0, 0, 1) is False
         
         # Should fail if all the boards are dead
         a.dead_boards = set((x, y, z)
                             for x in range(2)
                             for y in range(3)
                             for z in range(3))
-        assert a.alloc_board_possible() is False
-        assert a.alloc_board_possible(0, 0, 0) is False
+        assert a._alloc_board_possible() is False
+        assert a._alloc_board_possible(0, 0, 0) is False
         
         a.dead_boards = set()
         
         # Otherwise should succeed
-        assert a.alloc_board_possible() is True
-        assert a.alloc_board_possible(0, 0, 0) is True
+        assert a._alloc_board_possible() is True
+        assert a._alloc_board_possible(0, 0, 0) is True
     
     @pytest.mark.parametrize("specific", [True, False])
     @pytest.mark.parametrize("add_require_torus_false", [True, False])
@@ -612,7 +612,7 @@ class TestAllocator(object):
         assert a._alloc_type(*args,
                              max_dead_boards=max_dead_boards,
                              max_dead_links=max_dead_links,
-                             **kwargs) is AllocationType.board
+                             **kwargs) is _AllocationType.board
     
     @pytest.mark.parametrize("specific", [True, False])
     @pytest.mark.parametrize("max_dead_boards", [None, 0, 2])
@@ -647,7 +647,7 @@ class TestAllocator(object):
                              max_dead_boards=max_dead_boards,
                              max_dead_links=max_dead_links,
                              require_torus=require_torus) \
-            is AllocationType.triads
+            is _AllocationType.triads
     
     def test_alloc_type_triads_bad(self):
         a = Allocator(2, 3)

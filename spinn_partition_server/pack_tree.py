@@ -1,20 +1,19 @@
-"""A structure for allocating/packing rectangles into a fixed 2D space."""
+"""An algorithm/datastructure for allocating/packing rectangles into a fixed 2D space.
+
+This algorithm is used to allocate triads of boards in SpiNNaker systems but is
+otherwise a relatively generic 2D packing algorithm.
+"""
 
 from six import iteritems
 
 
-class FreeError(Exception):
-    """Thrown when attempting to free a region fails."""
-    pass
-
-
 class PackTree(object):
-    r"""A datastructure for allocating/packing rectangles into a fixed 2D
-    space.
+    r"""A tree-based datastructure for allocating/packing rectangles into a
+    fixed 2D space.
     
     This tree structure is used to allocate/pack rectangular subregions of
-    SpiNNaker machine in a fashion similar to
-    `http://www.blackpawn.com/texts/lightmaps/default.html`_. It is certainly
+    SpiNNaker machine in a fashion similar to `this lightmap packing algorithm
+    <http://www.blackpawn.com/texts/lightmaps/default.html>`_. It is certainly
     not the most efficient or flexible packing algorithm available but due to
     time constraints it is ideal due to its simplicity.
     """
@@ -302,3 +301,8 @@ class PackTree(object):
             # No child contains the location to be freed. Crash out!
             raise FreeError(
                 "Cannot free {}, {} which is outside the region.".format(x, y))
+
+
+class FreeError(Exception):
+    """Thrown when attempting to free a region fails."""
+    pass

@@ -1,5 +1,7 @@
 import pytest
 
+import time
+
 from mock import Mock, call
 
 import threading
@@ -216,6 +218,33 @@ def test_power_priority(abc, bc):
     # Make BMP call complete and the last event finish
     link_event.set()
     e2.wait()
+
+@pytest.mark.timeout(1.0)
+def test_power_removes_link_enables(abc, bc):
+    # Make sure link enable requests are removed for boards with newly added
+    # power commands.
+    with abc:
+        e1, e2, e3, e4 = (threading.Event() for _ in range(4))
+        abc.set_power(10, True, e1.set)
+        abc.set_link_enable(10, Links.east, True, e2.set)
+        abc.set_link_enable(11, Links.east, True, e3.set)
+        abc.set_power(11, False, e4.set)
+    
+    # Block for a short time to ensure the background thread gets chance to
+    # execute
+    time.sleep(0.05)
+    
+    # All commands should have finished
+    assert e1.is_set()
+    assert e2.is_set()
+    assert e3.is_set()
+    assert e4.is_set()
+    
+    # Make sure both power commands were sent
+    assert len(bc.set_power.mock_calls) == 2
+    
+    # But only one link command should be around
+    bc.write_fpga_reg.assert_called_once_with(0, 0x5C, False, board=10)
 
 @pytest.mark.timeout(1.0)
 def test_stop_drains(abc, bc):

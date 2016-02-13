@@ -1,0 +1,6 @@
+sphinx
+numpydoc
+six
+enum-compat
+sentinel
+mock

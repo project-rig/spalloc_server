@@ -1,4 +1,5 @@
-"""Match incoming allocation requests to machines."""
+"""A multi-machine and job queueing and allocation mechanism.
+"""
 
 from collections import deque, OrderedDict, namedtuple
 
@@ -10,8 +11,36 @@ from spinn_partition_server.allocator import Allocator
 
 
 class JobQueue(object):
-    """A mechanism for matching incoming allocations (jobs) to a set of
+    """A mechanism for matching incoming allocation requests (jobs) to a set of
     available machines.
+    
+    For every :py:class:`._Machine` being managed this object contains a queue
+    of outstanding jobs and an
+    :py:class:`spinn_partition_server.allocator.Allocator` which manages
+    allocation of jobs onto that machine. A simplistic scheduling mechanism is
+    used (see :py:meth:`._enqueue_job`) which simultaneously enqueues any jobs
+    which cannot be immediately allocated to a machine to the queues of all
+    machines the job can fit on. The first machine to accept the job is
+    allocated the job (all other machines which subsequently encounter the job
+    in their queues must skip it).
+    
+    Though this object is entirely single threaded (and not thread safe!),
+    callbacks (:py:attr:`.on_allocate`, :py:attr:`.on_free` and
+    :py:attr:`.on_cancel`) are used to indicate when a job is queued, allocated
+    or cancelled.
+    
+    A new job may be considered 'queued' the moment the :py:meth:`.create_job`
+    method is called. At some point in the future, possibly before
+    :py:meth:`.create_job` returns, the :py:attr:`.on_allocate` or
+    :py:attr:`.on_cancel` callbacks will be called to indicate the job has
+    either successfully been allocated to a machine or been cancelled (e.g. due
+    to unavailability of a suitable machine or :py:meth:`.destroy_job` being
+    called).
+    
+    Once the :py:meth:`.on_allocate` callback has been called for a
+    job, a job may be considered to be allocated to the specific machine
+    indicated in the callback. This remains true until the :py:meth:`.on_free`
+    callback is produced (as a result of calling :py:class:`.destroy_job`).
     """
     
     def __init__(self, on_allocate, on_free, on_cancel):
@@ -23,49 +52,49 @@ class JobQueue(object):
             A callback function which is called when a job is successfully
             allocated resources on a machine.
             
-            ``job_id`` is the job's unique identifier.
-            
-            ``machine_name`` is the name of the machine the job was allocated
-            on.
-            
-            ``boards`` is a set([(x, y, z), ...]) enumerating the boards in the
-            allocation.
-            
-            ``periphery`` is a set([(x, y, z, :py:class:`rig.links.Links`),
-            ...]) enumerating the links which leave the set of allocated boards.
-            
-            ``torus`` is True iff the allocation has at least one working
-            wrap-around link.
+            job_id : int
+                The job's unique identifier.
+            machine_name : str
+                The name of the machine the job was allocated on.
+            boards : set([(x, y, z), ...])
+                Enumerates the boards in the allocation.
+            periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+                Enumerates the links which leave the set of allocated boards.
+            torus : bool
+                True iff the allocation has at least one working wrap-around
+                link.
         
         on_free : f(job_id, reason)
             A callback called when a job which was previously allocated
             resources has had those resources withdrawn or freed them.
             
-            ``job_id`` is the job's unique identifier.
-            
-            ``reason`` is a human readable string explaining why the job was
-            freed or None if no reason was given.
+            job_id : int
+                The job's unique identifier.
+            reason : str or None
+                A human readable string explaining why the job was freed or
+                None if no reason was given.
         
         on_cancel : f(job_id, reason)
             A callback called when a job which was previously queued is removed
             from the queue. This may be due to a lack of a suitable machine or
             due to user action.
             
-            ``job_id`` is the job's unique identifier.
-            
-            ``reason`` is a human readable string explaining why the job was
-            cancelled or None if no reason was given.
+            job_id : int
+                The job's unique identifier.
+            reason : str or None
+                A human readable string explaining why the job was cancelled or
+                None if no reason was given.
         """
         self.on_allocate = on_allocate
         self.on_free = on_free
         self.on_cancel = on_cancel
         
         # The machines onto which jobs may be queued.
-        # {name: Machine, ...}
+        # {name: _Machine, ...}
         self._machines = OrderedDict()
         
         # The currently queued or allocated jobs
-        # {job_id: Job, ...}
+        # {job_id: _Job, ...}
         self._jobs = OrderedDict()
         
         # When non-zero, queues are not changed. Set when using this object as
@@ -75,6 +104,21 @@ class JobQueue(object):
     def __enter__(self):
         """This context manager will cause all changes to machines to be made
         atomically, without regenerating queues between each change.
+        
+        This is useful when modifying multiple machines at once or destroying
+        multiple jobs at once since it prevents jobs being allocated and then
+        immediately destroyed.
+        
+        Usage example::
+        
+            >> q = JobQueue(...)
+            >> with q:
+            ..     q.remove_machine("m")
+            ..     q.add_machine(...)
+        
+        .. note::
+            This context manager should be used sparingly as it causes all
+            job queues to be regenerated from scratch when it exits.
         """
         self._postpone_queue_management += 1
     
@@ -88,8 +132,11 @@ class JobQueue(object):
         Returns
         -------
         job_allocated : bool
+            Was the job successfully allocated? If True, the internal metadata
+            associated with the job is updated and the :py:attr:`.on_allocate`
+            callback is called.
         """
-        # Try to allocate and fail loudly if this will never fit
+        # Try to allocate the job
         allocation = machine.allocator.alloc(*job.args, **job.kwargs)
         if allocation is None:
             return False
@@ -106,7 +153,21 @@ class JobQueue(object):
         return True
     
     def _enqueue_job(self, job):
-        """Either allocate or enqueue a new job."""
+        """Either allocate or enqueue a new job.
+        
+        Given a new job which is not yet running or enqueued use a simple
+        scheduling mechanism to decided what to do with it:
+        
+        * Attempt to allocate the job on each machine matching the job's
+          requirements in turn.
+        * If no machine can allocate the job immediately, add the job to the
+          queues of all machines which meet the job's requirements.
+        
+        Parameters
+        ----------
+        job : :py:class:`._Job`
+            The job to attempt to enqueue or allocate.
+        """
         if self._postpone_queue_management:
             return
         
@@ -136,7 +197,7 @@ class JobQueue(object):
         
         if not found_machine:
             # If no candidate machines were found, the job will never be run,
-            # immediately cancel it
+            # immediately cancel it.
             self.destroy_job(job.id, "No suitable machines available.")
     
     def _process_queue(self):
@@ -166,8 +227,13 @@ class JobQueue(object):
                     break
 
     def _regenerate_queues(self):
-        """If the set of available machines has changed, queued jobs must be
-        re-evaluated since they may fit on a different set of machines.
+        """Regenerate all queues to account for any significant changes to the
+        machines available.
+        
+        This function clears all machine queues and then reinserts the jobs
+        using :py:class:`._enqueue_job`, potentially allocating the job to a
+        running machine. Since the jobs are re-enqueued in the order they were
+        supplied, the queueing priorities are unaffected.
         """
         if self._postpone_queue_management:
             return
@@ -202,6 +268,15 @@ class JobQueue(object):
             The boards in the machine which do not work.
         dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
             The board-to-board links in the machine which do not work.
+        
+        See Also
+        --------
+        __enter__ : A context manager to allow atomic changes to be made to
+                    machines.
+        move_machine_to_end : Modify machine priorities
+        modify_machine : Modify certain machine parameters without removing and
+                         then re-adding it.
+        remove_machine : Remove a machine.
         """
         if name in self._machines:
             raise ValueError("Machine name {} already in use.".format(name))
@@ -214,6 +289,11 @@ class JobQueue(object):
     def move_machine_to_end(self, name):
         """Move the specified machine to the end of the OrderedDict of
         machines.
+        
+        Parameters
+        ----------
+        name : str
+            The name of the machine to move.
         """
         self._machines.move_to_end(name)
         # NB: No queue regeneration required
@@ -281,27 +361,22 @@ class JobQueue(object):
         and the associated callbacks called. Callers should be prepared for
         this eventuality. If no callbacks are produced the job has been queued.
         
+        This function is a thin wrapper around
+        :py:meth:`spinn_partition_server.allocator.Allocator.alloc` and thus
+        accepts all arguments it accepts plus those named below.
+        
         Parameters
         ----------
-        See :py:meth:`spinn_partition_server.allocator.Allocator.alloc`.
-        
-        Other Parameters
-        ----------------
-        job_id
-            **Mandatory.** A unique identifier for the job.
-        machine : None or "machine"
+        job_id : int
+            **Mandatory.** A unique identifier for the job, supplied by the
+            caller.
+        machine : None or str
             If not None, require that the job is executed on the specified
             machine. Not valid when tags are given.
-        tags : None or set([tag, ...])
+        tags : None or set(['tag', ...])
             The set of tags which any machine running this job must have. Not
             valid when machine is given. If None is supplied, only machines
-            with the "default" tag will be used (unless machine is
-            specified).
-        
-        Returns
-        -------
-        job_id : int
-            The job created.
+            with the "default" tag will be used (unless machine is specified).
         """
         job_id = kwargs.pop("job_id", None)
         machine_name = kwargs.pop("machine", None)
@@ -332,9 +407,14 @@ class JobQueue(object):
     def destroy_job(self, job_id, reason=None):
         """Destroy a queued or allocated job.
         
+        If the job is already allocated, this frees the job resulting in the
+        :py:attr:`.on_free` callback being called.  If the job is queued, this
+        removes the job from all queues and the :py:attr:`.on_cancel` callback
+        being called.
+        
         Parameters
         ----------
-        job_id
+        job_id : int
             The ID of the job to destroy.
         reason : str or None
             *Optional.* A human-readable reason that the job was destroyed.
@@ -354,7 +434,7 @@ class JobQueue(object):
 
 
 class _Job(object):
-    """Defines a job.
+    """The internal state representing a job.
     
     Attributes
     ----------
@@ -371,7 +451,7 @@ class _Job(object):
         If None, only machines with the "default" tag will be used.
     args, kwargs : tuple, dict
         The arguments to the alloc function for this job.
-    machine : :py:class:`.Machine` or None
+    machine : :py:class:`._Machine` or None
         The machine the job has been allocated on.
     allocation_id : int or None
         The allocation ID for the Job's allocation.
@@ -391,16 +471,14 @@ class _Job(object):
         self.kwargs = kwargs
         self.machine = machine
         self.allocation_id = allocation_id
-
-    def __hash__(self):
-        return hash(id(self))
     
     def __repr__(self):
         return "<{} id={}>".format(self.__class__.__name__, self.id)
 
 
 class _Machine(object):
-    """Defines a machine on which jobs may run.
+    """Internal data which maintains state information about machine on which
+    jobs may run.
     
     Attributes
     ----------
@@ -411,7 +489,7 @@ class _Machine(object):
         all of its tags must also be tags of the machine.
     allocator : :py:class:`spinn_partition_server.allocator.Allocator`
         An allocator for boards in this machine.
-    queue : deque([:py:class:`.Job`, ...])
+    queue : deque([:py:class:`._Job`, ...])
         A queue for jobs tentatively scheduled for this machine. Note that a
         job may be present in many queues at once. The first machine to accept
         the job is the only one which may process it.
@@ -422,8 +500,5 @@ class _Machine(object):
         self.allocator = allocator
         self.queue = queue if queue is not None else deque()
 
-    def __hash__(self):
-        return hash(id(self))
-    
     def __repr__(self):
         return "<{} name={}>".format(self.__class__.__name__, self.name)

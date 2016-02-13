@@ -17,8 +17,7 @@ from rig.links import Links
 
 from spinn_partition_server.controller import JobState
 from spinn_partition_server.server import Server, main
-from spinn_partition_server.machine import Machine
-from spinn_partition_server.configuration import Configuration
+from spinn_partition_server.configuration import Configuration, Machine
 
 from spinn_partition_server import __version__
 

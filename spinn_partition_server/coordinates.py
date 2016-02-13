@@ -1,8 +1,30 @@
-"""Utilities for working with board/triad coordinates.
+r"""Utilities for working with board/triad coordinates.
 
-Boards are addressed by tuples (x, y, z) where (x, y) is the coordinate of the
-triad the board belongs to and z is the index of the board within the triad as
-follows::
+This software assumes that all machines provided to it are interconnected in a
+valid (subset of) a hexagonal torus topology. Boards locations are expressed
+in one of several forms depending on circumstance.
+
+* **Board coordinates** ``(x, y, z)`` giving the logical location of the board
+  within a hexagonal torus configuration. This is the most frequently used
+  coordinate system used by this software.
+* **Physical coordinates** ``(cabinet, frame, board)`` giving the physical
+  location of a board in a cabinet. Generally only used when dealing with board
+  power management.
+* **Ethernet chip coordinates** ``(x, y)`` giving the *chip* coordinates of the
+  Ethernet connected chip at the bottom-left coordinate of a SpiNNaker board.
+  Generally only used when relating information to a client.
+
+To deal with these coordinate systems a selection of utility functions are
+provided in the :py:mod:`spinn_partition_server.coordinates`.
+
+Board coordinates
+`````````````````
+
+Board coordinates are given as a tuple ``(x, y, z)``.
+
+Systems of SpiNNaker boards are defined in terms of 'triads' of boards. The
+figure below shows a single triad. The 'z' part of a board coordinate comes
+from the index of the board within its triad and are numbered as follows::
 
      ___
     / 2 \___
@@ -10,7 +32,8 @@ follows::
     / 0 \___/
     \___/
 
-These tile along the X axis like this::
+Larger systems are defined by replicating this pattern of triads. Triads are
+indexed along the X axis as follows::
 
      ___     ___     ___     ___
     / 2 \___/ 2 \___/ 2 \___/ 2 \___
@@ -18,19 +41,80 @@ These tile along the X axis like this::
     / 0 \___/ 0 \___/ 0 \___/ 0 \___/
     \___/   \___/   \___/   \___/
 
-And then along the Y axis like this:
+        0       1       2       3
+
+And then along the Y axis thus::
 
      ___     ___     ___     ___
     / 2 \___/ 2 \___/ 2 \___/ 2 \___
-    \___/ 1 \___/ 1 \___/ 1 \___/ 1 \
+    \___/ 1 \___/ 1 \___/ 1 \___/ 1 \   3
     / 0 \___/ 0 \___/ 0 \___/ 0 \___/
     \___/ 2 \___/ 2 \___/ 2 \___/ 2 \___
-        \___/ 1 \___/ 1 \___/ 1 \___/ 1 \
+        \___/ 1 \___/ 1 \___/ 1 \___/ 1 \   2
         / 0 \___/ 0 \___/ 0 \___/ 0 \___/
         \___/ 2 \___/ 2 \___/ 2 \___/ 2 \___
-            \___/ 1 \___/ 1 \___/ 1 \___/ 1 \
+            \___/ 1 \___/ 1 \___/ 1 \___/ 1 \   1
             / 0 \___/ 0 \___/ 0 \___/ 0 \___/
-            \___/   \___/   \___/   \___/
+            \___/ 2 \___/ 2 \___/ 2 \___/ 2 \___
+                \___/ 1 \___/ 1 \___/ 1 \___/ 1 \   0
+                / 0 \___/ 0 \___/ 0 \___/ 0 \___/
+                \___/   \___/   \___/   \___/
+
+                    0       1       2       3
+
+Physical coordinates
+````````````````````
+
+Physical coordinates are given as a tuple ``(cabinet, frame, board)``.
+
+Physical coordinates give the positions of boards within a set of cabinets
+containing several frames containing several boards. These are indexed as
+illustrated below, *starting from the top-right corner*::
+
+              2             1                0
+    Cabinet --+-------------+----------------+
+              |             |                |
+    +-------------+  +-------------+  +-------------+    Frame
+    |             |  |             |  |             |      |
+    | +---------+ |  | +---------+ |  | +---------+ |      |
+    | | : : : : | |  | | : : : : | |  | | : : : : |--------+ 0
+    | | : : : : | |  | | : : : : | |  | | : : : : | |      |
+    | +---------+ |  | +---------+ |  | +---------+ |      |
+    | | : : : : | |  | | : : : : | |  | | : : : : |--------+ 1
+    | | : : : : | |  | | : : : : | |  | | : : : : | |      |
+    | +---------+ |  | +---------+ |  | +---------+ |      |
+    | | : : : : | |  | | : : : : | |  | | : : : : |--------+ 2
+    | | : : : : | |  | | : : : : | |  | | : : : : | |      |
+    | +---------+ |  | +---------+ |  | +---------+ |      |
+    | | : : : : | |  | | : : : : | |  | | : : : : |--------+ 3
+    | | : : : : | |  | | : : : : | |  | | : : : : | |
+    | +---------+ |  | +|-|-|-|-|+ |  | +---------+ |
+    |             |  |  | | | | |  |  |             |
+    +-------------+  +--|-|-|-|-|--+  +-------------+
+                        | | | | |
+             Board -----+-+-+-+-+
+                        4 3 2 1 0
+
+A mapping from board coordinates to physical coordinates is supplied by the
+user and is unique to the machine being built. A tool such as SpiNNer_ may be
+used to generate such mappings.
+
+.. _SpiNNer: https://github.com/SpiNNakerManchester/SpiNNer
+
+
+Ethernet chip coordinates
+`````````````````````````
+
+Ethernet chip coordinates are given as a tuple ``(x, y)``.
+
+Ethernet chip coordinates give the chip coordinates of Ethernet connected chips
+at the bottom-left corner of SpiNNaker boards.
+
+Utilities
+`````````
+
+The following utilities are provided for working with the above coordinate
+systems.
 """
 
 from six import iteritems
@@ -38,7 +122,6 @@ from six import iteritems
 from rig.links import Links
 
 
-"""A lookup from (z, :py:class:`rig.links.Links`) to (dx, dy, dz)."""
 link_to_vector = {
     (0, Links.north): (0, 0, 2),
     (0, Links.north_east): (0, 0, 1),
@@ -52,6 +135,7 @@ link_to_vector = {
     (2, Links.north_east): (1, 1, -2),
     (2, Links.east): (0, 0, -1),
 }
+"""A lookup from (z, :py:class:`rig.links.Links`) to (dx, dy, dz)."""
 
 link_to_vector.update({
     (z + dz, link.opposite): (-dx, -dy, -dz)
@@ -62,9 +146,21 @@ link_to_vector.update({
 def board_down_link(x1, y1, z1, link, width, height):
     """Get the coordinates of the board down the specified link.
     
+    Parameters
+    ----------
+    x1, y1, z1 : int
+        The board coordinates from which a link will be traversed.
+    link : :py:class:`rig.links.Link`
+        The link to follow.
+    width, height : int
+        The dimensions of the system in triads.
+    
     Returns
     -------
-    x, y, z, wrapped
+    x, y, z : int
+        The coordinates of the board down the specified link.
+    wrapped : bool
+        Was the link a wrap-around link?
     """
     dx, dy, dz = link_to_vector[(z1, link)]
     
@@ -108,6 +204,40 @@ def board_to_chip(x, y, z):
         y += 8
     
     return (x, y)
+
+
+def chip_to_board(x, y):
+    """Convert an (ethernet connected) chip coordinate into a board coordinate.
+    
+    Assumes a regular torus composed of SpiNN-5 boards.
+    
+    Parameters
+    ----------
+    x, y : int
+        (Ethernet connected) chip coordinates.
+    
+    Returns
+    -------
+    x, y, z : int
+        Board coordinates.
+    """
+    # The coordinates of the chip within its triad
+    tx = x % 12
+    ty = y % 12
+    
+    x //= 12
+    y //= 12
+    
+    if tx == ty == 0:
+        z = 0
+    elif tx == 8 and ty == 4:
+        z = 1
+    elif tx == 4 and ty == 8:
+        z = 2
+    else:  # pragma: no cover
+        assert False
+    
+    return (x, y, z)
 
 
 def triad_dimensions_to_chips(w, h, torus):

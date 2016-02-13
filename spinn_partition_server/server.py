@@ -1,4 +1,8 @@
 """A TCP server which exposes a public interface for allocating boards.
+
+This module is essentially the 'top level' module for the functionality of the
+SpiNNaker Partitioning Server, containing the :py:func:`function <.main>` which
+is mapped to the ``spinn-partition-server`` command-line tool.
 """
 
 import os
@@ -21,17 +25,57 @@ from rig.links import Links
 
 from six import itervalues, iteritems
 
-from spinn_partition_server import __version__
+from spinn_partition_server import __version__, coordinates, configuration
 from spinn_partition_server.configuration import Configuration
-from spinn_partition_server.machine import Machine
 from spinn_partition_server.controller import Controller
 
 
+_COMMANDS = OrderedDict()
+"""A dictionary from command names to (unbound) methods of the
+:py:class:`.Server` class.
+"""
+
+def _command(f):
+    """Decorator which marks a class function of :py:class:`.Server` as a
+    command which may be called by a client.
+    """
+    _COMMANDS[f.__name__] = f
+    return f
+
+
 class Server(object):
+    """A TCP server which manages, power, partitioning and scheduling of jobs
+    on SpiNNaker machines.
+    
+    Once constructed the server starts a background thread
+    (:py:attr:`._server_thread`, :py:meth:`._run`) which implements the main
+    server logic and handles communication with clients, monitoring of
+    asynchronous board control events (e.g. board power-on completion) and
+    watches the config file for changes. All members of this object are assumed
+    to be accessed only from this thread while it is running. The thread is
+    stopped, and its completion awaited by calling :py:meth:`.stop_and_join`,
+    stopping the server.
+    
+    The server uses a :py:class:`~spinn_partition_server.Controller` object to
+    implement scheduling, allocation and machine management functionality. This
+    object is :py:mod:`pickled <pickle>` when the server shuts down in order to
+    preserve the state of all managed machines (e.g. allocated jobs etc.).
+    
+    To allow the interruption of the server thread on asynchronous events from
+    the Controller a :py:func:`~socket.socketpair` (:py:attr:`._notify_send`
+    and :py:attr:`._notify_send`) is used which monitored allong with client
+    connections and config file changes.
+    
+    A number of callable commands are implemented by the server in the form of
+    a subset of the :py:class:`.Server`'s methods indicated by the
+    :py:func:`._command` decorator. These may be called by a client by sending
+    a line ``{"command": "...", "args": [...], "kwargs": {...}}``. If the
+    function throws an exception, the client is disconnected. If the function
+    returns, it is packed as a JSON line ``{"return": ...}``.
+    """
     
     def __init__(self, config_filename, cold_start=False):
-        """Create a TCP server.
-        
+        """ 
         Parameters
         ----------
         config_filename : str
@@ -115,7 +159,8 @@ class Server(object):
         # of the controller (e.g. power state changes).
         self._controller.on_background_state_change = self._notify
         
-        # Read configuration file, fail if this fails first time around
+        # Read configuration file. This must succeed when the server is first
+        # being started.
         if not self._read_config_file():
             raise Exception("Config file could not be loaded.")
         
@@ -126,10 +171,25 @@ class Server(object):
         
         # Start the server
         self._server_thread.start()
-    
+
+    def _notify(self):
+        """Notify the background thread that something has happened.
+        
+        Calling this method simply wakes up the server thread causing it to
+        perform all its usual checks and processing steps.
+        """
+        self._notify_send.send(b"x")
     
     def _watch_config_file(self):
-        """Create a watch on the config file."""
+        """Create an inotify watch on the config file.
+        
+        This watch is monitored by the main server threead and if the config
+        file is changed, the config file is re-read.
+        """
+        # A one-shot watch is used since some editors cause a delete event to
+        # be produced when the file is saved, removing the watch anyway. Using
+        # a one-shot watch simplifies implementation as it requires the watch
+        # to *always* be recreated, rather than just 'sometimes'.
         self._config_inotify.add_watch(self._config_filename,
                                        inotify_flags.MODIFY |
                                        inotify_flags.ATTRIB |
@@ -145,9 +205,12 @@ class Server(object):
         """(Re-)read the server configuration.
         
         If reading of the config file fails, the current configuration is
-        retained unchanged.
+        retained, unchanged.
         
-        Returns True if reading succeded.
+        Returns
+        -------
+        bool
+            True if reading succeded, False otherwise.
         """
         try:
             with open(self._config_filename, "r") as f:
@@ -160,9 +223,9 @@ class Server(object):
         # The environment in which the configuration script is exexcuted (and
         # where the script will store its options.)
         try:
-            g = {"Configuration": Configuration,
-                 "Machine": Machine,
-                 "Links": Links}
+            g = {}
+            g.update(configuration.__dict__)
+            g.update(coordinates.__dict__)
             exec(config_script, g)
         except:
             # Executing the config file failed, don't update any settings
@@ -171,15 +234,14 @@ class Server(object):
             return False
         
         # Make sure a configuration object is specified
-        configuration = g.get("configuration", None)
-        if not isinstance(configuration, Configuration):
+        new = g.get("configuration", None)
+        if not isinstance(new, Configuration):
             logging.error("'configuration' must be a Configuration object "
                           "in config file %s", self._config_filename)
             return False
         
         # Update the configuration
         old = self._configuration
-        new = configuration
         self._configuration = new
         
         # Restart the server if the port or IP has changed (or if the server
@@ -211,7 +273,7 @@ class Server(object):
     
     
     def _close(self):
-        """Close all connections."""
+        """Close all server sockets and disconnect all client connections."""
         if self._server_socket is not None:
             self._poll.unregister(self._server_socket)
             self._server_socket.close()
@@ -219,15 +281,28 @@ class Server(object):
             self._disconnect_client(client_socket)
     
     def _disconnect_client(self, client):
-        """Disconnect a client."""
+        """Disconnect a client.
+        
+        Parameters
+        ----------
+        client : :py:class:`socket.Socket`
+        """
         logging.info("Client %s disconnected.", client.getpeername())
         
+        # Remove from the client list
         del self._client_sockets[client.fileno()]
+        
+        # Clear input buffer
         del self._client_buffers[client]
+        
+        # Clear any watches
         self._client_job_watches.pop(client, None)
         self._client_machine_watches.pop(client, None)
         
+        # Stop watching the client's socket for data
         self._poll.unregister(client)
+        
+        # Disconnect the client
         client.close()
     
     def _accept_client(self):
@@ -235,12 +310,22 @@ class Server(object):
         client, addr = self._server_socket.accept()
         logging.info("New client connected from %s", addr)
         
+        # Watch the client's socket for datat
         self._poll.register(client, select.POLLIN)
+        
+        # Keep a reference to the socket
         self._client_sockets[client.fileno()] = client
+        
+        # Create a buffer for data sent by the client
         self._client_buffers[client] = b""
     
-    def _handle_message(self, client):
-        """Handle an incomming message from a client."""
+    def _handle_commands(self, client):
+        """Handle an incomming command from a client.
+        
+        Parameters
+        ----------
+        client : :py:class:`socket.Socket`
+        """
         data = client.recv(1024)
         
         # Did the client disconnect?
@@ -248,32 +333,40 @@ class Server(object):
             self._disconnect_client(client)
             return
         
-        # Have we received a complete command?
         self._client_buffers[client] += data
+        
+        # Process any complete commands (whole lines)
         while b"\n" in self._client_buffers[client]:
-            # Handle all commands...
             line, _, self._client_buffers[client] = \
                 self._client_buffers[client].partition(b"\n")
             
             try:
                 cmd_obj = json.loads(line.decode("utf-8"))
                 
-                # Execute the command
-                ret_val = self.COMMAND_HANDLERS[cmd_obj["command"]](
+                # Execute the specified command
+                ret_val = _COMMANDS[cmd_obj["command"]](
                     self, client, *cmd_obj["args"], **cmd_obj["kwargs"])
                 
                 # Return the response
                 client.send(json.dumps({"return": ret_val}).encode("utf-8") +
                             b"\n")
             except:
+                # If any of the above fails for any reason (e.g. invalid JSON,
+                # unrecognised command, command crashes, etc.), just disconnect
+                # the client.
                 logging.exception("Client %s sent bad command %r, disconnecting",
                                   client.getpeername(), line)
                 self._disconnect_client(client)
                 return
 
     def _send_change_notifications(self):
-        """Send any registered change notifications to clients."""
-        # Notify on jobs changed
+        """Send any registered change notifications to clients.
+        
+        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}`` and
+        ``{"machines_changed": [machine_name, ...]}`` to clients who have
+        subscribed to be notified of changes to jobs or machines.
+        """
+        # Notify clients about jobs which have changed
         changed_jobs = self._controller.changed_jobs
         if changed_jobs:
             for client, jobs in iteritems(self._client_job_watches):
@@ -286,7 +379,7 @@ class Server(object):
                              list(changed_jobs.intersection(jobs))}
                         ).encode("utf-8") + b"\n")
         
-        # Notify on machines changed
+        # Notify clients about machines which have changed
         changed_machines = self._controller.changed_machines
         if changed_machines:
             for client, machines in iteritems(self._client_machine_watches):
@@ -299,41 +392,43 @@ class Server(object):
                              list(changed_machines.intersection(machines))}
                         ).encode("utf-8") + b"\n")
 
-    def _notify(self):
-        """Notify the background thread that something has happened."""
-        self._notify_send.send(b"x")
-
     def _run(self):
-        """The main server thread."""
+        """The main server thread.
+        
+        This 'infinate' loop runs in a background thread and waits for and
+        processes events such as the :py:meth:`._notify` method being called,
+        the config file changing, clients sending commands or new clients
+        connecting. It also periodically calls destroy_timed_out_jobs on the
+        controller.
+        """
         logging.info("Server running.")
         while not self._stop:
             # Wait for a connection to get opened/closed, a command to arrive,
-            # or 
+            # the config file to change or the timeout to ellapse.
             events = self._poll.poll(
                 self._configuration.timeout_check_interval)
             
-            # Check for timeouts
+            # Cull any jobs which have timed out
             self._controller.destroy_timed_out_jobs()
             
-            # Handle all network events
             for fd, event in events:
-                if fd == self._server_socket.fileno():
+                if fd == self._notify_recv.fileno():
+                    # _notify was called
+                    self._notify_recv.recv(1024)
+                elif fd == self._server_socket.fileno():
                     # New client connected
                     self._accept_client()
-                elif fd == self._notify_recv.fileno():
-                    # Event receieved
-                    self._notify_recv.recv(1024)
                 elif fd in self._client_sockets:
-                    # Incoming message from client
-                    self._handle_message(self._client_sockets[fd])
+                    # Incoming data from client
+                    self._handle_commands(self._client_sockets[fd])
                 elif fd == self._config_inotify.fd:
-                    # Config file changed
+                    # Config file changed, re-read it
                     time.sleep(0.1)
                     self._config_inotify.read()
                     self._watch_config_file()
                     self._read_config_file()
             
-            # Send pending change notifications
+            # Send any job/machine change notifications out
             self._send_change_notifications()
     
     
@@ -369,94 +464,51 @@ class Server(object):
         logging.info("Server shut down.")
     
     
+    @_command
     def version(self, client):
-        """Return server version number."""
+        """
+        Returns
+        -------
+        str
+            The server's version number."""
         return __version__
     
-    def notify_job(self, client, job_id=None):
-        """Register to be notified about a specific job ID.
-        
-        Parameters
-        ----------
-        job_id : id or None
-            A job IDs to be notified of or None if all job state changes should
-            be reported.
-        """
-        if job_id is None:
-            self._client_job_watches[client] = None
-        else:
-            if client not in self._client_job_watches:
-                self._client_job_watches[client] = set([job_id])
-            elif self._client_job_watches[client] is not None:
-                self._client_job_watches[client].add(job_id)
-            else:
-                # Client is already notified about all changes, do nothing!
-                pass
-    
-    def no_notify_job(self, client, job_id=None):
-        """Unregister to be notified about a specific job ID.
-        
-        Parameters
-        ----------
-        job_id : id or None
-            A job IDs to nolonger be notified of or None to not be notified of
-            any jobs.
-        """
-        if job_id is None:
-            del self._client_job_watches[client]
-        elif client in self._client_job_watches:
-            watches = self._client_job_watches[client]
-            if watches is not None:
-                watches.discard(job_id)
-                if len(watches) == 0:
-                    del self._client_job_watches[client]
-    
-    def notify_machine(self, client, machine_name=None):
-        """Register to be notified about a specific machine name.
-        
-        Parameters
-        ----------
-        machine_name : machine or None
-            A machine name to be notified of or None if all machine state
-            changes should be reported.
-        """
-        if machine_name is None:
-            self._client_machine_watches[client] = None
-        else:
-            if client not in self._client_machine_watches:
-                self._client_machine_watches[client] = set([machine_name])
-            elif self._client_machine_watches[client] is not None:
-                self._client_machine_watches[client].add(machine_name)
-            else:
-                # Client is already notified about all changes, do nothing!
-                pass
-    
-    def no_notify_machine(self, client, machine_name=None):
-        """Unregister to be notified about a specific machine name.
-        
-        Parameters
-        ----------
-        machine_name : name or None
-            A machine name to nolonger be notified of or None to not be notified of
-            any machines.
-        """
-        if machine_name is None:
-            del self._client_machine_watches[client]
-        elif client in self._client_machine_watches:
-            watches = self._client_machine_watches[client]
-            if watches is not None:
-                watches.discard(machine_name)
-                if len(watches) == 0:
-                    del self._client_machine_watches[client]
-    
+    @_command
     def create_job(self, client, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
         
-        This function should be called in one of the three following styles::
+        This function should be called in one of the following styles::
         
-            job_id = create_job(owner="me")            # Any single board
-            job_id = create_job(3, 2, 1, owner="me")   # Board x=3, y=2, z=1
-            job_id = create_job(4, 5, owner="me")      # Any 4x5 triads
+            # Any single (SpiNN-5) board
+            job_id = create_job(owner="me")
+            
+            # Board x=3, y=2, z=1 on the machine named "m"
+            job_id = create_job(3, 2, 1, machine="m", owner="me")
+            
+            # Any 4x5 triad segment of a machine (may or may-not be a
+            # torus/full machine)
+            job_id = create_job(4, 5, owner="me")
+            
+            # Any torus-connected (full machine) 4x2 machine
+            job_id = create_job(4, 2, require_torus=True, owner="me")
+        
+        The 'other parameters' enumerated below may be used to further restrict
+        what machines the job may be allocated onto.
+        
+        Jobs for which no suitable machines are available are immediately
+        destroyed (and the reason given).
+        
+        Once a job has been created, it must be 'kept alive' by a simple
+        watchdog_ mechanism. Jobs may be kept alive by periodically calling the
+        :py:meth:`.job_keepalive` command or by calling any other job-specific
+        command. Jobs are culled if no keep alive message is received for
+        ``keepalive`` seconds. If absolutely necessary, a job's keepalive value
+        may be set to None, disabling the keepalive mechanism.
+        
+        .. _watchdog: https://en.wikipedia.org/wiki/Watchdog_timer
+        
+        Once a job has been allocated some boards, these boards will be
+        automatically powered on and left unbooted ready for use.
         
         Parameters
         ----------
@@ -502,6 +554,7 @@ class Server(object):
         """
         return self._controller.create_job(*args, **kwargs)
     
+    @_command
     def job_keepalive(self, client, job_id):
         """Reset the keepalive timer for the specified job.
         
@@ -509,6 +562,7 @@ class Server(object):
         """
         self._controller.job_keepalive(job_id)
     
+    @_command
     def get_job_state(self, client, job_id):
         """Poll the state of a running job.
         
@@ -517,7 +571,7 @@ class Server(object):
         {"state": state, "keepalive": keepalive, "reason": reason}
             Where:
             
-            state : :py:class:`.JobState`
+            state : :py:class:`~spinn_partition_server.controller.JobState`
                 The current state of the queried job.
             keepalive : float or None
                 The Job's keepalive value: the number of seconds between
@@ -530,12 +584,13 @@ class Server(object):
         """
         return self._controller.get_job_state(job_id)._asdict()
     
+    @_command
     def get_job_machine_info(self, client, job_id):
         """Get the list of Ethernet connections to the allocated machine.
         
         Returns
         -------
-        {"width": width, "height": height,
+        {"width": width, "height": height, \
          "connections": connections, "machine_name": machine_name}
             Where:
             
@@ -562,18 +617,29 @@ class Server(object):
         return {"width": width, "height": height,
                 "connections": connections, "machine_name": machine_name}
     
+    @_command
     def power_on_job_boards(self, client, job_id):
-        """Power on (or reset if already on) boards associated with a job."""
+        """Power on (or reset if already on) boards associated with a job.
+        
+        Once called, the job will enter the 'power' state until the power state
+        change is complete, this may take some time.
+        """
         self._controller.power_on_job_boards(job_id)
     
+    @_command
     def power_off_job_boards(self, client, job_id):
-        """Power off boards associated with a job."""
+        """Power off boards associated with a job.
+        
+        Once called, the job will enter the 'power' state until the power state
+        change is complete, this may take some time.
+        """
         self._controller.power_off_job_boards(job_id)
     
+    @_command
     def destroy_job(self, client, job_id, reason=None):
         """Destroy a job.
         
-        When the job is finished, or to terminate it early, this function
+        Call when the job is finished, or to terminate it early, this function
         releases any resources consumed by the job and removes it from any
         queues.
         
@@ -585,8 +651,131 @@ class Server(object):
         """
         self._controller.destroy_job(job_id, reason)
     
+    @_command
+    def notify_job(self, client, job_id=None):
+        r"""Register to be notified about changes to a specific job ID.
+        
+        Once registered, a client will be asynchronously be sent notifications
+        form ``{"jobs_changed": [job_id, ...]}\n`` enumerating job IDs which
+        have changed. Notifications are sent when a job changes state, for
+        example when created, queued, powering on/off, powered on and
+        destroyed. The specific nature of the change is not reflected in the
+        notification.
+        
+        Parameters
+        ----------
+        job_id : int or None
+            A job ID to be notified of or None if all job state changes should
+            be reported.
+        
+        See Also
+        --------
+        no_notify_job : Stop being notified about a job.
+        notify_machine : Register to be notified about changes to machines.
+        """
+        if job_id is None:
+            self._client_job_watches[client] = None
+        else:
+            if client not in self._client_job_watches:
+                self._client_job_watches[client] = set([job_id])
+            elif self._client_job_watches[client] is not None:
+                self._client_job_watches[client].add(job_id)
+            else:
+                # Client is already notified about all changes, do nothing!
+                pass
+    
+    @_command
+    def no_notify_job(self, client, job_id=None):
+        """Stop being notified about a specific job ID.
+        
+        Once this command returns, no further notifications for the specified
+        ID will be received.
+        
+        Parameters
+        ----------
+        job_id : id or None
+            A job ID to no longer be notified of or None to not be notified of
+            any jobs. Note that if all job IDs were registered for
+            notification, this command only has an effect if the specified
+            job_id is None.
+        
+        See Also
+        --------
+        notify_job : Register to be notified about changes to a specific job.
+        """
+        if job_id is None:
+            del self._client_job_watches[client]
+        elif client in self._client_job_watches:
+            watches = self._client_job_watches[client]
+            if watches is not None:
+                watches.discard(job_id)
+                if len(watches) == 0:
+                    del self._client_job_watches[client]
+    
+    @_command
+    def notify_machine(self, client, machine_name=None):
+        r"""Register to be notified about a specific machine name.
+        
+        Once registered, a client will be asynchronously be sent notifications
+        of the form ``{"machines_changed": [machine_name, ...]}\n`` enumerating
+        machine names which have changed. Notifications are sent when a machine
+        changes state, for example when created, change, removed, allocated a
+        job or an allocated job is destroyed.
+        
+        Parameters
+        ----------
+        machine_name : machine or None
+            A machine name to be notified of or None if all machine state
+            changes should be reported.
+        
+        See Also
+        --------
+        no_notify_machine : Stop being notified about a machine.
+        notify_job : Register to be notified about changes to jobs.
+        """
+        if machine_name is None:
+            self._client_machine_watches[client] = None
+        else:
+            if client not in self._client_machine_watches:
+                self._client_machine_watches[client] = set([machine_name])
+            elif self._client_machine_watches[client] is not None:
+                self._client_machine_watches[client].add(machine_name)
+            else:
+                # Client is already notified about all changes, do nothing!
+                pass
+    
+    @_command
+    def no_notify_machine(self, client, machine_name=None):
+        """Unregister to be notified about a specific machine name.
+        
+        Once this command returns, no further notifications for the specified
+        ID will be received.
+        
+        Parameters
+        ----------
+        machine_name : name or None
+            A machine name to no longer be notified of or None to not be
+            notified of any machines. Note that if all machines were registered
+            for notification, this command only has an effect if the specified
+            machine_name is None.
+        
+        See Also
+        --------
+        notify_machine : Register to be notified about changes to a machine.
+        """
+        if machine_name is None:
+            del self._client_machine_watches[client]
+        elif client in self._client_machine_watches:
+            watches = self._client_machine_watches[client]
+            if watches is not None:
+                watches.discard(machine_name)
+                if len(watches) == 0:
+                    del self._client_machine_watches[client]
+    
+    
+    @_command
     def list_jobs(self, client):
-        """Enumerate all current jobs.
+        """Enumerate all non-destroyed jobs.
         
         Returns
         -------
@@ -611,7 +800,8 @@ class Server(object):
             "tags" is the set of tags the job was specified to require
             (value unspecified if machine is not None).
             
-            "state" is the current :py:class:`.JobState` of the job.
+            "state" is the current
+            :py:class:`~spinn_partition_server.controller.JobState` of the job.
             
             "args" and "kwargs" are the arguments to the alloc function
             which specifies the type/size of allocation requested and the
@@ -628,6 +818,7 @@ class Server(object):
             for job in self._controller.list_jobs()
         ]
     
+    @_command
     def list_machines(self, client):
         """Enumerates all machines known to the system.
         
@@ -638,17 +829,17 @@ class Server(object):
             highest (first) to lowest (last). Each machine is described by a
             dictionary with the following keys:
             
-            ``name`` is the name of the machine.
+            "name" is the name of the machine.
             
-            ``tags`` is the list ['tag', ...] of tags the machine has.
+            "tags" is the list ['tag', ...] of tags the machine has.
             
-            ``width`` and ``height`` are the dimensions of the machine in
+            "width" and "height" are the dimensions of the machine in
             triads.
             
-            ``dead_boards`` is a list([(x, y, z), ...]) giving the coordinates
+            "dead_boards" is a list([(x, y, z), ...]) giving the coordinates
             of known-dead boards.
             
-            ``dead_links`` is a list([(x, y, z, link), ...]) giving the
+            "dead_links" is a list([(x, y, z, link), ...]) giving the
             locations of known-dead links from the perspective of the sender.
             Links to dead boards may or may not be included in this list.
         """
@@ -657,25 +848,19 @@ class Server(object):
              for k, v in iteritems(machine._asdict())}
             for machine in self._controller.list_machines()
         ]
-    
-    """A dictionary from command names to (unbound) methods of this class."""
-    COMMAND_HANDLERS = {f.__name__: f for f in (version,
-                                                notify_job,
-                                                no_notify_job,
-                                                notify_machine,
-                                                no_notify_machine,
-                                                create_job,
-                                                job_keepalive,
-                                                get_job_state,
-                                                get_job_machine_info,
-                                                power_on_job_boards,
-                                                power_off_job_boards,
-                                                destroy_job,
-                                                list_jobs,
-                                                list_machines)}
 
 
 def main(args=None):
+    """Command-line launcher for the server.
+    
+    The server may be cleanly terminated using a keyboard interrupt (e.g.
+    ctrl+c).
+    
+    Parameters
+    ----------
+    args : [arg, ...]
+        The command-line arguments passed to the program.
+    """
     parser = argparse.ArgumentParser(
         description="Start a SpiNNaker machine partitioning server.")
     parser.add_argument("--version", "-V", action="version",

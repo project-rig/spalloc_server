@@ -4,7 +4,7 @@ import threading
 
 from collections import deque
 
-from spinn_partition_server.machine import Machine
+from spinn_partition_server.configuration import Machine
 from spinn_partition_server.controller import Controller
 
 

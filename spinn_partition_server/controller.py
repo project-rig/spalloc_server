@@ -1,5 +1,5 @@
-"""A high-level control interface for allocating and managing large SpiNNaker
-machines.
+"""A high-level control interface for scheduling and allocating jobs and
+managing hardware in a collection of SpiNNaker machines.
 """
 
 import threading
@@ -23,17 +23,57 @@ from spinn_partition_server.async_bmp_controller import AsyncBMPController
 
 
 class Controller(object):
-    """An object which allocates jobs to machines and manages said machines.
+    """An object which allocates jobs to machines and manages said machines'
+    hardware.
     
     This object is intended to form the core of a server which manages the
-    queueing and execution of jobs on several SpiNNaker machines at once. It is
-    designed with the intention 
+    queueing and execution of jobs on several SpiNNaker machines at once using
+    a :py:class:`~spinn_partition_server.job_queue.JobQueue` and interacts with
+    the hardware of said machines using
+    :py:class:`~spinn_partition_server.async_bmp_controller.AsyncBMPController`.
+    
+    'Jobs' may be created using the :py:meth:`.create_job` and are allocated a
+    unique ID. Jobs are then queued, allocated and destroyed according to
+    machine availability and user intervention. The state of a job may be
+    queried using methods such as :py:meth:`.get_job_state`. When a job changes
+    state it is added to the :py:attr:`.changed_jobs` set. If a job's state is
+    changed due to a background process (rather than in response to calling a
+    :py:class:`.Controller` method), :py:attr:`.on_background_state_change` is
+    called.
+    
+    :py:class:`~spinn_partition_server.job_queue.JobQueue` calls callbacks in
+    this object when queued jobs are allocated to machines
+    (:py:meth:`._job_queue_on_allocate`), allocations are freed
+    (:py:meth:`._job_queue_on_free`) or cancelled without being allocated
+    (:py:meth:`._job_queue_on_cancel`). These callback functions implement the
+    bulk of the functionality of this object by recording state changes in
+    jobs and triggering the sending of power/link commands to SpiNNaker
+    machines.
+    
+    Machines may be added, modified and removed at any time by modifying the
+    :py:attr:`.machines` attribute. If a machine is removed or changes
+    significantly, jobs running on the machine are cancelled, otherwise
+    existing jobs should continue to execute or be scheduled on any new
+    machines as appropriate.
+    
+    Finally, once the controller is shut down (and outstanding BMP commands are
+    flushed) using :py:meth:`.stop` and :py:meth:`.join` methods, it may be
+    :py:mod:`pickled <pickle>` and later unpickled to resume operation of the
+    controller from where it left off before it was shut down.
+    
+    Users should, at a regular interval call :py:meth:`.destroy_timed_out_jobs`
+    in order to destroy any queued or running jobs which have not been kept
+    alive recently enough.
+    
+    Unless otherwise indicated, all methods are thread safe.
     
     Attributes
     ----------
     max_retired_jobs : int
         Maximum number of retired jobs to retain the state of.
-    machines : {name: :py:class:`.Machine`, ...} or similar OrderedDict
+    machines : {name: \
+            :py:class:`~spinn_partition_server.configuration.Machine`, ...} \
+            or similar OrderedDict
         Defines the machines now available to the controller.
     changed_jobs : set([job_id, ...])
         The set of job_ids whose state has changed since the last time this set
@@ -57,8 +97,7 @@ class Controller(object):
     
     def __init__(self, next_id=1, max_retired_jobs=1200,
                  on_background_state_change=None):
-        """Create a new controller.
-        
+        """
         Parameters
         ----------
         next_id : int
@@ -115,7 +154,8 @@ class Controller(object):
     def __getstate__(self):
         """Called when pickling this object.
         
-        This object may only be pickled once .stop() and .join() have returned.
+        This object may only be pickled once :py:meth:`.stop` and
+        :py:meth:`.join` have returned.
         """
         state = self.__dict__.copy()
         
@@ -129,16 +169,27 @@ class Controller(object):
         return state
     
     def __setstate__(self, state):
-        """Called when unpickling this object."""
+        """Called when unpickling this object.
+        
+        Note that though the object must be pickled when stopped, the unpickled
+        object will start running immediately.
+        """
         self.__dict__.update(state)
         self._init_dynamic_state()
     
     def stop(self):
         """Request that all background threads stop.
         
-        The controller should no longer be used after calling this method.
+        This will cause all outstanding BMP commands to be flushed.
         
-        Use .join to wait for the threads to actually terminate.
+        .. warning::
+            
+            Apart from :py:meth:`.join`, no methods of this controller object
+            may be called once this method has been called.
+        
+        See Also
+        --------
+        join: to wait for the threads to actually terminate.
         """
         with self._lock:
             # Stop the BMP controllers
@@ -146,12 +197,8 @@ class Controller(object):
                 self._destroy_machine_bmp_controllers(machine)
     
     def join(self):
-        """Block until all background threads have halted.
-        
-        .. warning::
-            
-            When using this function, no functions of the controller may be
-            called between the stop() call and join() may be made.
+        """Block until all background threads have halted and all queued BMP
+        commands completed.
         """
         # Wait for the BMP controller threads
         for controllers in itervalues(self._bmp_controllers):
@@ -204,7 +251,9 @@ class Controller(object):
         
         Parameters
         ----------
-        machines : {name: :py:class:`.Machine`, ...} or similar OrderedDict
+        machines : {name: \
+                :py:class:`~spinn_partition_server.configuration.Machine`, \
+                ...} or similar OrderedDict
             Defines the machines now available to the controller.
         """
         with self._lock:
@@ -308,11 +357,11 @@ class Controller(object):
     def create_job(self, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
         
-        This function should be called in one of the three following styles::
-        
-            job_id = c.create_job(owner="me")            # Any single board
-            job_id = c.create_job(3, 2, 1, owner="me")   # Board x=3, y=2, z=1
-            job_id = c.create_job(4, 5, owner="me")      # Any 4x5 triads
+        This function is a wrapper around
+        :py:meth:`JobQueue.create_job()
+        <spinn_partition_server.job_queue.JobQueue.create_job>` which
+        automatically selects (and returns) a new job_id. As such, the
+        following *additional* (keyword) arguments are accepted:
         
         Parameters
         ----------
@@ -323,38 +372,10 @@ class Controller(object):
             a query on this job before it is automatically destroyed. If None,
             no timeout is used. (Default: 60.0)
         
-        Other Parameters
-        ----------------
-        machine : str or None
-            *Optional.* Specify the name of a machine which this job must be
-            executed on. If None, the first suitable machine available will be
-            used, according to the tags selected below. Must be None when tags
-            are given. (Default: None)
-        tags : set([str, ...]) or None
-            *Optional.* The set of tags which any machine running this job must
-            have. If None is supplied, only machines with the "default" tag
-            will be used. If machine is given, this argument must be None.
-            (Default: None)
-        max_dead_boards : int or None
-            The maximum number of broken or unreachable boards to allow in the
-            allocated region. If None, any number of dead boards is permitted,
-            as long as the board on the bottom-left corner is alive (Default:
-            None).
-        max_dead_links : int or None
-            The maximum number of broken links allow in the allocated region.
-            When require_torus is True this includes wrap-around links,
-            otherwise peripheral links are not counted.  If None, any number of
-            broken links is allowed. (Default: None).
-        require_torus : bool
-            If True, only allocate blocks with torus connectivity. In general
-            this will only succeed for requests to allocate an entire machine
-            (when the machine is otherwise not in use!). Must be False when
-            allocating boards. (Default: False)
-        
         Returns
         -------
-        int
-            The job ID given to the newly allocated job.
+        job_id : int
+            The Job ID assigned to the job.
         """
         with self._lock:
             # Extract non-allocator arguments
@@ -751,30 +772,33 @@ class Controller(object):
     
 
 class JobState(IntEnum):
+    """All the possible states that a job may be in."""
     
-    # The job ID requested was not recognised
     unknown = 0
+    """The job ID requested was not recognised"""
     
-    # The job is waiting in a queue for a suitable machine
     queued = 1
+    """The job is waiting in a queue for a suitable machine"""
     
-    # The boards allocated to the job are currently being powered on or powered
-    # off.
     power = 2
+    """The boards allocated to the job are currently being powered on or
+    powered off.
+    """
     
-    # The job has been allocated boards and the boards are not currently
-    # powering on or powering off.
     ready = 3
+    """The job has been allocated boards and the boards are not currently
+    powering on or powering off.
+    """
     
-    # The job has been destroyed
     destroyed = 4
+    """The job has been destroyed"""
 
 class JobStateTuple(namedtuple("JobStateTuple",
                                "state,keepalive,reason")):
     """Tuple describing the state of a particular job, returned by
-    get_job_state.
+    :py:meth:`.Controller.get_job_state`.
     
-    Attributes
+    Parameters
     ----------
     state : :py:class:`.JobState`
         The current state of the queried job.
@@ -790,9 +814,9 @@ class JobStateTuple(namedtuple("JobStateTuple",
 class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
                                      "width,height,connections,machine_name")):
     """Tuple describing the machine alloated to a job, returned by
-    get_job_machine_info.
+    :py:meth:`.Controller.get_job_machine_info`.
     
-    Attributes
+    Parameters
     ----------
     width, height : int or None
         The dimensions of the machine in *chips* or None if no machine
@@ -808,76 +832,102 @@ class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
 class JobTuple(namedtuple("JobTuple",
                           "job_id,owner,start_time,keepalive,state,"
                           "args, kwargs, allocated_machine_name, boards")):
-    """Tuple describing a job in the list of jobs returned by list_jobs.
+    """Tuple describing a job in the list of jobs returned by
+    :py:meth:`.Controller.list_jobs`.
     
-    Attributes
+    Parameters
     ----------
-    job_id
+    job_id : int
         The ID of the job.
-    
-    owner
+    owner : str
         The string giving the name of the Job's owner.
-    
-    start_time
-        The time the job was created.
-    
-    keepalive
+    start_time : float
+        The time the job was created (Unix time)
+    keepalive : float or None
         The maximum time allowed between queries for this job before it is
         automatically destroyed (or None if the job can remain allocated
         indefinitely).
-    
-    machine
+    machine : str or None
         The name of the machine the job was specified to run on (or None if not
         specified).
-    
-    tags
+    tags : set(['tag', ...])
         The set of tags the job was specified to require (value unspecified if
         machine is not None).
-    
-    state
-        The current :py:class:`.JobState` of the job.
-    
+    state : :py:class:`.JobState`
+        The current state of the job.
     args, kwargs
         The arguments to the alloc function which specifies the type/size of
         allocation requested and the restrictions on dead boards, links and
         torus connectivity.
-    
-    allocated_machine_name
+    allocated_machine_name : str or None
         The name of the machine the job has been allocated to run on (or None
         if not allocated yet).
-    
-    boards
-        The set([(x, y, z), ...]) of boards allocated to the job.
+    boards : set([(x, y, z), ...])
+        The boards allocated to the job.
     """
 
 class MachineTuple(namedtuple("MachineTuple",
                               "name,tags,width,height,"
                               "dead_boards,dead_links")):
     """Tuple describing a machine in the list of machines returned by
-    list_machines.
+    :py:meth:`.Controller.list_machines`.
     
-    Attributes
+    Parameters
     ----------
-    name
+    name : str
         The name of the machine.
-    
-    tags
-        The set(['tag', ...]) of tags the machine has.
-    
-    width and height
+    tags : set(['tag', ...])
+        The tags the machine has.
+    width, height : int
         The dimensions of the machine in triads.
-    
-    dead_boards
-        A set([(x, y, z), ...]) giving the coordinates of known-dead boards.
-    
-    dead_links
-        A set([(x, y, z, links), ...]) giving the locations of known-dead links
-        from the perspective of the sender.  Links to dead boards may or may
-        not be included in this list.
+    dead_boards : set([(x, y, z), ...])
+        The coordinates of known-dead boards.
+    dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        The locations of known-dead links from the perspective of the sender.
+        Links to dead boards may or may not be included in this list.
     """
 
 class _Job(object):
-    """The metadata for a job."""
+    """The metadata, used internally, associated with a non-destroyed job.
+    
+    Attributes
+    ----------
+    id : int
+        The ID of the job.
+    owner : str
+        The job's owner.
+    start_time : float
+        The time the job was created (Unix time)
+    keepalive : float or None
+        The maximum time allowed between queries for this job before it is
+        automatically destroyed (or None if the job can remain allocated
+        indefinitely).
+    keepalive_until : float or None
+        The time at which this job will become timed out (or None if no
+        timeout required).
+    state : :py:class:`.JobState`
+        The current state of the job.
+    args, kwargs
+        The arguments to the alloc function which specifies the type/size of
+        allocation requested and the restrictions on dead boards, links and
+        torus connectivity.
+    allocated_machine : \
+            :py:class:`spinn_partition_server.configuration.Machine` or None
+        The machine the job has been allocated to run on (or None if not
+        allocated yet).
+    boards : set([(x, y, z), ...]) or None
+        The boards allocated to the job or None if not allocated.
+    periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...]) or None
+        The links around the periphery of the job or None if not allocated.
+    torus : bool or None
+        Does the allocated set of boards have wrap-around links? None if
+        not allocated.
+    bmp_requests_until_ready : int
+        A counter incremented whenever a BMP command is started and
+        decremented when the command completes. When this counter reaches
+        zero, the user sets the state of the job to
+        :py:class:`.JobState.ready`.
+    """
     
     def __init__(self, id, owner,
                  start_time=None,
@@ -889,6 +939,7 @@ class _Job(object):
                  periphery=None,
                  torus=None,
                  bmp_requests_until_ready=0):
+        
         self.id = id
         
         self.owner = owner
