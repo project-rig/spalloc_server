@@ -5,8 +5,8 @@ managed.  Configuration files are Python scripts which define a global
 
 .. note::
     
-    Everything in :py:mod:`spinn_partition_server.configuration` and
-    :py:mod:`spinn_partition_server.coordinates` modules is implicitly imported
+    Everything in :py:mod:`spalloc_server.configuration` and
+    :py:mod:`spalloc_server.coordinates` modules is implicitly imported
     into the namespace of the config file.
 
 A minimal (though useless) configuration file would look like so::
@@ -23,7 +23,7 @@ Machines are defined using :py:class:`.Machine` objects. These specify the
 dimensions, broken boards and links, physical layout and IP addresses of a
 SpiNNaker machine. All machines are presumed to be interconnected in a valid
 hexagonal torus topology constructed from a rectangular array of triads of
-boards. (See also :py:mod:`spinn_partition_server.coordinates` for details of
+boards. (See also :py:mod:`spalloc_server.coordinates` for details of
 the coordinate systems used when referring to boards.)
 
 Defining Machines
@@ -61,7 +61,7 @@ standard IP addressing scheme. These may be used together like so::
 
 If neither of the above convenience functions apply to your machine, you can
 also explicitly define your machine's parameters. (Be sure to read about the
-:py:mod:`~spinn_partition_server.coordinates` used when referring to boards.)
+:py:mod:`~spalloc_server.coordinates` used when referring to boards.)
 For example, a desktop 3-board machine may look something like::
 
     m = Machine(name="my-three-board-machine", 
@@ -101,7 +101,7 @@ from itertools import chain
 
 from six import iteritems, itervalues
 
-from spinn_partition_server.coordinates import chip_to_board
+from spalloc_server.coordinates import chip_to_board
 
 
 class Configuration(namedtuple("Configuration",

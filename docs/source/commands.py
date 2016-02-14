@@ -11,8 +11,8 @@ from six import iteritems
 from functools import wraps
 from inspect import getargspec, formatargspec
 
-from spinn_partition_server.server import _COMMANDS
-from spinn_partition_server.controller import JobState as _JobState
+from spalloc_server.server import _COMMANDS
+from spalloc_server.controller import JobState as _JobState
 
 ################################################################################
 # Document commands
@@ -37,7 +37,7 @@ for name, f in iteritems(_COMMANDS):
         name, formatargspec(*argspec),
         f.__doc__\
             .replace(":py:meth:`.", ":py:func:`.") \
-            .replace("`~spinn_partition_server.controller.JobState", "`.JobState")
+            .replace("`~spalloc_server.controller.JobState", "`.JobState")
     )
 
 
@@ -55,7 +55,7 @@ Number  State
 ======  =====
 """
 for state in _JobState:
-    JobState.__doc__ += ("{:<6}  :py:attr:`{} <spinn_partition_server.controller.JobState.{}>`\n".format(
+    JobState.__doc__ += ("{:<6}  :py:attr:`{} <spalloc_server.controller.JobState.{}>`\n".format(
         int(state),
         state.name, state.name))
 JobState.__doc__ += """

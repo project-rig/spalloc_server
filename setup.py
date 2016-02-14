@@ -1,17 +1,17 @@
 from setuptools import setup, find_packages
 
-with open("spinn_partition_server/version.py", "r") as f:
+with open("spalloc_server/version.py", "r") as f:
     exec(f.read())
 
 setup(
-    name="spinn_partition_server",
+    name="spalloc_server",
     version=__version__,
     packages=find_packages(),
 
     # Metadata for PyPi
     url="https://github.com/project-rig/spinn_partition",
     author="Jonathan Heathcote",
-    description="A tool for partitioning large SpiNNaker machines into smaller ones on demand.",
+    description="A tool for partitioning and allocating large SpiNNaker machines into smaller ones on demand.",
     license="GPLv2",
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -39,8 +39,8 @@ setup(
     # Scripts
     entry_points={
         "console_scripts": [
-            "spinn-partition-server = spinn_partition_server.server:main",
-            "spinn_partition_server = spinn_partition_server.server:main",
+            "spalloc-server = spalloc_server.server:main",
+            "spalloc_server = spalloc_server.server:main",
         ],
     }
 )

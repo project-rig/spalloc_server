@@ -7,7 +7,7 @@ from enum import Enum
 
 from six import iteritems, itervalues
 
-from spinn_partition_server.allocator import Allocator
+from spalloc_server.allocator import Allocator
 
 
 class JobQueue(object):
@@ -16,7 +16,7 @@ class JobQueue(object):
     
     For every :py:class:`._Machine` being managed this object contains a queue
     of outstanding jobs and an
-    :py:class:`spinn_partition_server.allocator.Allocator` which manages
+    :py:class:`spalloc_server.allocator.Allocator` which manages
     allocation of jobs onto that machine. A simplistic scheduling mechanism is
     used (see :py:meth:`._enqueue_job`) which simultaneously enqueues any jobs
     which cannot be immediately allocated to a machine to the queues of all
@@ -362,7 +362,7 @@ class JobQueue(object):
         this eventuality. If no callbacks are produced the job has been queued.
         
         This function is a thin wrapper around
-        :py:meth:`spinn_partition_server.allocator.Allocator.alloc` and thus
+        :py:meth:`spalloc_server.allocator.Allocator.alloc` and thus
         accepts all arguments it accepts plus those named below.
         
         Parameters
@@ -487,7 +487,7 @@ class _Machine(object):
     tags : set([str, ...])
         The set of tags the machine has. For a job to be allocated on a machine
         all of its tags must also be tags of the machine.
-    allocator : :py:class:`spinn_partition_server.allocator.Allocator`
+    allocator : :py:class:`spalloc_server.allocator.Allocator`
         An allocator for boards in this machine.
     queue : deque([:py:class:`._Job`, ...])
         A queue for jobs tentatively scheduled for this machine. Note that a

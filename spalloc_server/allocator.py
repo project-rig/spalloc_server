@@ -11,8 +11,8 @@ from six import next
 
 from rig.links import Links
 
-from spinn_partition_server.pack_tree import PackTree
-from spinn_partition_server.coordinates import board_down_link
+from spalloc_server.pack_tree import PackTree
+from spalloc_server.coordinates import board_down_link
 
 
 class Allocator(object):
@@ -20,16 +20,16 @@ class Allocator(object):
     larger, possibly faulty, toroidal machine.
     
     Internally this object uses a
-    :py:class:`spinn_partition_server.pack_tree.PackTree` to allocate
+    :py:class:`spalloc_server.pack_tree.PackTree` to allocate
     rectangular blocks of triads in a machine. A :py:class:`._CandidateFilter`
     to restrict the allocations made by
-    :py:class:`~spinn_partition_server.pack_tree.PackTree` to those which match
+    :py:class:`~spalloc_server.pack_tree.PackTree` to those which match
     the needs of the user (e.g. specific connectivity requirements).
     
     The allocator can allocate either rectangular blocks of triads or
     individual boards. When allocating individual boards, the allocator
     allocates a 1x1 triad block from the
-    :py:class:`~spinn_partition_server.pack_tree.PackTree` and returns one of
+    :py:class:`~spalloc_server.pack_tree.PackTree` and returns one of
     the boards from that block. Subsequent single-board allocations will use up
     spare boards left in triads allocated for single-board allocations before
     allocating new 1x1 triads.

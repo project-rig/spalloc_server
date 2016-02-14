@@ -6,7 +6,7 @@ from mock import Mock, call
 
 import threading
 
-from spinn_partition_server.async_bmp_controller import AsyncBMPController
+from spalloc_server.async_bmp_controller import AsyncBMPController
 
 from rig.links import Links
 

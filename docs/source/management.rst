@@ -6,7 +6,7 @@ Installation and Requirements
 
 The server and its dependencies can be installed from PyPI like so::
 
-    $ pip install spinn_partition_server
+    $ pip install spalloc_server
 
 The server is currently only compatible with Linux due to its use of the
 :py:func:`~select.poll` system call and inotify subsystem.
@@ -17,11 +17,11 @@ Operation
 
 The SpiNNaker partitioning server is started like so::
 
-    $ spinn-partition-server configfile.cfg
+    $ spalloc_server configfile.cfg
 
 The server is configured by a configuration file whose name is supplied as the
 first command-line argument. See the :py:mod:`section below
-<spinn_partition_server.configuration>` for an overview of the config file
+<spalloc_server.configuration>` for an overview of the config file
 format. If the config file is modified while the server is running the new
 configuration will be loaded on-the-fly and, when possible, running jobs will
 continue to execute without interruption and queued jobs will automatically be
@@ -56,7 +56,7 @@ running for a few minutes before being finally shut down.
 Configuration file format
 -------------------------
 
-.. automodule:: spinn_partition_server.configuration
+.. automodule:: spalloc_server.configuration
     :members:
     :private-members:
     :special-members:
@@ -64,6 +64,6 @@ Configuration file format
 Coordinate systems
 ------------------
 
-.. automodule:: spinn_partition_server.coordinates
+.. automodule:: spalloc_server.coordinates
     :members:
     :special-members:

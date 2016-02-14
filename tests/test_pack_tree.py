@@ -4,7 +4,7 @@ from mock import Mock
 
 import random
 
-from spinn_partition_server.pack_tree import PackTree, FreeError
+from spalloc_server.pack_tree import PackTree, FreeError
 
 def test_constructor():
     p = PackTree(1, 2, 3, 4)

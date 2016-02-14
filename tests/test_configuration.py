@@ -3,7 +3,7 @@ import pytest
 import tempfile
 import os
 
-from spinn_partition_server.configuration import \
+from spalloc_server.configuration import \
     Configuration, Machine, board_locations_from_spinner
 
 from rig.links import Links

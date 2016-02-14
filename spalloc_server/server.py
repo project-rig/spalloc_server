@@ -2,7 +2,7 @@
 
 This module is essentially the 'top level' module for the functionality of the
 SpiNNaker Partitioning Server, containing the :py:func:`function <.main>` which
-is mapped to the ``spinn-partition-server`` command-line tool.
+is mapped to the ``spalloc-server`` command-line tool.
 """
 
 import os
@@ -25,9 +25,9 @@ from rig.links import Links
 
 from six import itervalues, iteritems
 
-from spinn_partition_server import __version__, coordinates, configuration
-from spinn_partition_server.configuration import Configuration
-from spinn_partition_server.controller import Controller
+from spalloc_server import __version__, coordinates, configuration
+from spalloc_server.configuration import Configuration
+from spalloc_server.controller import Controller
 
 
 _COMMANDS = OrderedDict()
@@ -56,7 +56,7 @@ class Server(object):
     stopped, and its completion awaited by calling :py:meth:`.stop_and_join`,
     stopping the server.
     
-    The server uses a :py:class:`~spinn_partition_server.Controller` object to
+    The server uses a :py:class:`~spalloc_server.Controller` object to
     implement scheduling, allocation and machine management functionality. This
     object is :py:mod:`pickled <pickle>` when the server shuts down in order to
     preserve the state of all managed machines (e.g. allocated jobs etc.).
@@ -571,7 +571,7 @@ class Server(object):
         {"state": state, "keepalive": keepalive, "reason": reason}
             Where:
             
-            state : :py:class:`~spinn_partition_server.controller.JobState`
+            state : :py:class:`~spalloc_server.controller.JobState`
                 The current state of the queried job.
             keepalive : float or None
                 The Job's keepalive value: the number of seconds between
@@ -801,7 +801,7 @@ class Server(object):
             (value unspecified if machine is not None).
             
             "state" is the current
-            :py:class:`~spinn_partition_server.controller.JobState` of the job.
+            :py:class:`~spalloc_server.controller.JobState` of the job.
             
             "args" and "kwargs" are the arguments to the alloc function
             which specifies the type/size of allocation requested and the

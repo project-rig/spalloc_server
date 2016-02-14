@@ -87,7 +87,7 @@ autodoc_member_order = "bysource"
 # built documents.
 #
 # The short X.Y version.
-from spinn_partition_server import __version__ as version
+from spalloc_server import __version__ as version
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -138,11 +138,11 @@ intersphinx_mapping = {'python': ('http://docs.python.org/3', None),
 
 import inspect
 
-import spinn_partition_server
+import spalloc_server
 
-local_module_path = spinn_partition_server.__file__
-github_module_path = "spinn_partition_server/"
-github_repo = "project-rig/spinn_partition_server"
+local_module_path = spalloc_server.__file__
+github_module_path = "spalloc_server/"
+github_repo = "project-rig/spalloc_server"
 
 def linkcode_resolve(domain, info):
     """Determine the URL corresponding to Python object on GitHub
@@ -177,8 +177,8 @@ def linkcode_resolve(domain, info):
     if not file_name:
         return None
 
-    # Convert the filename into a path relative to the spinn_partition_server
-    # module top-level
+    # Convert the filename into a path relative to the spalloc_server module
+    # top-level
     file_name = os.path.relpath(file_name, start=os.path.dirname(local_module_path))
 
     # Get the line number range that object lives on
@@ -284,7 +284,7 @@ html_static_path = ['_static']
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'spinn_partition_server_doc'
+htmlhelp_basename = 'spalloc_server_doc'
 
 
 # -- Options for LaTeX output ---------------------------------------------

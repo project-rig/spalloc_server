@@ -16,10 +16,10 @@ from six import itervalues, iteritems
 
 import time
 
-from spinn_partition_server.coordinates import \
+from spalloc_server.coordinates import \
     board_to_chip, triad_dimensions_to_chips
-from spinn_partition_server.job_queue import JobQueue
-from spinn_partition_server.async_bmp_controller import AsyncBMPController
+from spalloc_server.job_queue import JobQueue
+from spalloc_server.async_bmp_controller import AsyncBMPController
 
 
 class Controller(object):
@@ -28,9 +28,9 @@ class Controller(object):
     
     This object is intended to form the core of a server which manages the
     queueing and execution of jobs on several SpiNNaker machines at once using
-    a :py:class:`~spinn_partition_server.job_queue.JobQueue` and interacts with
+    a :py:class:`~spalloc_server.job_queue.JobQueue` and interacts with
     the hardware of said machines using
-    :py:class:`~spinn_partition_server.async_bmp_controller.AsyncBMPController`.
+    :py:class:`~spalloc_server.async_bmp_controller.AsyncBMPController`.
     
     'Jobs' may be created using the :py:meth:`.create_job` and are allocated a
     unique ID. Jobs are then queued, allocated and destroyed according to
@@ -41,7 +41,7 @@ class Controller(object):
     :py:class:`.Controller` method), :py:attr:`.on_background_state_change` is
     called.
     
-    :py:class:`~spinn_partition_server.job_queue.JobQueue` calls callbacks in
+    :py:class:`~spalloc_server.job_queue.JobQueue` calls callbacks in
     this object when queued jobs are allocated to machines
     (:py:meth:`._job_queue_on_allocate`), allocations are freed
     (:py:meth:`._job_queue_on_free`) or cancelled without being allocated
@@ -72,7 +72,7 @@ class Controller(object):
     max_retired_jobs : int
         Maximum number of retired jobs to retain the state of.
     machines : {name: \
-            :py:class:`~spinn_partition_server.configuration.Machine`, ...} \
+            :py:class:`~spalloc_server.configuration.Machine`, ...} \
             or similar OrderedDict
         Defines the machines now available to the controller.
     changed_jobs : set([job_id, ...])
@@ -252,7 +252,7 @@ class Controller(object):
         Parameters
         ----------
         machines : {name: \
-                :py:class:`~spinn_partition_server.configuration.Machine`, \
+                :py:class:`~spalloc_server.configuration.Machine`, \
                 ...} or similar OrderedDict
             Defines the machines now available to the controller.
         """
@@ -359,7 +359,7 @@ class Controller(object):
         
         This function is a wrapper around
         :py:meth:`JobQueue.create_job()
-        <spinn_partition_server.job_queue.JobQueue.create_job>` which
+        <spalloc_server.job_queue.JobQueue.create_job>` which
         automatically selects (and returns) a new job_id. As such, the
         following *additional* (keyword) arguments are accepted:
         
@@ -912,7 +912,7 @@ class _Job(object):
         allocation requested and the restrictions on dead boards, links and
         torus connectivity.
     allocated_machine : \
-            :py:class:`spinn_partition_server.configuration.Machine` or None
+            :py:class:`spalloc_server.configuration.Machine` or None
         The machine the job has been allocated to run on (or None if not
         allocated yet).
     boards : set([(x, y, z), ...]) or None

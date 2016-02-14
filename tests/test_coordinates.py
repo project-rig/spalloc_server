@@ -2,7 +2,7 @@ import pytest
 
 from rig.links import Links
 
-from spinn_partition_server.coordinates import \
+from spalloc_server.coordinates import \
     link_to_vector, board_down_link, board_to_chip, chip_to_board, \
     triad_dimensions_to_chips
 

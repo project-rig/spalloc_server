@@ -15,7 +15,7 @@ in one of several forms depending on circumstance.
   Generally only used when relating information to a client.
 
 To deal with these coordinate systems a selection of utility functions are
-provided in the :py:mod:`spinn_partition_server.coordinates`.
+provided in the :py:mod:`spalloc_server.coordinates`.
 
 Board coordinates
 `````````````````

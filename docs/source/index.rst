@@ -1,5 +1,5 @@
-SpiNNaker Partitioning Server (``spinn_partition_server``)
-==========================================================
+SpiNNaker Machine Partitioning and Allocation Server (``spalloc_server``)
+=========================================================================
 
 The SpiNNaker Partitioning Server is a Python program built on Rig_ designed to
 facilitate the sharing and partitioning of large SpiNNaker_ machines.
