@@ -438,20 +438,23 @@ class Controller(object):
             if job is not None:
                 # Job is live
                 state = job.state
+                power = job.power
                 keepalive = job.keepalive
                 reason = None
             elif job_id in self._retired_jobs:
                 # Job has been destroyed at some point
                 state = JobState.destroyed
+                power = None
                 keepalive = None
                 reason = self._retired_jobs[job_id]
             else:
                 # Job ID not recognised
                 state = JobState.unknown
+                power = None
                 keepalive = None
                 reason = None
 
-            return JobStateTuple(state, keepalive, reason)
+            return JobStateTuple(state, power, keepalive, reason)
 
     def get_job_machine_info(self, job_id):
         """Get information about the machine the job has been allocated.
@@ -562,8 +565,8 @@ class Controller(object):
 
                 job_list.append(JobTuple(
                     job.id, job.owner, job.start_time, job.keepalive,
-                    job.state, job.args, kwargs, allocated_machine_name,
-                    job.boards))
+                    job.state, job.power, job.args, kwargs,
+                    allocated_machine_name, job.boards))
 
             return job_list
 
@@ -672,6 +675,7 @@ class Controller(object):
 
             # Update job state
             job.state = JobState.power
+            job.power = power
             self._changed_jobs.add(job.id)
 
     def _job_queue_on_allocate(self, job_id, machine_name, boards,
@@ -777,7 +781,7 @@ class JobState(IntEnum):
 
 
 class JobStateTuple(namedtuple("JobStateTuple",
-                               "state,keepalive,reason")):
+                               "state,power,keepalive,reason")):
     """Tuple describing the state of a particular job, returned by
     :py:meth:`.Controller.get_job_state`.
 
@@ -785,6 +789,10 @@ class JobStateTuple(namedtuple("JobStateTuple",
     ----------
     state : :py:class:`.JobState`
         The current state of the queried job.
+    power : bool or None
+        If job is in the ready or power states, indicates whether the boards
+        are power{ed,ing} on (True), or power{ed,ing} off (False). In other
+        states, this value is None.
     keepalive : float or None
         The Job's keepalive value: the number of seconds between queries
         about the job before it is automatically destroyed. None if no
@@ -821,8 +829,8 @@ class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
 
 
 class JobTuple(namedtuple("JobTuple",
-                          "job_id,owner,start_time,keepalive,state,"
-                          "args, kwargs, allocated_machine_name, boards")):
+                          "job_id,owner,start_time,keepalive,state,power,"
+                          "args,kwargs,allocated_machine_name,boards")):
     """Tuple describing a job in the list of jobs returned by
     :py:meth:`.Controller.list_jobs`.
 
@@ -843,6 +851,10 @@ class JobTuple(namedtuple("JobTuple",
         specified).
     state : :py:class:`.JobState`
         The current state of the job.
+    power : bool or None
+        If job is in the ready or power states, indicates whether the boards
+        are power{ed,ing} on (True), or power{ed,ing} off (False). In other
+        states, this value is None.
     args, kwargs
         The arguments to the alloc function which specifies the type/size of
         allocation requested and the restrictions on dead boards, links and
@@ -903,6 +915,10 @@ class _Job(object):
         timeout required).
     state : :py:class:`.JobState`
         The current state of the job.
+    power : bool or None
+        If job is in the ready or power states, indicates whether the boards
+        are power{ed,ing} on (True), or power{ed,ing} off (False). In other
+        states, this value is None.
     args, kwargs
         The arguments to the alloc function which specifies the type/size of
         allocation requested and the restrictions on dead boards, links and
@@ -929,6 +945,7 @@ class _Job(object):
                  start_time=None,
                  keepalive=60.0,
                  state=JobState.queued,
+                 power=None,
                  args=tuple(), kwargs={},
                  allocated_machine=None,
                  boards=None,
@@ -952,6 +969,9 @@ class _Job(object):
 
         # The current life-cycle state of the job
         self.state = state
+        
+        # False
+        self.power = power
 
         # Arguments for the allocator
         self.args = args

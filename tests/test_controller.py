@@ -378,7 +378,7 @@ def test_create_job(conn, m):
     job_id3 = conn.create_job(2, 2, owner="me")
     assert job_id1 != job_id3 and job_id2 != job_id3
     assert conn.get_job_state(job_id3).state is JobState.destroyed
-    assert conn.get_job_state(job_id3)[2] \
+    assert conn.get_job_state(job_id3).reason \
         == "Cancelled: No suitable machines available."
 
 
@@ -406,7 +406,7 @@ def test_destroy_timed_out_jobs(conn, m):
     time.sleep(0.15)
     conn.destroy_timed_out_jobs()
     assert conn.get_job_state(job_id).state == JobState.destroyed
-    assert conn.get_job_state(job_id)[2] == "Job timed out."
+    assert conn.get_job_state(job_id).reason == "Job timed out."
 
     # No amount polling should bring it back to life...
     conn.job_keepalive(job_id)
@@ -423,17 +423,19 @@ def test_get_job_state(conn, m):
     time.sleep(0.05)
 
     # Status should be reported for jobs that are alive
-    state, keepalive, reason = conn.get_job_state(job_id1)
-    assert state is JobState.ready
-    assert keepalive == 123.0
-    assert reason is None
+    job_state = conn.get_job_state(job_id1)
+    assert job_state.state is JobState.ready
+    assert job_state.power is True
+    assert job_state.keepalive == 123.0
+    assert job_state.reason is None
 
     # If the job is killed, this should be reported.
     conn.machines = {}
-    state, keepalive, reason = conn.get_job_state(job_id1)
-    assert state is JobState.destroyed
-    assert keepalive is None
-    assert reason == "Machine removed."
+    job_state = conn.get_job_state(job_id1)
+    assert job_state.state is JobState.destroyed
+    assert job_state.power is None
+    assert job_state.keepalive is None
+    assert job_state.reason == "Machine removed."
 
     # Jobs which are not live should be kept but eventually forgotten
     job_id2 = conn.create_job(owner="me", keepalive=123.0)
@@ -446,10 +448,11 @@ def test_get_job_state(conn, m):
     assert conn.get_job_state(job_id3).state is JobState.destroyed
 
     # Jobs which don't exist should report as unknown
-    state, keepalive, reason = conn.get_job_state(1234)
-    assert state is JobState.unknown
-    assert keepalive is None
-    assert reason is None
+    job_state = conn.get_job_state(1234)
+    assert job_state.state is JobState.unknown
+    assert job_state.power is None
+    assert job_state.keepalive is None
+    assert job_state.reason is None
 
 
 @pytest.mark.timeout(1.0)
@@ -561,7 +564,7 @@ def test_destroy_job(conn, m):
     # indicate the job never started)
     conn.destroy_job(job_id2, reason="Because.")
     assert conn.get_job_state(job_id2).state is JobState.destroyed
-    assert conn.get_job_state(job_id2)[2] == "Cancelled: Because."
+    assert conn.get_job_state(job_id2).reason == "Cancelled: Because."
 
     # ...without powering anything down
     assert controller0.set_power_calls == []
@@ -572,7 +575,7 @@ def test_destroy_job(conn, m):
     # Should be able to kill live jobs
     conn.destroy_job(job_id1, reason="Because you too.")
     assert conn.get_job_state(job_id1).state is JobState.destroyed
-    assert conn.get_job_state(job_id1)[2] == "Because you too."
+    assert conn.get_job_state(job_id1).reason == "Because you too."
 
     # ...powering anything down that was in use
     assert len(controller0.set_power_calls) == 3
@@ -698,6 +701,7 @@ def test_set_job_power_and_links(MockABC, conn, m, power, link_enable):
 
         # Job should be placed in power state
         assert job.state is JobState.power
+        assert job.power is power
 
         # Make sure the correct number of completions is requested
         expected_requests = 1  # Power command always sent

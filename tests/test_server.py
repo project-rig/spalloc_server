@@ -430,11 +430,14 @@ def test_job_management(simple_config, s, c):
 
     # State should be visible
     assert c.call("get_job_state", job_id0) == {
-        "state": JobState.ready, "keepalive": 60.0, "reason": None}
+        "state": JobState.ready, "power": True,
+        "keepalive": 60.0, "reason": None}
     assert c.call("get_job_state", job_id1) == {
-        "state": JobState.queued, "keepalive": 60.0, "reason": None}
+        "state": JobState.queued, "power": None,
+        "keepalive": 60.0, "reason": None}
     assert c.call("get_job_state", job_id2) == {
-        "state": JobState.destroyed, "keepalive": None,
+        "state": JobState.destroyed,  "power": None,
+        "keepalive": None,
         "reason": "Cancelled: No suitable machines available."}
 
     # Ethernet connections should be visible, where defined
@@ -488,10 +491,12 @@ def test_job_management(simple_config, s, c):
     c.call("destroy_job", job_id0, "Test reason...")
     time.sleep(0.05)
     assert c.call("get_job_state", job_id0) == {
-        "state": JobState.destroyed, "keepalive": None,
+        "state": JobState.destroyed, "power": None,
+        "keepalive": None,
         "reason": "Test reason..."}
     assert c.call("get_job_state", job_id1) == {
-        "state": JobState.ready, "keepalive": 60.0, "reason": None}
+        "state": JobState.ready, "power": True,
+        "keepalive": 60.0, "reason": None}
 
 
 def test_keepalive_expiration(fast_keepalive_config, s, c):
@@ -499,11 +504,11 @@ def test_keepalive_expiration(fast_keepalive_config, s, c):
 
     # Should be alive for a bit
     time.sleep(0.05)
-    assert s._controller.get_job_state(job_id)[0] != JobState.destroyed
+    assert s._controller.get_job_state(job_id).state != JobState.destroyed
 
     # Should get killed
     time.sleep(0.25)
-    assert s._controller.get_job_state(job_id)[0] == JobState.destroyed
+    assert s._controller.get_job_state(job_id).state == JobState.destroyed
 
 
 @pytest.mark.timeout(1.0)
