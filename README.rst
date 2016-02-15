@@ -20,3 +20,7 @@ simultaneous users.
 
 This package just contains a server which exposes a simple TCP interface to
 clients to enable them to request hardware.
+
+The `documentation <http://spalloc-server.readthedocs.org/>`_ describes the
+process of configuring and running servers, the simple JSON-based client
+protocol and an overview of the server's implementation.
