@@ -126,11 +126,11 @@ link_to_vector = {
     (0, Links.north): (0, 0, 2),
     (0, Links.north_east): (0, 0, 1),
     (0, Links.east): (0, -1, 2),
-    
+
     (1, Links.north): (1, 1, -1),
     (1, Links.north_east): (1, 0, 1),
     (1, Links.east): (1, 0, -1),
-    
+
     (2, Links.north): (0, 1, -1),
     (2, Links.north_east): (1, 1, -2),
     (2, Links.east): (0, 0, -1),
@@ -145,7 +145,7 @@ link_to_vector.update({
 
 def board_down_link(x1, y1, z1, link, width, height):
     """Get the coordinates of the board down the specified link.
-    
+
     Parameters
     ----------
     x1, y1, z1 : int
@@ -154,7 +154,7 @@ def board_down_link(x1, y1, z1, link, width, height):
         The link to follow.
     width, height : int
         The dimensions of the system in triads.
-    
+
     Returns
     -------
     x, y, z : int
@@ -163,59 +163,59 @@ def board_down_link(x1, y1, z1, link, width, height):
         Was the link a wrap-around link?
     """
     dx, dy, dz = link_to_vector[(z1, link)]
-    
+
     x2_ = (x1 + dx)
     y2_ = (y1 + dy)
-    
+
     x2 = x2_ % width
     y2 = y2_ % height
-    
+
     z2 = z1 + dz
-    
+
     wrapped = not (x2_ == x2 and y2_ == y2)
-    
+
     return (x2, y2, z2, wrapped)
 
 
 def board_to_chip(x, y, z):
     """Convert a board coordinate into a chip coordinate.
-    
+
     Assumes a regular torus composed of SpiNN-5 boards.
-    
+
     Parameters
     ----------
     x, y, z : int
         Board coordinates.
-    
+
     Returns
     -------
     x, y : int
         Chip coordinates.
     """
-    
+
     x *= 12
     y *= 12
-    
+
     if z == 1:
         x += 8
         y += 4
     elif z == 2:
         x += 4
         y += 8
-    
+
     return (x, y)
 
 
 def chip_to_board(x, y):
     """Convert an (ethernet connected) chip coordinate into a board coordinate.
-    
+
     Assumes a regular torus composed of SpiNN-5 boards.
-    
+
     Parameters
     ----------
     x, y : int
         (Ethernet connected) chip coordinates.
-    
+
     Returns
     -------
     x, y, z : int
@@ -224,10 +224,10 @@ def chip_to_board(x, y):
     # The coordinates of the chip within its triad
     tx = x % 12
     ty = y % 12
-    
+
     x //= 12
     y //= 12
-    
+
     if tx == ty == 0:
         z = 0
     elif tx == 8 and ty == 4:
@@ -236,38 +236,38 @@ def chip_to_board(x, y):
         z = 2
     else:  # pragma: no cover
         assert False
-    
+
     return (x, y, z)
 
 
 def triad_dimensions_to_chips(w, h, torus):
     """Convert the dimensions of a system from numbers of triads to numbers of
     chips in the underlying network.
-    
+
     Assumes a regular torus composed of SpiNN-5 boards.
-    
+
     Parameters
     ----------
     w, h : int
         Dimensions of the system in triads.
     torus : bool
         Are wrap-around connections present?
-    
+
     Returns
     -------
     w, h : int
         Dimensions of the SpiNNaker chip network in the specified machine, e.g.
         for booting.
     """
-    
+
     w *= 12
     h *= 12
-    
+
     # If not a torus topology, the pieces of boards which would wrap-around and
     # "tuck in" to the opposing sides of the network will be left poking out.
     # Compensate for this.
     if not torus:
         w += 4
         h += 4
-    
+
     return (w, h)

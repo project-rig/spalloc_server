@@ -23,9 +23,9 @@ def spinner_ethernet_chips_csv():
                 "0,0,5,12,0\n"
                 "0,0,3,16,8\n"
                 "0,0,1,20,4\n")
-    
+
     yield filename
-    
+
     os.remove(filename)
 
 
@@ -53,7 +53,7 @@ def test_machine(name="m", bmp_prefix=None, spinnaker_prefix=None):
 
 def test_sensible_defaults():
     c = Configuration()
-    
+
     assert c.machines == []
     assert c.port == 22244
     assert c.ip == ""
@@ -70,7 +70,7 @@ def test_no_collisions():
     machines = [test_machine()]
     c = Configuration(machines=machines)
     assert c.machines == machines
-    
+
     machines = [test_machine("a"), test_machine("b")]
     c = Configuration(machines=machines)
     assert c.machines == machines
@@ -94,6 +94,7 @@ def test_spinnaker_ip_collision():
         machines = [test_machine("a", spinnaker_prefix="bmp"),
                     test_machine("b", spinnaker_prefix="bmp")]
         Configuration(machines=machines)
+
 
 @pytest.fixture
 def working_args():
@@ -175,6 +176,7 @@ def test_board_locations_in_machine(working_args, x, y, z):
     with pytest.raises(ValueError):
         Machine(**working_args)
 
+
 def test_board_locations_no_duplicates(working_args):
     # No two boards should have the same location
     working_args["board_locations"][(0, 0, 0)] = (0, 0, 0)
@@ -204,6 +206,7 @@ def test_spinnaker_ips_defined(working_args):
     with pytest.raises(ValueError):
         Machine(**working_args)
 
+
 def test_infer_width_and_height(working_args):
     del working_args["width"]
     del working_args["height"]
@@ -211,16 +214,18 @@ def test_infer_width_and_height(working_args):
     assert m.width == 2
     assert m.height == 1
 
+
 def test_bad_infer_width_and_height(working_args):
     a = working_args.copy()
     del a["width"]
     with pytest.raises(TypeError):
         Machine(**a)
-    
+
     a = working_args.copy()
     del a["height"]
     with pytest.raises(TypeError):
         Machine(**a)
+
 
 def test_single_board():
     m = Machine.single_board("m", set(["default"]), "bmp", "spinn")
@@ -233,6 +238,7 @@ def test_single_board():
     assert m.board_locations == {(0, 0, 0): (0, 0, 0)}
     assert m.bmp_ips == {(0, 0): "bmp"}
     assert m.spinnaker_ips == {(0, 0, 0): "spinn"}
+
 
 def test_single_board_no_ip():
     with pytest.raises(TypeError):
@@ -248,45 +254,46 @@ def test_with_standard_ips():
                        for x in range(2)
                        for y in range(2)
                        for z in range(3)}
-    
+
     m = Machine.with_standard_ips("m", board_locations=board_locations)
-    
+
     assert m.bmp_ips == {
         (0, 0): "192.168.0.0",
         (0, 1): "192.168.1.0",
         (1, 0): "192.168.5.0",
         (1, 1): "192.168.6.0",
     }
-    
+
     assert m.spinnaker_ips == {
         (0, 0, 0): "192.168.0.1",
         (0, 0, 1): "192.168.0.9",
         (0, 0, 2): "192.168.0.17",
-        
+
         (0, 1, 0): "192.168.1.1",
         (0, 1, 1): "192.168.1.9",
         (0, 1, 2): "192.168.1.17",
-        
+
         (1, 0, 0): "192.168.5.1",
         (1, 0, 1): "192.168.5.9",
         (1, 0, 2): "192.168.5.17",
-        
+
         (1, 1, 0): "192.168.6.1",
         (1, 1, 1): "192.168.6.9",
         (1, 1, 2): "192.168.6.17",
     }
+
 
 def test_with_standard_ips_bad_ias():
     board_locations = {(x, y, z): (x, y, z)
                        for x in range(2)
                        for y in range(2)
                        for z in range(3)}
-    
+
     # Not IPv4 address
     with pytest.raises(ValueError):
         Machine.with_standard_ips("m", board_locations=board_locations,
                                   base_ip="spinn-4")
-    
+
     # Malformed IPv4 addresses
     with pytest.raises(ValueError):
         Machine.with_standard_ips("m", board_locations=board_locations,
@@ -297,6 +304,7 @@ def test_with_standard_ips_bad_ias():
     with pytest.raises(ValueError):
         Machine.with_standard_ips("m", board_locations=board_locations,
                                   base_ip="256.2.3.4")
+
 
 def test_board_locations_from_spinner(spinner_ethernet_chips_csv):
     assert board_locations_from_spinner(spinner_ethernet_chips_csv) == {
