@@ -812,7 +812,7 @@ class Server(object):
 
             "state" is the current
             :py:class:`~spalloc_server.controller.JobState` of the job.
-            
+
             "power" indicates whether the boards are powered on or not. If job
             is in the ready or power states, indicates whether the boards are
             power{ed,ing} on (True), or power{ed,ing} off (False). In other

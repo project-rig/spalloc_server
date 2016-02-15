@@ -969,7 +969,7 @@ class _Job(object):
 
         # The current life-cycle state of the job
         self.state = state
-        
+
         # False
         self.power = power
 
