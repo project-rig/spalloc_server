@@ -1,0 +1,29 @@
+sudo: false
+language: python
+python:
+        - 2.7
+        - 3.4
+        - 3.5
+install:
+        - python setup.py install
+        - pip install -r requirements-test.txt
+        - pip install python-coveralls
+script:
+        # Run the main test suite against real hardware and against the
+        # installed codebase. Note: since we're testing an installed version,
+        # the code coverage must be checked against this version, not the one in
+        # './spalloc_server/'.
+        - >
+            py.test tests/ \
+                    --cov "$(./utils/spalloc_server_path.py)" \
+                    --cov tests \
+                    --durations=10
+        # Code quality check
+        - flake8 spalloc_server tests
+after_success:
+        - coveralls
+notifications:
+        email: false
+
+matrix:
+    fast_finish: true
