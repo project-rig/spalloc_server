@@ -190,11 +190,12 @@ class AsyncBMPController(object):
                 # If nothing left in the queues, clear the request flag and
                 # break out of queue-processing loop.
                 with self._lock:
-                    if not self._power_requests and not self._link_requests:
+                    if (not self._power_requests and  # pragma: no branch
+                        not self._link_requests):
                         self._requests_pending.clear()
                         
                         # If we've been told to stop, actually stop the thread now
-                        if self._stop:
+                        if self._stop:  # pragma: no branch
                             return
         except:  # pragma: no cover
             # If the thread crashes something has gone wrong with this program

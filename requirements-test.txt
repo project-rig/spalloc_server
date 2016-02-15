@@ -1,5 +1,6 @@
 # Test suite requirements
 pytest>=2.6
 pytest-cov
+pytest-timeout
 flake8
 mock

@@ -140,10 +140,6 @@ class Server(object):
                         self._controller = pickle.load(f)
                     logging.info("Server warm-starting from %s.",
                                  self._state_filename)
-                except (OSError, IOError):
-                    logging.exception(
-                        "Could not read saved server state file %s.",
-                        self._state_filename)
                 except:
                     # Some other error occurred during unpickling.
                     logging.exception(
@@ -214,7 +210,7 @@ class Server(object):
         """
         try:
             with open(self._config_filename, "r") as f:
-                config_script = f.read()
+                config_script = f.read()  # pragma: no branch
         except (IOError, OSError):
             logging.exception("Could not read "
                               "config file %s", self._config_filename)
@@ -326,7 +322,12 @@ class Server(object):
         ----------
         client : :py:class:`socket.Socket`
         """
-        data = client.recv(1024)
+        try:
+            data = client.recv(1024)
+        except:  # pragma: no cover
+            logging.exception("Could not recv() from client socket.")
+            self._disconnect_client(client)
+            return
         
         # Did the client disconnect?
         if len(data) == 0:
@@ -427,6 +428,9 @@ class Server(object):
                     self._config_inotify.read()
                     self._watch_config_file()
                     self._read_config_file()
+                else:  # pragma: no cover
+                    # Should not get here...
+                    assert False
             
             # Send any job/machine change notifications out
             self._send_change_notifications()
@@ -582,7 +586,9 @@ class Server(object):
                 If the job has been destroyed, this may be a string describing
                 the reason the job was terminated.
         """
-        return self._controller.get_job_state(job_id)._asdict()
+        out = self._controller.get_job_state(job_id)._asdict()
+        out["state"] = int(out["state"])
+        return out
     
     @_command
     def get_job_machine_info(self, client, job_id):
@@ -703,9 +709,12 @@ class Server(object):
         --------
         notify_job : Register to be notified about changes to a specific job.
         """
+        if client not in self._client_job_watches:
+            return
+        
         if job_id is None:
             del self._client_job_watches[client]
-        elif client in self._client_job_watches:
+        else:
             watches = self._client_job_watches[client]
             if watches is not None:
                 watches.discard(job_id)
@@ -763,9 +772,12 @@ class Server(object):
         --------
         notify_machine : Register to be notified about changes to a machine.
         """
+        if client not in self._client_machine_watches:
+            return
+        
         if machine_name is None:
             del self._client_machine_watches[client]
-        elif client in self._client_machine_watches:
+        else:
             watches = self._client_machine_watches[client]
             if watches is not None:
                 watches.discard(machine_name)
@@ -797,9 +809,6 @@ class Server(object):
             "machine" is the name of the machine the job was specified to run
             on (or None if not specified).
             
-            "tags" is the set of tags the job was specified to require
-            (value unspecified if machine is not None).
-            
             "state" is the current
             :py:class:`~spalloc_server.controller.JobState` of the job.
             
@@ -812,11 +821,14 @@ class Server(object):
             
             "boards" is a list [(x, y, z), ...] of boards allocated to the job.
         """
-        return [
-            {k: list(v) if isinstance(v, set) else v
-             for k, v in iteritems(job._asdict())}
-            for job in self._controller.list_jobs()
-        ]
+        out = []
+        for job in self._controller.list_jobs():
+            job = job._asdict()
+            job["state"] = int(job["state"])
+            if job["boards"] is not None:
+                job["boards"] = list(job["boards"])
+            out.append(job)
+        return out
     
     @_command
     def list_machines(self, client):
@@ -843,11 +855,18 @@ class Server(object):
             locations of known-dead links from the perspective of the sender.
             Links to dead boards may or may not be included in this list.
         """
-        return [
-            {k: list(v) if isinstance(v, set) else v
-             for k, v in iteritems(machine._asdict())}
-            for machine in self._controller.list_machines()
-        ]
+        out = []
+        for machine in self._controller.list_machines():
+            print(machine)
+            machine = machine._asdict()
+            print(machine)
+            machine["tags"] = list(machine["tags"])
+            machine["dead_boards"] = list(machine["dead_boards"])
+            machine["dead_links"] = [(x, y, z, int(link))
+                                     for x, y, z, link
+                                     in machine["dead_links"]]
+            out.append(machine)
+        return out
 
 
 def main(args=None):

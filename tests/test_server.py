@@ -5,6 +5,7 @@ from mock import Mock
 import threading
 import tempfile
 import shutil
+import os
 import os.path
 import logging
 import time
@@ -27,7 +28,7 @@ from common import MockABC, simple_machine
 logging.basicConfig(level=logging.INFO)
 
 
-class SimpleClient(object):
+class SimpleClient(object):  # pragma: no cover
     """A simple line receiving and sending client."""
     
     def __init__(self):
@@ -60,7 +61,11 @@ class SimpleClient(object):
     def get_return(self):
         while True:
             line = self.recv_line()
-            resp = json.loads(line.decode("utf-8"))
+            try:
+                resp = json.loads(line.decode("utf-8"))
+            except:
+                print("Bad line: {}".format(repr(line)))
+                raise
             if "return" in resp:
                 return resp["return"]
             else:
@@ -109,6 +114,33 @@ def simple_config(config_file):
     with open(config_file, "w") as f:
         f.write(
             "configuration = Configuration(\n"
+            "    machines=[\n"
+            "        Machine('m', set(['default']), 1, 2,\n"
+            "                set(), set(),\n"
+            "                {(x, y, z): (x*10, y*10, z*10)\n"
+            "                 for x in range(1)\n"
+            "                 for y in range(2)\n"
+            "                 for z in range(3)},\n"
+            "                {(c*10, f*10): '10.0.{}.{}'.format(c, f)\n"
+            "                 for c in range(1)\n"
+            "                 for f in range(2)},\n"
+            "                {(x, y, z): '11.{}.{}.{}'.format(x, y, z)\n"
+            "                 for x in range(1)\n"
+            "                 for y in range(2)\n"
+            "                 for z in range(3)})\n"
+            "    ]\n"
+            ")\n")
+    
+    return config_file
+
+
+@pytest.fixture
+def fast_keepalive_config(config_file):
+    # A simple config file which has a fast polling interval of 0.1 seconds
+    with open(config_file, "w") as f:
+        f.write(
+            "configuration = Configuration(\n"
+            "    timeout_check_interval=0.1,\n"
             "    machines=[\n"
             "        Machine('m', set(['default']), 1, 2,\n"
             "                set(), set(),\n"
@@ -191,10 +223,40 @@ def test_startup_shutdown(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
+def test_join(MockABC, simple_config):
+    s = Server(simple_config)
+    
+    joining_thread = threading.Thread(target=s.join)
+    joining_thread.start()
+    
+    # The server should still be running...
+    time.sleep(0.05)
+    assert joining_thread.is_alive()
+    
+    # When server is stopped, the joining thread should be complete
+    s.stop_and_join()
+    time.sleep(0.05)
+    assert not joining_thread.is_alive()
+
+
+@pytest.mark.timeout(1.0)
+def test_stop_and_join_disconnects(MockABC, simple_config):
+    # Clients should be disconnected when doing stop and join
+    s = Server(simple_config)
+    c = SimpleClient()
+    c.call("version")
+    
+    s.stop_and_join()
+    time.sleep(0.05)
+    assert c.sock.recv(1024) == b""
+
+
+@pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("cold_start", [True, False])
 @pytest.mark.parametrize("corrupt_state", [True, False])
+@pytest.mark.parametrize("delete_state", [True, False])
 def test_hot_start(MockABC, simple_config, state_file, cold_start,
-                   corrupt_state):
+                   corrupt_state, delete_state):
     # Initially start up the server without a state file. Should be cold
     # started.
     assert not os.path.lexists(state_file)
@@ -214,12 +276,17 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
     if corrupt_state:
         # Just leave the file empty...
         open(state_file, "w").close()
+    
+    # Delete the state if required
+    if delete_state:
+        # Just leave the file empty...
+        os.remove(state_file)
         
     # Start a new server
     s = Server(simple_config, cold_start)
     try:
         # Should have the same state as before, if doing a hot start
-        if cold_start or corrupt_state:
+        if cold_start or corrupt_state or delete_state:
             assert s.get_job_state(None, job_id)["state"] == JobState.unknown
         else:
             assert s.get_job_state(None, job_id)["state"] == JobState.ready
@@ -320,6 +387,15 @@ def test_reread_config_file(MockABC, simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
+def test_bad_command(MockABC, simple_config, s):
+    # If a bad command is sent, the server should just disconnect the client
+    c = SimpleClient()
+    c.send_call("does not exist")
+    time.sleep(0.05)
+    assert c.sock.recv(1024) == b""
+
+
+@pytest.mark.timeout(1.0)
 def test_version_command(MockABC, simple_config, s, c):
     # First basic test of calling a remote method
     assert c.call("version") == __version__
@@ -340,7 +416,7 @@ def test_job_management(MockABC, simple_config, s, c):
     job_id2 = c.call("create_job", 2, 2, owner="me")
     
     # Allow time for jobs to start
-    time.sleep(0.05)
+    time.sleep(0.1)
     
     assert job_id0 != job_id1
     assert job_id0 != job_id2
@@ -409,11 +485,23 @@ def test_job_management(MockABC, simple_config, s, c):
     
     # Destroying jobs should work
     c.call("destroy_job", job_id0, "Test reason...")
+    time.sleep(0.05)
     assert c.call("get_job_state", job_id0) == {
         "state": JobState.destroyed, "keepalive": None,
         "reason": "Test reason..."}
     assert c.call("get_job_state", job_id1) == {
         "state": JobState.ready, "keepalive": 60.0, "reason": None}
+
+def test_keepalive_expiration(MockABC, fast_keepalive_config, s, c):
+    job_id = c.call("create_job", keepalive=0.15, owner="me")
+    
+    # Should be alive for a bit
+    time.sleep(0.05)
+    assert s._controller.get_job_state(job_id)[0] != JobState.destroyed
+    
+    # Should get killed
+    time.sleep(0.25)
+    assert s._controller.get_job_state(job_id)[0] == JobState.destroyed
 
 @pytest.mark.timeout(1.0)
 def test_list_machines(MockABC, double_config, s, c):
@@ -524,7 +612,7 @@ def test_job_notify_register_unregister(MockABC, simple_config, s):
     
     # Get the sockets connected to the clients
     s0, s1 = itervalues(s._client_sockets)
-    if s0.getpeername() != c0.sock.getsockname():
+    if s0.getpeername() != c0.sock.getsockname():  # pragma: no cover
         s0, s1 = s1, s0
     
     # Initially no matches should be present
@@ -572,6 +660,10 @@ def test_job_notify_register_unregister(MockABC, simple_config, s):
     # Removing all should work on individual jobs
     c1.call("no_notify_job")
     assert s._client_job_watches == {}
+    
+    # Removing when never watching should not fail
+    c1.call("no_notify_job")
+    assert s._client_job_watches == {}
 
 @pytest.mark.timeout(1.0)
 def test_machine_notify_register_unregister(MockABC, simple_config, s):
@@ -587,7 +679,7 @@ def test_machine_notify_register_unregister(MockABC, simple_config, s):
     
     # Get the sockets connected to the clients
     s0, s1 = itervalues(s._client_sockets)
-    if s0.getpeername() != c0.sock.getsockname():
+    if s0.getpeername() != c0.sock.getsockname():  # pragma: no cover
         s0, s1 = s1, s0
     
     # Initially no matches should be present
@@ -635,11 +727,17 @@ def test_machine_notify_register_unregister(MockABC, simple_config, s):
     # Removing all should work on individual machines
     c1.call("no_notify_machine")
     assert s._client_machine_watches == {}
+    
+    # Removing when never watching should not fail
+    c1.call("no_notify_machine")
+    assert s._client_machine_watches == {}
 
 
 @pytest.mark.parametrize("args,cold_start",
                          [("{}", False),
-                          ("{} --cold-start", True)])
+                          ("{} -q", False),
+                          ("{} --cold-start", True),
+                          ("{} -q --cold-start", True)])
 def test_commandline(monkeypatch, config_file, args, cold_start):
     Server = Mock()
     import spalloc_server.server

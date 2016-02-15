@@ -126,6 +126,23 @@ class JobQueue(object):
         self._postpone_queue_management -= 1
         self._regenerate_queues()
     
+    def __getstate__(self):
+        """Called when pickling this object.
+        
+        In Python 2, references to methods cannot be pickled. Since this
+        object maintains a number of function pointers as callbacks (which may
+        often be methods) we must remove these before pickling. When
+        unpickling, these pointers should be recreated externally.
+        """
+        state = self.__dict__.copy()
+        
+        # Do not keep the reference to any callbacks
+        state["on_allocate"] = None
+        state["on_free"] = None
+        state["on_cancel"] = None
+        
+        return state
+    
     def _try_job(self, job, machine):
         """Attempt to allocate a job on a given machine.
         
@@ -295,7 +312,10 @@ class JobQueue(object):
         name : str
             The name of the machine to move.
         """
-        self._machines.move_to_end(name)
+        # Python 2.7 does not have move_to_end
+        m = self._machines.pop(name)
+        self._machines[name] = m
+        
         # NB: No queue regeneration required
     
     def modify_machine(self, name, tags=None,
@@ -472,7 +492,7 @@ class _Job(object):
         self.machine = machine
         self.allocation_id = allocation_id
     
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return "<{} id={}>".format(self.__class__.__name__, self.id)
 
 
@@ -500,5 +520,5 @@ class _Machine(object):
         self.allocator = allocator
         self.queue = queue if queue is not None else deque()
 
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return "<{} name={}>".format(self.__class__.__name__, self.name)

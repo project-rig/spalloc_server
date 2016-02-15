@@ -25,13 +25,13 @@ class TestCandidateFilter(object):
         # wrap-around links
         assert cf._enumerate_boards(0, 0, 1, 1) == set([(0, 0, 0)])
         assert cf._enumerate_boards(0, 0, 3, 4) == set([(0, 0, 0)])
-        assert cf._enumerate_boards(0, 0, w, h) == set([
+        assert cf._enumerate_boards(0, 0, w, h) == set([  # pragma: no branch
             (x, y, z) for x in range(w) for y in range(h) for z in range(3)
             if (x, y, z) not in dead_boards])
         
         # From 1, 1 we should be able to reach everything despite being blocked
         # off one of the links from (1, 1, 0)
-        assert cf._enumerate_boards(1, 2, 5, 4) == set([
+        assert cf._enumerate_boards(1, 2, 5, 4) == set([  # pragma: no branch
             (x, y, z)
             for x in range(1, 6)
             for y in range(2, 6)
@@ -192,7 +192,7 @@ class TestCandidateFilter(object):
         
         assert cf(0, 0, 1, 1) is True
         assert cf.boards == set((0, 0, z) for z in range(3))
-        assert cf.periphery == set(
+        assert cf.periphery == set(  # pragma: no branch
             (0, 0, z, link)
             for z in range(3) for link in Links
             if board_down_link(0, 0, z, link, w, h)[:2] != (0, 0))

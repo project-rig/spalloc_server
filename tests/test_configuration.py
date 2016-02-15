@@ -61,6 +61,11 @@ def test_sensible_defaults():
     assert c.max_retired_jobs == 1200
 
 
+def test_machine_type():
+    with pytest.raises(TypeError):
+        Configuration(machines=["m"])
+
+
 def test_no_collisions():
     machines = [test_machine()]
     c = Configuration(machines=machines)
@@ -189,6 +194,13 @@ def test_board_locations_defined(working_args):
 def test_bmp_ips_defined(working_args):
     # All boards whose location is specified should have a BMP IP
     del working_args["bmp_ips"][(0, 0)]
+    with pytest.raises(ValueError):
+        Machine(**working_args)
+
+
+def test_spinnaker_ips_defined(working_args):
+    # All boards whose location is specified should have a BMP IP
+    del working_args["spinnaker_ips"][(0, 0, 0)]
     with pytest.raises(ValueError):
         Machine(**working_args)
 

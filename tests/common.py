@@ -29,7 +29,7 @@ def simple_machine(name, width=1, height=2, tags=set(["default"]),
 
 
 @pytest.fixture
-def MockABC(monkeypatch):
+def MockABC(monkeypatch):  # pragma: no cover
     """This test fixture mocks-out the AsyncBMPController class with a shim
     which immediately calls the supplied callbacks via another thread (to
     ensure no inter-thread calling issues).
@@ -45,9 +45,6 @@ def MockABC(monkeypatch):
             
             self.hostname = hostname
             self.on_thread_start = on_thread_start
-            
-            # Reports if the object was locked by its context manager
-            self.locked = 0
             
             # A lock which must be held when handling a request (may be used to
             # simulate the machine taking some amount of time to respond)
@@ -78,19 +75,30 @@ def MockABC(monkeypatch):
                 while not self._stop:
                     self._event.wait()
                     with self.handler_lock:
-                        with self._lock:
-                            while self._request_queue:
-                                self._request_queue.popleft()()
-                            self._event.clear()
+                        while True:
+                            # Run until no more requests exist
+                            with self:
+                                if not self._request_queue:
+                                    self._event.clear()
+                                    break
+                                else:
+                                    cb = self._request_queue.popleft()
+                            
+                            # Run callback (while not holding any locks)
+                            cb()
+                
+                # For purposes of testing, do not allow this thread to exit
+                # while the handler_lock is held. This ensures we can mock this
+                # thread not exiting while handler_lock exists.
+                with self.handler_lock:
+                    pass
             finally:
                 MockAsyncBMPController.running_theads -= 1
         
         def __enter__(self):
             self._lock.acquire()
-            self.locked += 1
         
         def __exit__(self, type=None, value=None, traceback=None):
-            self.locked -= 1
             self._lock.release()
         
         def set_power(self, board, state, on_done):

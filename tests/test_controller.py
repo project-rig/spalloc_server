@@ -31,9 +31,11 @@ def conn(MockABC, on_background_state_change):
     """Auto-stop a controller."""
     conn = Controller(max_retired_jobs=2,
                       on_background_state_change=on_background_state_change)
-    yield conn
-    conn.stop()
-    conn.join()
+    try:
+        yield conn
+    finally:
+        conn.stop()
+        conn.join()
 
 @pytest.fixture
 def m(conn):
@@ -79,12 +81,6 @@ def test_mock_abc(MockABC):
     abc.join()
     
     assert abc.running_theads == 0
-
-
-def test_controller_basic_stop_join(conn):
-    """Make sure we can stop/join all threads started by a controller with no
-    machines."""
-    assert isinstance(conn, Controller)
 
 
 def test_controller_basic_stop_join(conn):
@@ -313,7 +309,7 @@ def test_set_machines_sequencing(conn):
         # Our newly created job should be blocked in power-on until the
         # previous machine finishes shutting down.
         job_id = conn.create_job(owner="me")
-        time.sleep(0.05)
+        time.sleep(0.1)
         assert conn.get_job_state(job_id).state is JobState.power
     
     # The old machine machine's controller has now finally finished what it was
@@ -330,6 +326,10 @@ def test_get_machines(conn, m):
 def test_create_job(conn, m):
     controller = conn._bmp_controllers[m][(0, 0)]
     
+    # Should fail with missing owner
+    with pytest.raises(TypeError):
+        conn.create_job()
+    
     with controller.handler_lock:
         # Make sure newly added jobs can start straight away and have the BMP block
         job_id1 = conn.create_job(1, 1, owner="me")
@@ -344,9 +344,10 @@ def test_create_job(conn, m):
         
         # Links around the allocation should have been disabled
         assert all(e is False for b, l, e, f in controller.set_link_enable_calls)
-        assert set((b, l) for b, l, e, f in controller.set_link_enable_calls) \
+        assert (  # pragma: no branch
+            set((b, l) for b, l, e, f in controller.set_link_enable_calls)
             == set((b, l) for b in range(3) for l in Links
-                   if board_down_link(0, 0, b, l, 1, 2)[:2] != (0, 0))
+                   if board_down_link(0, 0, b, l, 1, 2)[:2] != (0, 0)))
         
         # Job should be waiting for power-on since the BMP is blocked
         time.sleep(0.05)
@@ -370,6 +371,7 @@ def test_create_job(conn, m):
     assert conn.get_job_state(job_id3)[2] \
         == "Cancelled: No suitable machines available."
 
+@pytest.mark.timeout(1.0)
 def test_destroy_timed_out_jobs(conn, m):
     job_id = conn.create_job(owner="me", keepalive=0.1)
     
@@ -438,6 +440,7 @@ def test_get_job_state(conn, m):
     assert reason is None
 
 
+@pytest.mark.timeout(1.0)
 def test_get_job_machine_info(conn, m):
     job_id = conn.create_job(1, 1, owner="me")
     w, h, connections, machine_name = \
@@ -452,6 +455,7 @@ def test_get_job_machine_info(conn, m):
     # Bad ID should just get Nones
     assert conn.get_job_machine_info(1234) == (None, None, None, None)
 
+@pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("args,width,height",
                          [([], 8, 8),         # Single board
                           ([1, 1], 16, 16),   # Isolated triad
@@ -487,8 +491,9 @@ def test_power_on_job_boards(conn, m):
     # Should re-set up the links
     assert len(controller.set_link_enable_calls) == 6
     assert all(e is False for b, l, e, f in controller.set_link_enable_calls)
-    assert set((0, l) for b, l, e, f in controller.set_link_enable_calls) \
-        == set((0, l) for l in Links)
+    assert (  # pragma: no branch
+        set((0, l) for b, l, e, f in controller.set_link_enable_calls)
+        == set((0, l) for l in Links))
     
     # Shouldn't crash for non-existent job
     conn.power_on_job_boards(1234)
@@ -633,48 +638,6 @@ def test_list_machines(conn):
     assert machine_list[1].dead_links == set([(0, 0, 0, Links.west)])
 
 
-def test_all_bmps_in_machine(MockABC, conn):
-    # Context manager for grabbing locks on all BMPs in a machine should work
-    machines = OrderedDict([
-        ("m0", simple_machine("m0", 1, 2)),
-        ("m1", simple_machine("m1", 1, 2)),
-    ])
-    conn.machines = machines
-    
-    controller_m0_0 = conn._bmp_controllers["m0"][(0, 0)]
-    controller_m0_1 = conn._bmp_controllers["m0"][(0, 1)]
-    controller_m1_0 = conn._bmp_controllers["m1"][(0, 0)]
-    controller_m1_1 = conn._bmp_controllers["m1"][(0, 1)]
-    
-    assert not controller_m0_0.locked
-    assert not controller_m0_1.locked
-    assert not controller_m1_0.locked
-    assert not controller_m1_1.locked
-    
-    with pytest.raises(Exception):
-        with conn._all_bmps_in_machine(conn._machines["m0"]):
-            assert controller_m0_0.locked
-            assert controller_m0_1.locked
-            assert not controller_m1_0.locked
-            assert not controller_m1_1.locked
-            raise Exception()
-    
-    assert not controller_m0_0.locked
-    assert not controller_m0_1.locked
-    assert not controller_m1_0.locked
-    assert not controller_m1_1.locked
-    
-    with conn._all_bmps_in_machine(conn._machines["m1"]):
-        assert not controller_m0_0.locked
-        assert not controller_m0_1.locked
-        assert controller_m1_0.locked
-        assert controller_m1_1.locked
-    
-    assert not controller_m0_0.locked
-    assert not controller_m0_1.locked
-    assert not controller_m1_0.locked
-    assert not controller_m1_1.locked
-
 def test_bmp_on_request_complete(MockABC, conn, m):
     job_id = conn.create_job(owner="me")
     job = conn._jobs[job_id]
@@ -745,14 +708,18 @@ def test_set_job_power_and_links(MockABC, conn, m, power, link_enable):
 def test_pickle(MockABC):
     # Create a controller, with a running job and some threads etc.
     conn = Controller()
-    conn.machines = {"m": simple_machine("m", 1, 2)}
-    job_id = conn.create_job(owner="me")
+    try:
+        conn.machines = {"m": simple_machine("m", 1, 2)}
+        job_id = conn.create_job(owner="me")
+        time.sleep(0.05)
+        assert conn.get_job_state(job_id).state == JobState.ready
+        
+        assert MockABC.running_theads == 2
+    finally:
+        # Pickling the controller should succeed
+        conn.stop()
+        conn.join()
     
-    assert MockABC.running_theads == 2
-    
-    # Pickling the controller should succeed
-    conn.stop()
-    conn.join()
     assert MockABC.running_theads == 0
     
     pickled_conn = pickle.dumps(conn)
@@ -760,15 +727,16 @@ def test_pickle(MockABC):
     
     # Unpickling should succeed
     conn2 = pickle.loads(pickled_conn)
-    
-    # And some BMP connections should be running again
-    assert MockABC.running_theads == 2
-    
-    # And our job should still be there
-    assert conn2.get_job_state(job_id).state == JobState.ready
-    
-    conn2.stop()
-    conn2.join()
+    try:
+        
+        # And some BMP connections should be running again
+        assert MockABC.running_theads == 2
+        
+        # And our job should still be there
+        assert conn2.get_job_state(job_id).state == JobState.ready
+    finally:
+        conn2.stop()
+        conn2.join()
 
 
 def test_max_retired_jobs(conn):

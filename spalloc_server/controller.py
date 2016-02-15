@@ -8,7 +8,7 @@ from enum import IntEnum
 
 from contextlib import contextmanager
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple, OrderedDict, defaultdict
 
 from functools import partial
 
@@ -175,6 +175,14 @@ class Controller(object):
         object will start running immediately.
         """
         self.__dict__.update(state)
+        
+        # Restore callback function pointers in JobQueue (removed by JobQueue
+        # when pickling as Python 2.7 cannot reliably pickle method
+        # references).
+        self._job_queue.on_allocate = self._job_queue_on_allocate
+        self._job_queue.on_free = self._job_queue_on_free
+        self._job_queue.on_cancel = self._job_queue_on_cancel
+        
         self._init_dynamic_state()
     
     def stop(self):
@@ -191,10 +199,10 @@ class Controller(object):
         --------
         join: to wait for the threads to actually terminate.
         """
-        with self._lock:
-            # Stop the BMP controllers
-            for machine in itervalues(self._machines):
-                self._destroy_machine_bmp_controllers(machine)
+        # Stop the BMP controllers
+        for machine in self._machines:
+            for controller in itervalues(self._bmp_controllers[machine]):
+                controller.stop()
     
     def join(self):
         """Block until all background threads have halted and all queued BMP
@@ -256,6 +264,7 @@ class Controller(object):
                 ...} or similar OrderedDict
             Defines the machines now available to the controller.
         """
+        shut_down_controllers = list()
         with self._lock:
             before = set(self._machines)
             after = set(machines)
@@ -289,7 +298,6 @@ class Controller(object):
             with self._job_queue:
                 # Remove all removed machines, accumulating a list of all the
                 # AsyncBMPControllers which have been shut down.
-                shut_down_controllers = list()
                 for name in removed:
                     # Remove the machine from the queue causing all jobs
                     # allocated on it to be freed and all boards powered down.
@@ -297,9 +305,12 @@ class Controller(object):
                     
                     # Remove the board and its BMP connections
                     old = self._machines.pop(name)
-                    self._destroy_machine_bmp_controllers(old)
                     shut_down_controllers.extend(
                         itervalues(self._bmp_controllers.pop(name)))
+                
+                # Shut-down the now defunct controllers
+                for controller in shut_down_controllers:
+                    controller.stop()
                 
                 def wait_for_old_controllers_to_shutdown():
                     # All new BMPControllers must wait for all the old controllers
@@ -332,7 +343,10 @@ class Controller(object):
                 
                 # Re-order machines to match the specification
                 for name in machines:
-                    self._machines.move_to_end(name)
+                    # Python 2.7 does not have move_to_end
+                    m = self._machines.pop(name)
+                    self._machines[name] = m
+                    
                     self._job_queue.move_machine_to_end(name)
             
             # Mark all effected machines as changed
@@ -581,23 +595,6 @@ class Controller(object):
                     # Job timed out, destroy it
                     self.destroy_job(job.id, "Job timed out.")
     
-    @contextmanager
-    def _all_bmps_in_machine(self, machine):
-        """Act atomically on all BMPs in a machine.
-        
-        Note: This is only safe when this is the only way AsyncBMPControllers
-        are locked.
-        """
-        controllers = self._bmp_controllers[machine.name]
-        for abc in itervalues(controllers):
-            abc.__enter__()
-        
-        try:
-            yield controllers
-        finally:
-            for abc in itervalues(controllers):
-                abc.__exit__(None, None, None)
-    
     def _bmp_on_request_complete(self, job):
         """Callback function called by an AsyncBMPController when it completes
         a previously issued request.
@@ -619,7 +616,7 @@ class Controller(object):
             if job.bmp_requests_until_ready == 0:
                 job.state = JobState.ready
                 
-                # Report state changes for jobs which are stlil running
+                # Report state changes for jobs which are still running
                 if job.id in self._jobs:
                     self._changed_jobs.add(job.id)
                     if self._on_background_state_change is not None:
@@ -644,24 +641,39 @@ class Controller(object):
             
             on_done = partial(self._bmp_on_request_complete, job)
             
-            with self._all_bmps_in_machine(machine) as controllers:
-                job.state = JobState.power
-                self._changed_jobs.add(job.id)
-                
-                # Send power commands
-                job.bmp_requests_until_ready += len(job.boards)
-                for xyz in job.boards:
-                    c, f, b = machine.board_locations[xyz]
-                    controllers[(c, f)].set_power(b, power, on_done)
-                
-                # Send link state commands
-                if link_enable is not None:
-                    job.bmp_requests_until_ready += len(job.periphery)
-                    for x, y, z, link in job.periphery:
-                        c, f, b = machine.board_locations[(x, y, z)]
-                        controllers[(c, f)].set_link_enable(b, link,
-                                                            link_enable,
-                                                            on_done)
+            # Group commands by the frame they interact with to allow all
+            # commands within a frame to be sent atomically
+            frame_commands = defaultdict(list)
+            
+            controllers = self._bmp_controllers[machine.name]
+            
+            # Power commands
+            job.bmp_requests_until_ready += len(job.boards)
+            for xyz in job.boards:
+                c, f, b = machine.board_locations[xyz]
+                controller = controllers[(c, f)]
+                frame_commands[controller].append(
+                    partial(controller.set_power, b, power, on_done))
+            
+            # Link state commands
+            if link_enable is not None:
+                job.bmp_requests_until_ready += len(job.periphery)
+                for x, y, z, link in job.periphery:
+                    c, f, b = machine.board_locations[(x, y, z)]
+                    controller = controllers[(c, f)]
+                    frame_commands[controller].append(
+                        partial(controller.set_link_enable,
+                                b, link, link_enable, on_done))
+        
+            # Send power/link commands atomically for each frame
+            for controller, commands in iteritems(frame_commands):
+                with controller:
+                    for command in commands:
+                        command()
+            
+            # Update job state
+            job.state = JobState.power
+            self._changed_jobs.add(job.id)
     
     def _job_queue_on_allocate(self, job_id, machine_name, boards,
                                periphery, torus):
@@ -716,17 +728,6 @@ class Controller(object):
                     hostname, on_thread_start)
             self._bmp_controllers[machine.name] = controllers
     
-    def _destroy_machine_bmp_controllers(self, machine):
-        """Begin flushing all BMP controllers for a machine.
-        
-        Note: does not remove the AsyncBMPControllers from the
-        self._bmp_controllers dictionary.
-        """
-        with self._lock:
-            with self._all_bmps_in_machine(machine) as controllers:
-                for controller in itervalues(controllers):
-                    controller.stop()
-    
     def _init_dynamic_state(self):
         """Initialise all dynamic (non-pickleable) state.
         
@@ -751,24 +752,6 @@ class Controller(object):
             # Reset keepalives to allow remote clients time to reconnect
             for job_id in self._jobs:
                 self.job_keepalive(job_id)
-    
-    def _del_dynamic_state(self):
-        """Flush and shut down all dynamic (non-pickleable) state.
-        
-        Once this function has been called, no further calls to functions in
-        this object are permitted until ``_init_dynamic_state`` is called.
-        
-        Specifically:
-        
-        * Flush and remove all BMP controllers
-        * Destroy the global controller lock
-        """
-        self.stop()
-        self.join()
-        
-        # Finally, destroy the lock and all references to dynamic state
-        self._bmp_controllers = None
-        self._lock = None
     
 
 class JobState(IntEnum):
@@ -810,6 +793,9 @@ class JobStateTuple(namedtuple("JobStateTuple",
         If the job has been destroyed, this may be a string describing the
         reason the job was terminated.
     """
+    
+    # Python 3.4 Workaround: https://bugs.python.org/issue24931
+    __slots__ = tuple()
 
 class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
                                      "width,height,connections,machine_name")):
@@ -828,6 +814,9 @@ class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
         The name of the machine the job is allocated on or None if no machine
         allocated.
     """
+    
+    # Python 3.4 Workaround: https://bugs.python.org/issue24931
+    __slots__ = tuple()
 
 class JobTuple(namedtuple("JobTuple",
                           "job_id,owner,start_time,keepalive,state,"
@@ -850,9 +839,6 @@ class JobTuple(namedtuple("JobTuple",
     machine : str or None
         The name of the machine the job was specified to run on (or None if not
         specified).
-    tags : set(['tag', ...])
-        The set of tags the job was specified to require (value unspecified if
-        machine is not None).
     state : :py:class:`.JobState`
         The current state of the job.
     args, kwargs
@@ -865,6 +851,9 @@ class JobTuple(namedtuple("JobTuple",
     boards : set([(x, y, z), ...])
         The boards allocated to the job.
     """
+    
+    # Python 3.4 Workaround: https://bugs.python.org/issue24931
+    __slots__ = tuple()
 
 class MachineTuple(namedtuple("MachineTuple",
                               "name,tags,width,height,"
@@ -886,6 +875,9 @@ class MachineTuple(namedtuple("MachineTuple",
         The locations of known-dead links from the perspective of the sender.
         Links to dead boards may or may not be included in this list.
     """
+    
+    # Python 3.4 Workaround: https://bugs.python.org/issue24931
+    __slots__ = tuple()
 
 class _Job(object):
     """The metadata, used internally, associated with a non-destroyed job.

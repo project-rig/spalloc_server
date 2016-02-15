@@ -525,7 +525,7 @@ class Allocator(object):
             if self.single_board_triads[(x, y)] == working:
                 del self.single_board_triads[(x, y)]
                 self.pack_tree.free(x, y)
-        else:  # pragma : no cover
+        else:  # pragma: no cover
             assert False, "Unknown allocation type!"
 
 
