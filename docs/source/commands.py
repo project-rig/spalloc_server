@@ -46,8 +46,7 @@ for name, f in iteritems(_COMMANDS):
 ################################################################################
 
 # A 'fake' JobState class which simply enumerates the job IDs in its docstring
-class JobState(object): pass
-JobState.__doc__ = """
+_JobState_doc = """
 A job may be in any of the following (numbered) states.
 
 ======  =====
@@ -55,12 +54,14 @@ Number  State
 ======  =====
 """
 for state in _JobState:
-    JobState.__doc__ += ("{:<6}  :py:attr:`{} <spalloc_server.controller.JobState.{}>`\n".format(
+    _JobState_doc += ("{:<6}  :py:attr:`{} <spalloc_server.controller.JobState.{}>`\n".format(
         int(state),
         state.name, state.name))
-JobState.__doc__ += """
+_JobState_doc += """
 ======  =====
 """
+class JobState(object):
+    __doc__ = _JobState_doc
 
 
 ################################################################################
