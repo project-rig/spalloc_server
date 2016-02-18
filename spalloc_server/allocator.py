@@ -7,11 +7,14 @@ from enum import Enum
 
 from collections import deque
 
+from math import ceil
+
 from six import next
 
 from rig.links import Links
 
 from spalloc_server.pack_tree import PackTree
+from spalloc_server.area_to_rect import area_to_rect
 from spalloc_server.coordinates import board_down_link
 
 
@@ -89,7 +92,8 @@ class Allocator(object):
         self.full_single_board_triads = set()
 
     def _alloc_triads_possible(self, width, height, max_dead_boards=None,
-                               max_dead_links=None, require_torus=False):
+                               max_dead_links=None, require_torus=False,
+                               min_ratio=0.0):
         """Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
@@ -118,6 +122,8 @@ class Allocator(object):
             If True, only allocate blocks with torus connectivity. In general
             this will only succeed for requests to allocate an entire machine
             (when the machine is otherwise not in use!). (Default: False)
+        min_ratio : float
+            Ignored.
 
         Returns
         -------
@@ -131,7 +137,7 @@ class Allocator(object):
         # If too big, we can't fit
         if width > self.width or height > self.height:
             return False
-        
+
         # Can't be a non-machine
         if width <= 0 or height <= 0:
             return False
@@ -156,13 +162,173 @@ class Allocator(object):
         return False
 
     def _alloc_triads(self, width, height, max_dead_boards=None,
-                      max_dead_links=None, require_torus=False):
+                      max_dead_links=None, require_torus=False,
+                      min_ratio=0.0):
         """Allocate a rectangular block of triads of interconnected boards.
 
         Parameters
         ----------
         width, height : int
             The size of the block to allocate, in triads.
+        max_dead_boards : int or None
+            The maximum number of broken or unreachable boards to allow in the
+            allocated region. If None, any number of dead boards is permitted,
+            as long as the board on the bottom-left corner is alive (Default:
+            None).
+        max_dead_links : int or None
+            The maximum number of broken links allow in the allocated region.
+            When require_torus is True this includes wrap-around links,
+            otherwise peripheral links are not counted.  If None, any number of
+            broken links is allowed. (Default: None).
+        require_torus : bool
+            If True, only allocate blocks with torus connectivity. In general
+            this will only succeed for requests to allocate an entire machine
+            (when the machine is otherwise not in use!). (Default: False)
+        min_ratio : float
+            Ignored.
+
+        Returns
+        -------
+        (allocation_id, boards, periphery, torus) or None
+            If the allocation was successful a four-tuple is returned. If the
+            allocation was not successful None is returned.
+
+            The ``allocation_id`` is an integer which should be used to free
+            the allocation with the :py:meth:`.free` method. ``boards`` is a
+            set of (x, y, z) tuples giving the locations of the (working)
+            boards in the allocation. ``periphery`` is a set of (x, y, z, link)
+            tuples giving the links which leave the allocated region. ``torus``
+            is True iff at least one torus link is working.
+
+        See Also
+        --------
+        alloc : The (public) wrapper which also supports allocating individual
+        boards.
+        """
+        # Special case: If a torus is required this is only deliverable when
+        # the requirements match the size of the machine exactly.
+        if require_torus and (width != self.width or height != self.height):
+            return None
+
+        # Sanity check: can't be a non-machine
+        if width <= 0 or height <= 0:
+            return None
+
+        cf = _CandidateFilter(self.width, self.height,
+                              self.dead_boards, self.dead_links,
+                              max_dead_boards, max_dead_links, require_torus)
+
+        xy = self.pack_tree.alloc(width, height,
+                                  candidate_filter=cf)
+
+        # If a block could not be allocated, fail
+        if xy is None:
+            return None
+
+        # If a block was allocated, store the allocation
+        allocation_id = self.next_id
+        self.next_id += 1
+        self.allocation_types[allocation_id] = _AllocationType.triads
+        x, y = xy
+        self.allocation_board[allocation_id] = (x, y, 0)
+
+        return (allocation_id, cf.boards, cf.periphery, cf.torus)
+
+    def _alloc_boards_possible(self, boards, min_ratio=0.0,
+                               max_dead_boards=None, max_dead_links=None,
+                               require_torus=False):
+        """Is it guaranteed that the specified allocation *could* succeed if
+        enough of the machine is free?
+
+        This function may be conservative. If the specified request would fail
+        when no resources have been allocated, we return False, even if some
+        circumstances the allocation may succeed. For example, if one board in
+        each of the four corners of the machine is dead, no allocation with
+        max_dead_boards==0 can succeed when the machine is empty but may
+        succeed if some other allocation has taken place.
+
+        Parameters
+        ----------
+        boards : int
+            The *minimum* number of boards, must be at least 1. Note that if
+            only 1 board is required, :py:class:`._alloc_board` would be a more
+            appropriate function since this function may return as many as
+            three boards when only a single one is requested.
+        min_ratio : float
+            The aspect ratio which the allocated region must be 'at least as
+            square as'. Set to 0.0 for any allowable shape.
+        max_dead_boards : int or None
+            The maximum number of broken or unreachable boards to allow in the
+            allocated region. If None, any number of dead boards is permitted,
+            as long as the board on the bottom-left corner is alive (Default:
+            None).
+        max_dead_links : int or None
+            The maximum number of broken links allow in the allocated region.
+            When require_torus is True this includes wrap-around links,
+            otherwise peripheral links are not counted.  If None, any number of
+            broken links is allowed. (Default: None).
+        require_torus : bool
+            If True, only allocate blocks with torus connectivity. In general
+            this will only succeed for requests to allocate an entire machine
+            (when the machine is otherwise not in use!). (Default: False)
+
+        Returns
+        -------
+        bool
+
+        See Also
+        --------
+        alloc_possible : The (public) wrapper which also supports checking
+                         triad allocations.
+        """
+        # Convert number of boards to number of triads (rounding up...)
+        triads = int(ceil(boards / 3.0))
+
+        # Sanity check: can't be a non-machine
+        if triads <= 0:
+            return False
+
+        # Special case: If a torus is required this is only deliverable when
+        # the requirements match the size of the machine exactly.
+        if require_torus and (triads != self.width * self.height):
+            return False
+
+        # If no region of the right shape can be made, just fail
+        wh = area_to_rect(triads, self.width, self.height, min_ratio)
+        if wh is None:
+            return False
+        width, height = wh
+
+        # Test to see whether the allocation could succeed in the idle machine
+        cf = _CandidateFilter(self.width, self.height,
+                              self.dead_boards, self.dead_links,
+                              max_dead_boards, max_dead_links, require_torus)
+        for x, y in set([(0, 0),
+                         (self.width - width, 0),
+                         (0, self.height - height),
+                         (self.width - width, self.height - height)]):
+            if cf(x, y, width, height):
+                return True
+
+        # No possible allocation could be made...
+        return False
+
+    def _alloc_boards(self, boards, min_ratio=0.0, max_dead_boards=None,
+                      max_dead_links=None, require_torus=False):
+        """Allocate a rectangular block of triads with at least the specified
+        number of boards which is 'at least as square' as the specified aspect
+        ratio.
+
+        Parameters
+        ----------
+        boards : int
+            The *minimum* number of boards, must be at least 1. Note that if
+            only 1 board is required, :py:class:`._alloc_board` would be a more
+            appropriate function since this function may return as many as
+            three boards when only a single one is requested.
+        min_ratio : float
+            The aspect ratio which the allocated region must be 'at least as
+            square as'. Set to 0.0 for any allowable shape.
         max_dead_boards : int or None
             The maximum number of broken or unreachable boards to allow in the
             allocated region. If None, any number of dead boards is permitted,
@@ -193,40 +359,44 @@ class Allocator(object):
 
         See Also
         --------
-        alloc : The (public) wrapper which also supports allocating boards.
+        alloc : The (public) wrapper which also supports allocating individual
+        boards.
         """
+        # Convert number of boards to number of triads (rounding up...)
+        triads = int(ceil(boards / 3.0))
+
+        # Sanity check: can't be a non-machine
+        if triads <= 0:
+            return None
+
         # Special case: If a torus is required this is only deliverable when
         # the requirements match the size of the machine exactly.
-        if require_torus and (width != self.width or height != self.height):
-            return None
-        
-        # Sanity check: can't be a non-machine
-        if width <= 0 or height <= 0:
+        if require_torus and (triads != self.width * self.height):
             return None
 
         cf = _CandidateFilter(self.width, self.height,
                               self.dead_boards, self.dead_links,
                               max_dead_boards, max_dead_links, require_torus)
 
-        xy = self.pack_tree.alloc(width, height,
-                                  candidate_filter=cf)
+        xywh = self.pack_tree.alloc_area(triads, min_ratio,
+                                         candidate_filter=cf)
 
         # If a block could not be allocated, fail
-        if xy is None:
+        if xywh is None:
             return None
 
         # If a block was allocated, store the allocation
         allocation_id = self.next_id
         self.next_id += 1
         self.allocation_types[allocation_id] = _AllocationType.triads
-        x, y = xy
+        x, y, w, h = xywh
         self.allocation_board[allocation_id] = (x, y, 0)
 
         return (allocation_id, cf.boards, cf.periphery, cf.torus)
 
     def _alloc_board_possible(self, x=None, y=None, z=None,
                               max_dead_boards=None, max_dead_links=None,
-                              require_torus=False):
+                              require_torus=False, min_ratio=0.0):
         """Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
@@ -240,6 +410,8 @@ class Allocator(object):
             Ignored.
         require_torus : bool
             Must be False.
+        min_ratio : float
+            Ignored.
 
         Returns
         -------
@@ -251,8 +423,10 @@ class Allocator(object):
                          board allocations.
         """
         assert require_torus is False
-        assert (x is None) == (y is None) == (z is None)
-        board_requested = x is not None
+        assert (((x is None) == (y is None) == (z is None)) or
+                ((x == 1) == (y is None) == (z is None)))
+
+        board_requested = y is not None
 
         # If the requested board is outside the dimensions of the machine, the
         # request definitely can't be met.
@@ -273,7 +447,7 @@ class Allocator(object):
 
     def _alloc_board(self, x=None, y=None, z=None,
                      max_dead_boards=None, max_dead_links=None,
-                     require_torus=False):
+                     require_torus=False, min_ratio=0.0):
         """Allocate a single board, optionally specifying a specific board to
         allocate.
 
@@ -289,6 +463,8 @@ class Allocator(object):
             Ignored.
         require_torus : bool
             Must be False.
+        min_ratio : float
+            Ignored.
 
         Returns
         -------
@@ -308,8 +484,10 @@ class Allocator(object):
         alloc : The (public) wrapper which also supports allocating triads.
         """
         assert require_torus is False
-        assert (x is None) == (y is None) == (z is None)
-        board_requested = x is not None
+        assert (((x is None) == (y is None) == (z is None)) or
+                ((x == 1) == (y is None) == (z is None)))
+
+        board_requested = y is not None
 
         # Special case: the desired board is dead: just give up
         if board_requested and (x, y, z) in self.dead_boards:
@@ -376,22 +554,27 @@ class Allocator(object):
         # Recursing will return a board from the triad
         return self._alloc_board(x, y, z)
 
-    def _alloc_type(self, x_or_width=None, y_or_height=None, z=None,
+    def _alloc_type(self, x_or_num_or_width=None, y_or_height=None, z=None,
                     max_dead_boards=None, max_dead_links=None,
-                    require_torus=False):
+                    require_torus=False, min_ratio=0.0):
         """Returns the type of allocation the user is attempting to make (and
         fails if it is invalid.
 
         Usage::
 
-            a.alloc()  # Allocate a single board
-            a.alloc(3, 2, 1)  # Allocate a board (3, 2, 1)
+            a.alloc()  # Allocate any single board
+            a.alloc(1)  # Allocate any single board
+            a.alloc(3, 2, 1)  # Allocate the specific board (3, 2, 1)
+            a.alloc(4)  # Allocate at least 4 boards
             a.alloc(2, 3, **kwargs)  # Allocate a 2x3 triad machine
 
         Parameters
         ----------
-        <nothing> OR x, y, z OR width, height
+        <nothing> OR num OR x, y, z OR width, height
             If nothing, allocate a single board.
+
+            If num, allocate at least that number of boards. Special case: if
+            1, allocate exactly 1 board.
 
             If x, y and z, allocate a specific board.
 
@@ -416,21 +599,39 @@ class Allocator(object):
         -------
         :py:class:`._AllocationType`
         """
-        alloc_board = ((x_or_width is None) ==
-                       (y_or_height is None) ==
-                       (z is None))
+        # Work-around for Python 2's non-support for keyword-only arguments...
+        args = []
+        if x_or_num_or_width is not None:
+            args.append(x_or_num_or_width)
+            if y_or_height is not None:
+                args.append(y_or_height)
+                if z is not None:
+                    args.append(z)
 
-        if alloc_board:
+        # Select allocation type
+        if len(args) == 0:
+            alloc_type = _AllocationType.board
+        elif len(args) == 1:
+            if args[0] == 1:
+                alloc_type = _AllocationType.board
+            else:
+                alloc_type = _AllocationType.boards
+        elif len(args) == 2:
+            alloc_type = _AllocationType.triads
+        elif len(args) == 3:
+            alloc_type = _AllocationType.board
+        else:
+            raise TypeError(
+                "Expected between 0 and 3 arguments, got {}.".format(
+                    len(args)))
+
+        # Validate arguments
+        if alloc_type == _AllocationType.board:
             if require_torus:
                 raise ValueError(
                     "require_torus must be False when allocating boards.")
 
-            return _AllocationType.board
-        else:
-            if x_or_width is None or y_or_height is None:
-                raise ValueError("Both width and height are required.")
-
-            return _AllocationType.triads
+        return alloc_type
 
     def alloc_possible(self, *args, **kwargs):
         """Is the specified allocation actually possible on this machine?
@@ -438,17 +639,26 @@ class Allocator(object):
         Usage::
 
             a.alloc_possible()  # Can allocate a single board?
+            a.alloc_possible(1)  # Can allocate a single board?
+            a.alloc_possible(4)  # Can allocate at least 4 boards?
             a.alloc_possible(3, 2, 1)  # Can allocate a board (3, 2, 1)?
-            a.alloc_possible(2, 3, **kwargs)  # Can allocate a 2x3 triads?
+            a.alloc_possible(2, 3, **kwargs)  # Can allocate 2x3 triads?
 
         Parameters
         ----------
-        <nothing> OR x, y, z OR width, height
+        <nothing> OR num OR x, y, z OR width, height
             If nothing, allocate a single board.
+
+            If num, allocate at least that number of boards. Special case: if
+            1, allocate exactly 1 board.
 
             If x, y and z, allocate a specific board.
 
             If width and height, allocate a block of this size, in triads.
+        min_ratio : float
+            The aspect ratio which the allocated region must be 'at least as
+            square as'. Set to 0.0 for any allowable shape. Ignored when
+            allocating single boards or specific rectangles of triads.
         max_dead_boards : int or None
             The maximum number of broken or unreachable boards to allow in the
             allocated region. If None, any number of dead boards is permitted,
@@ -469,8 +679,11 @@ class Allocator(object):
         -------
         bool
         """
-        if self._alloc_type(*args, **kwargs) is _AllocationType.board:
+        alloc_type = self._alloc_type(*args, **kwargs)
+        if alloc_type is _AllocationType.board:
             return self._alloc_board_possible(*args, **kwargs)
+        elif alloc_type is _AllocationType.boards:
+            return self._alloc_boards_possible(*args, **kwargs)
         else:
             return self._alloc_triads_possible(*args, **kwargs)
 
@@ -481,17 +694,26 @@ class Allocator(object):
         Usage::
 
             a.alloc()  # Allocate a single board
-            a.alloc(3, 2, 1)  # Allocate a board (3, 2, 1)
+            a.alloc(1)  # Allocate a single board
+            a.alloc(4)  # Allocate at least 4 boards
+            a.alloc(3, 2, 1)  # Allocate a specific board (3, 2, 1)
             a.alloc(2, 3, **kwargs)  # Allocate a 2x3 triad machine
 
         Parameters
         ----------
-        x, y, z OR width, height
+        <nothing> OR num OR x, y, z OR width, height
             If all None, allocate a single board.
+
+            If num, allocate at least that number of boards. Special case: if
+            1, allocate exactly 1 board.
 
             If x, y and z, allocate a specific board.
 
             If width and height, allocate a block of this size, in triads.
+        min_ratio : float
+            The aspect ratio which the allocated region must be 'at least as
+            square as'. Set to 0.0 for any allowable shape. Ignored when
+            allocating single boards or specific rectangles of triads.
         max_dead_boards : int or None
             The maximum number of broken or unreachable boards to allow in the
             allocated region. If None, any number of dead boards is permitted,
@@ -521,8 +743,11 @@ class Allocator(object):
             the links which leave the allocated set of boards. ``torus`` is
             True iff at least one torus link is working.
         """
-        if self._alloc_type(*args, **kwargs) is _AllocationType.board:
+        alloc_type = self._alloc_type(*args, **kwargs)
+        if alloc_type is _AllocationType.board:
             return self._alloc_board(*args, **kwargs)
+        elif alloc_type is _AllocationType.boards:
+            return self._alloc_boards(*args, **kwargs)
         else:
             return self._alloc_triads(*args, **kwargs)
 
@@ -568,6 +793,13 @@ class _AllocationType(Enum):
 
     board = 1
     """A single board."""
+
+    boards = 2
+    """Two or more boards, to be allocated as triads.
+
+    This type only returned by :py:meth:`.Allocator._alloc_type` and is never
+    used as an allocation type.
+    """
 
 
 class _CandidateFilter(object):

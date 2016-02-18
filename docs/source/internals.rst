@@ -61,6 +61,9 @@ A number of other smaller modules also exist as follows:
 :py:mod:`spalloc_server.coordinates`
     Utility functions for working with the coordinate systems used to describe
     the locations of boards in large machines.
+:py:mod:`spalloc_server.area_to_rect`
+    Utility functions for working out sensible sizes of machine to allocate
+    given a minimum number of boards and worst-case aspect ratio.
 :py:mod:`spalloc_server.configuration`
     Objects used to define a configuration of the server, constructed by the
     user's config file.
@@ -128,6 +131,14 @@ Machine resource allocation at the triad-granularity (:py:mod:`~spalloc_server.p
 ------------------------------------------------------------------------------------------
 
 .. automodule:: spalloc_server.pack_tree
+    :members:
+    :private-members:
+    :special-members:
+
+Number of baords to rectangle conversion (:py:mod:`~spalloc_server.area_to_rect`)
+---------------------------------------------------------------------------------
+
+.. automodule:: spalloc_server.area_to_rect
     :members:
     :private-members:
     :special-members:

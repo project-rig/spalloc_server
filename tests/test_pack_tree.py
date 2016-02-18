@@ -1,6 +1,6 @@
 import pytest
 
-from mock import Mock
+from mock import Mock, call
 
 import random
 
@@ -541,6 +541,57 @@ class TestRequest(object):
         assert p.children[1].width == 1
         assert p.children[1].height == 1
         assert p.children[1].children is None
+
+
+class TestAllocArea(object):
+
+    def test_already_allocated(self):
+        p = PackTree(0, 0, 1, 1)
+        assert p.alloc(1, 1) == (0, 0)
+        assert p.alloc_area(1) is None
+
+    def test_too_large(self):
+        p = PackTree(0, 0, 1, 1)
+        assert p.alloc_area(2) is None
+
+    def test_no_children(self):
+        p = PackTree(0, 0, 3, 3)
+        assert p.alloc_area(6) == (0, 0, 3, 2)
+
+        p = PackTree(0, 0, 3, 3)
+        assert p.alloc_area(6, 1.0) == (0, 0, 3, 3)
+
+    def test_children_full(self):
+        p = PackTree(0, 0, 2, 1)
+        assert p.alloc(1, 1) == (0, 0)
+        assert p.alloc(1, 1) == (1, 0)
+        assert p.alloc_area(1) is None
+
+    def test_one_child_full(self):
+        p = PackTree(0, 0, 2, 1)
+        assert p.alloc(1, 1) == (0, 0)
+        assert p.alloc_area(1) == (1, 0, 1, 1)
+        p.free(0, 0)
+        assert p.alloc_area(1) == (0, 0, 1, 1)
+
+    def test_smallest_child_first(self):
+        p = PackTree(0, 0, 3, 1)
+        p.vsplit(1)
+        assert p.alloc_area(1) == (0, 0, 1, 1)
+
+        p = PackTree(0, 0, 3, 1)
+        p.vsplit(2)
+        assert p.alloc_area(1) == (2, 0, 1, 1)
+
+    def test_candidate_filter(self):
+        p = PackTree(0, 0, 2, 1)
+        p.vsplit(1)
+        cf = Mock(side_effect=[False, True])
+        assert p.alloc_area(1, 0.0, cf) == (1, 0, 1, 1)
+        assert cf.mock_calls == [
+            call(0, 0, 1, 1),
+            call(1, 0, 1, 1),
+        ]
 
 
 class TestReasonableUsage(object):

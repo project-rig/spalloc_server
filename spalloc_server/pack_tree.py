@@ -6,6 +6,9 @@ otherwise a relatively generic 2D packing algorithm.
 """
 
 
+from spalloc_server.area_to_rect import area_to_rect
+
+
 class PackTree(object):
     r"""A tree-based datastructure for allocating/packing rectangles into a
     fixed 2D space.
@@ -118,12 +121,12 @@ class PackTree(object):
             If the request could not be met, None is returned and no allocation
             is made.
         """
-        # Allocation simply can't fit fail fast
-        if width > self.width or height > self.height:
-            return None
-
         # If this node is already populated, give up
         if self.allocated:
+            return None
+
+        # Allocation simply can't fit fail fast
+        if width > self.width or height > self.height:
             return None
 
         # If this node is split (i.e. has children), try inserting into the
@@ -178,7 +181,8 @@ class PackTree(object):
                      self.children[1])
 
         # If the child region is not exactly the right size, split that one
-        # last time.
+        # last time. Note that we do this explicitly rather than recursively to
+        # save additional calls to the candidate filter.
         if child.width != width:
             child.vsplit(x if x != child.x else child.x + width)
             grandchild = (child.children[0]
@@ -196,6 +200,75 @@ class PackTree(object):
         else:
             child.allocated = True
             return (child.x, child.y)
+
+    def alloc_area(self, area, min_ratio=0.0, candidate_filter=None):
+        """Attempt to allocate a rectangular region with at least the specified
+        area which is 'at least as square' as the specified aspect ratio.
+
+        Parameters
+        ----------
+        area : int
+            The *minimum* area to allocate, must be at least 1.
+        min_ratio : float
+            The aspect ratio which the allocated region must be 'at least as
+            square as'. Set to 0.0 for any allowable shape.
+        candidate_filter : None or function(x, y, w, h) -> bool
+            A function which will be called with candidate allocations. If the
+            function returns False, the allocation is rejected and the
+            allocator will attempt to find another. If the function returns
+            True, the allocator will then create the allocation. This function
+            may, for example, check that the suggested region is fully
+            connected or does not have too many faults.
+
+            If this argument is None (the default) the first candidate
+            allocation found will be returned.
+
+        Returns
+        -------
+        allocation : (x, y, w, h) or None
+            If the allocation request was met, a tuple giving the position of
+            the bottom-left corner, width and height of the allocation is
+            returned.
+
+            If the request could not be met, None is returned and no allocation
+            is made.
+        """
+        # If this node is already populated, give up
+        if self.allocated:
+            return None
+
+        # Allocation simply can't fit fail fast
+        if area > self.width * self.height:
+            return None
+
+        # If this node is split (i.e. has children), try inserting into the
+        # children.
+        if self.children is not None:
+            # Try the smallest child first
+            for child in sorted(self.children,
+                                key=(lambda c: c.width * c.height)):
+                allocation = child.alloc_area(area, min_ratio,
+                                              candidate_filter)
+                if allocation:
+                    return allocation
+            else:
+                # No child could fit the allocation, fail
+                return None
+
+        # This is a child node, try to work out a suitable size for the
+        # allocation if possible
+        rect = area_to_rect(area, self.width, self.height, min_ratio)
+        if not rect:
+            return None
+
+        # Try allocating that size
+        width, height = rect
+        allocation = self.alloc(width, height, candidate_filter)
+        if allocation:
+            x, y = allocation
+            return (x, y, width, height)
+        else:
+            return None
 
     def request(self, x, y):
         """Request the allocation of a specific 1x1 block.

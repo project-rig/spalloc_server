@@ -166,7 +166,7 @@ class Server(object):
 
         # Start the server
         self._server_thread.start()
-        
+
         # Flag for checking if the server is still alive
         self._running = True
 
@@ -328,7 +328,7 @@ class Server(object):
         """
         try:
             data = client.recv(1024)
-        except OSError, IOError:  # pragma: no cover
+        except (OSError, IOError):  # pragma: no cover
             # Client disconnected sensibly
             self._disconnect_client(client)
             return
@@ -389,7 +389,7 @@ class Server(object):
                                  if jobs is None else
                                  list(changed_jobs.intersection(jobs))}
                             ).encode("utf-8") + b"\n")
-                    except OSError, IOError:
+                    except (OSError, IOError):
                         logging.exception(
                             "Could not send notification.")
                         self._disconnect_client(client)
@@ -397,7 +397,8 @@ class Server(object):
         # Notify clients about machines which have changed
         changed_machines = self._controller.changed_machines
         if changed_machines:
-            for client, machines in list(iteritems(self._client_machine_watches)):
+            for client, machines in list(
+                    iteritems(self._client_machine_watches)):
                 if (machines is None or
                         not machines.isdisjoint(changed_machines)):
                     try:
@@ -408,7 +409,7 @@ class Server(object):
                                  if machines is None else
                                  list(changed_machines.intersection(machines))}
                             ).encode("utf-8") + b"\n")
-                    except OSError, IOError:
+                    except (OSError, IOError):
                         logging.exception(
                             "Could not send notification.")
                         self._disconnect_client(client)
@@ -484,13 +485,13 @@ class Server(object):
         logging.info("Waiting for all queued BMP commands...")
         self._controller.stop()
         self._controller.join()
-        
+
         # Dump controller state to file
         with open(self._state_filename, "wb") as f:
             pickle.dump(self._controller, f)
 
         logging.info("Server shut down.")
-        
+
         self._running = False
 
     @_command
@@ -510,9 +511,17 @@ class Server(object):
 
             # Any single (SpiNN-5) board
             job_id = create_job(owner="me")
+            job_id = create_job(1, owner="me")
 
             # Board x=3, y=2, z=1 on the machine named "m"
             job_id = create_job(3, 2, 1, machine="m", owner="me")
+
+            # Any machine with at least 4 boards
+            job_id = create_job(4, owner="me")
+
+            # Any 7-or-more board machine with an aspect ratio at least as
+            # square as 1:2
+            job_id = create_job(7, min_ratio=0.5, owner="me")
 
             # Any 4x5 triad segment of a machine (may or may-not be a
             # torus/full machine)
@@ -560,6 +569,11 @@ class Server(object):
             have. If None is supplied, only machines with the "default" tag
             will be used. If machine is given, this argument must be None.
             (Default: None)
+        min_ratio : float
+            The aspect ratio (h/w) which the allocated region must be 'at least
+            as square as'. Set to 0.0 for any allowable shape, 1.0 to be
+            exactly square. Ignored when allocating single boards or specific
+            rectangles of triads.
         max_dead_boards : int or None
             The maximum number of broken or unreachable boards to allow in the
             allocated region. If None, any number of dead boards is permitted,

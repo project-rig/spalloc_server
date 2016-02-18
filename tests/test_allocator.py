@@ -218,11 +218,13 @@ class TestAllocator(object):
         # Should not be able to allocate if too many boards are dead
         a = Allocator(3, 4, dead_boards=set([(0, 0, 0)]))
         assert a._alloc_triads(3, 4, max_dead_boards=0) is None
+        assert a._alloc_boards(3*4*3, max_dead_boards=0) is None
 
     def test_alloc_triads_dead_links(self):
         # Should not be able to allocate if too many links are dead
         a = Allocator(3, 4, dead_links=set([(0, 0, 0, Links.north)]))
         assert a._alloc_triads(3, 4, max_dead_links=0) is None
+        assert a._alloc_boards(3*4*3, max_dead_links=0) is None
 
     def test_alloc_triads_bad_torus(self):
         # Should not be able to allocate a torus unless requesting the full
@@ -231,6 +233,9 @@ class TestAllocator(object):
         assert a._alloc_triads(1, 2, require_torus=True) is None
         assert a._alloc_triads(3, 2, require_torus=True) is None
         assert a._alloc_triads(2, 4, require_torus=True) is None
+        assert a._alloc_boards(1*2*3, require_torus=True) is None
+        assert a._alloc_boards(3*2*3, require_torus=True) is None
+        assert a._alloc_boards(2*4*3, require_torus=True) is None
 
     def test_alloc_triads_too_big(self):
         # Should fail if something too big is requested
@@ -238,6 +243,7 @@ class TestAllocator(object):
         assert a._alloc_triads(4, 4) is None
         assert a._alloc_triads(3, 5) is None
         assert a._alloc_triads(4, 5) is None
+        assert a._alloc_boards(3*4*3 + 1) is None
 
     def test_alloc_triads_single(self):
         # Should be able to allocate single blocks
@@ -289,6 +295,17 @@ class TestAllocator(object):
 
         # Should get full
         assert a._alloc_triads(1, 1, require_torus=require_torus) is None
+
+    def test_alloc_boards_round_up(self):
+        # Should round up number of boards being allocated to a multiple of
+        # three
+        a = Allocator(3, 4)
+        assert len(a._alloc_boards(1)[1]) == 3
+        assert len(a._alloc_boards(2)[1]) == 3
+        assert len(a._alloc_boards(3)[1]) == 3
+        assert len(a._alloc_boards(4)[1]) == 6
+        assert len(a._alloc_boards(5)[1]) == 6
+        assert len(a._alloc_boards(6)[1]) == 6
 
     def test_alloc_board_dead(self):
         # Should fail if a dead board is requested
@@ -543,7 +560,7 @@ class TestAllocator(object):
         assert a._alloc_triads_possible(4, 4) is False
         assert a._alloc_triads_possible(3, 5) is False
         assert a._alloc_triads_possible(4, 5) is False
-        
+
         # Fail too small
         assert a._alloc_triads_possible(0, 0) is False
         assert a._alloc_triads_possible(0, 1) is False
@@ -575,6 +592,40 @@ class TestAllocator(object):
         # Finally, should be possible to succeed when we relax the criteria
         assert a._alloc_triads_possible(2, 2) is True
 
+    def test_all_boards_possible(self):
+        a = Allocator(3, 4)
+
+        # Fail too big
+        assert a._alloc_boards_possible(4*4*3) is False
+
+        # Fail too small
+        assert a._alloc_boards_possible(0) is False
+        assert a._alloc_boards_possible(-1) is False
+
+        # Fail torus wrong size
+        assert a._alloc_boards_possible(2*4*3, require_torus=True) is False
+
+        # Fail due to (0, 0, 0) being dead
+        a.dead_boards.add((0, 0, 0))
+        assert a._alloc_boards_possible(3*4*3) is False
+
+        # Fail due to corners being dead and requiring nothing to be dead
+        a.dead_boards.add((0, 3, 0))
+        a.dead_boards.add((2, 0, 0))
+        a.dead_boards.add((2, 3, 0))
+        assert a._alloc_boards_possible(2*2*3, max_dead_boards=0) is False
+
+        # Fail due to all working links being required
+        a.dead_boards = set()
+        a.dead_links.add((0, 0, 0, Links.north))
+        a.dead_links.add((0, 3, 0, Links.north))
+        a.dead_links.add((2, 0, 0, Links.north))
+        a.dead_links.add((2, 3, 0, Links.north))
+        assert a._alloc_boards_possible(2*2*3, max_dead_links=0) is False
+
+        # Finally, should be possible to succeed when we relax the criteria
+        assert a._alloc_boards_possible(2*2*3) is True
+
     def test_alloc_board_possible(self):
         a = Allocator(2, 3)
 
@@ -604,18 +655,20 @@ class TestAllocator(object):
         assert a._alloc_board_possible() is True
         assert a._alloc_board_possible(0, 0, 0) is True
 
-    @pytest.mark.parametrize("specific", [True, False])
+    @pytest.mark.parametrize("type", ["empty", "one", "specific"])
     @pytest.mark.parametrize("add_require_torus_false", [True, False])
     @pytest.mark.parametrize("max_dead_boards", [None, 0, 2])
     @pytest.mark.parametrize("max_dead_links", [None, 0, 2])
-    def test_alloc_type_board(self, specific, max_dead_boards, max_dead_links,
+    def test_alloc_type_board(self, type, max_dead_boards, max_dead_links,
                               add_require_torus_false):
         a = Allocator(2, 3)
 
-        if specific:
-            args = (3, 2, 1)
-        else:
+        if type == "empty":
             args = tuple()
+        elif type == "one":
+            args = (1, )
+        else:  # type == "specific":
+            args = (1, 1, 1)
 
         if add_require_torus_false:
             kwargs = {"require_torus": False}
@@ -663,23 +716,20 @@ class TestAllocator(object):
                              **kwargs) \
             is _AllocationType.triads
 
-    def test_alloc_type_triads_bad(self):
-        a = Allocator(2, 3)
-
-        with pytest.raises(ValueError):
-            a._alloc_type(1)
-
-        with pytest.raises(ValueError):
-            a._alloc_type(y_or_height=1)
-
     def test_alloc_possible(self):
         # Just make sure the wrapper calls the right functions...
         a = Allocator(9, 10, dead_boards=set([(3, 2, 1)]))
 
-        # Allocating boards
+        # Allocating single boards
         assert a.alloc_possible() is True
+        assert a.alloc_possible(1) is True
         assert a.alloc_possible(0, 0, 0) is True
         assert a.alloc_possible(3, 2, 1) is False
+
+        # Allocating arbitrary numbers of boards
+        assert a.alloc_possible(9*10*3) is True
+        assert a.alloc_possible(9*10*3, min_ratio=1.0) is False
+        assert a.alloc_possible(9*10*3 + 1) is False
 
         # Allocating triads
         assert a.alloc_possible(1, 1) is True
@@ -692,7 +742,11 @@ class TestAllocator(object):
 
         # Allocating boards
         assert len(a.alloc()[1]) == 1
+        assert len(a.alloc(1)[1]) == 1
         assert len(a.alloc(5, 4, 0)[1]) == 1
+
+        # Allocating numbers of boards
+        assert len(a.alloc(2*3*3)[1]) == 2 * 3 * 3
 
         # Allocating triads
         assert len(a.alloc(2, 3)[1]) == 2 * 3 * 3
