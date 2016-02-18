@@ -328,12 +328,7 @@ class Server(object):
         """
         try:
             data = client.recv(1024)
-        except (OSError, IOError):
-            # Client disconnected sensibly
-            self._disconnect_client(client)
-            return
         except:
-            logging.exception("Could not recv() from client socket.")
             self._disconnect_client(client)
             return
 
