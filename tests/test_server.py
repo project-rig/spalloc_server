@@ -1,6 +1,6 @@
 import pytest
 
-from mock import Mock
+from mock import Mock, call
 
 import threading
 import tempfile
@@ -391,12 +391,63 @@ def test_reread_config_file(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
-def test_bad_command(simple_config, s):
+def test_bad_command(simple_config, s, monkeypatch):
     # If a bad command is sent, the server should just disconnect the client
     c = SimpleClient()
     c.send_call("does not exist")
-    time.sleep(0.05)
     assert c.sock.recv(1024) == b""
+
+
+@pytest.mark.timeout(1.0)
+def test_handle_commands_bad_recv(simple_config, s, monkeypatch):
+    monkeypatch.setattr(s, "_disconnect_client", Mock())
+
+    client = Mock()
+    client.recv.side_effect = OSError()
+    s._handle_commands(client)
+    s._disconnect_client.assert_called_once_with(client)
+
+
+@pytest.mark.timeout(1.0)
+def test_bad_disconnect(simple_config, s, monkeypatch):
+    client = Mock()
+    client.fileno.return_value = 1
+    client.getpeername.side_effect = OSError()
+    monkeypatch.setattr(s, "_client_sockets", {1: client})
+    monkeypatch.setattr(s, "_client_buffers", {client: b""})
+    monkeypatch.setattr(s, "_poll", Mock())
+
+    s._disconnect_client(client)
+
+
+@pytest.mark.timeout(1.0)
+def test_bad_send_change_notifications(monkeypatch, simple_config, s):
+    client0 = Mock()
+    client0.send.side_effect = OSError()
+    client1 = Mock()
+    client1.send.side_effect = OSError()
+
+    monkeypatch.setattr(s, "_disconnect_client", Mock())
+
+    # Monkeypatch in a client which will fail to send notifications
+    conn = s._controller
+    s._client_job_watches[client0] = {1}
+    s._client_machine_watches[client1] = {"m"}
+    s._controller = Mock()
+    s._controller.changed_jobs = {1}
+    s._controller.changed_machines = {"m"}
+
+    s._send_change_notifications()
+
+    # Restore patched state
+    s._controller = conn
+    s._client_job_watches.pop(client0)
+    s._client_machine_watches.pop(client1)
+
+    assert s._disconnect_client.mock_calls == [
+        call(client0),
+        call(client1),
+    ]
 
 
 @pytest.mark.timeout(1.0)

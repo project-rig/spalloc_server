@@ -553,7 +553,7 @@ class TestAllocArea(object):
     def test_too_large(self):
         p = PackTree(0, 0, 1, 1)
         assert p.alloc_area(2) is None
-    
+
     def test_unsuitable_ratio(self):
         p = PackTree(0, 0, 3, 1)
         assert p.alloc_area(3, min_ratio=1.0) is None

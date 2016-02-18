@@ -328,9 +328,8 @@ class Server(object):
         """
         try:
             data = client.recv(1024)
-        except:
-            self._disconnect_client(client)
-            return
+        except (OSError, IOError):
+            data = b""
 
         # Did the client disconnect?
         if len(data) == 0:
