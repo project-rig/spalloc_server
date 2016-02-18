@@ -295,6 +295,13 @@ class TestAllocator(object):
         a = Allocator(3, 4, dead_boards=set([(3, 2, 1)]))
         assert a._alloc_board(3, 2, 1) is None
 
+    def test_alloc_triads_non_machine(self):
+        # Should fail if machine too small
+        a = Allocator(3, 4)
+        assert a._alloc_triads(0, 0) is None
+        assert a._alloc_triads(0, 1) is None
+        assert a._alloc_triads(1, 0) is None
+
     def test_alloc_existing_triad(self):
         # Attempt to allocate based on an already allocated triad.
         next_id = 10
@@ -536,6 +543,11 @@ class TestAllocator(object):
         assert a._alloc_triads_possible(4, 4) is False
         assert a._alloc_triads_possible(3, 5) is False
         assert a._alloc_triads_possible(4, 5) is False
+        
+        # Fail too small
+        assert a._alloc_triads_possible(0, 0) is False
+        assert a._alloc_triads_possible(0, 1) is False
+        assert a._alloc_triads_possible(1, 0) is False
 
         # Fail torus wrong size
         assert a._alloc_triads_possible(2, 4, require_torus=True) is False

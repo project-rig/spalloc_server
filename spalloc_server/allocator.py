@@ -131,6 +131,10 @@ class Allocator(object):
         # If too big, we can't fit
         if width > self.width or height > self.height:
             return False
+        
+        # Can't be a non-machine
+        if width <= 0 or height <= 0:
+            return False
 
         # If torus connectivity is required, we must be *exactly* the right
         # size otherwise we can't help...
@@ -195,6 +199,10 @@ class Allocator(object):
         # the requirements match the size of the machine exactly.
         if require_torus and (width != self.width or height != self.height):
             return None
+        
+        # Sanity check: can't be a non-machine
+        if width <= 0 or height <= 0:
+            return None
 
         cf = _CandidateFilter(self.width, self.height,
                               self.dead_boards, self.dead_links,
@@ -216,7 +224,9 @@ class Allocator(object):
 
         return (allocation_id, cf.boards, cf.periphery, cf.torus)
 
-    def _alloc_board_possible(self, x=None, y=None, z=None):
+    def _alloc_board_possible(self, x=None, y=None, z=None,
+                              max_dead_boards=None, max_dead_links=None,
+                              require_torus=False):
         """Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
@@ -224,6 +234,12 @@ class Allocator(object):
         ----------
         x, y, z : ints or None
             If specified, requests a specific board.
+        max_dead_boards : int or None
+            Ignored.
+        max_dead_links : int or None
+            Ignored.
+        require_torus : bool
+            Must be False.
 
         Returns
         -------
@@ -234,6 +250,7 @@ class Allocator(object):
         alloc_possible : The (public) wrapper which also supports checking
                          board allocations.
         """
+        assert require_torus is False
         assert (x is None) == (y is None) == (z is None)
         board_requested = x is not None
 
@@ -254,7 +271,9 @@ class Allocator(object):
         # Should be possible!
         return True
 
-    def _alloc_board(self, x=None, y=None, z=None):
+    def _alloc_board(self, x=None, y=None, z=None,
+                     max_dead_boards=None, max_dead_links=None,
+                     require_torus=False):
         """Allocate a single board, optionally specifying a specific board to
         allocate.
 
@@ -264,6 +283,12 @@ class Allocator(object):
             If None, an arbitrary free board will be returned if possible. If
             all are defined, attempts to allocate the specific board requested
             if available and working.
+        max_dead_boards : int or None
+            Ignored.
+        max_dead_links : int or None
+            Ignored.
+        require_torus : bool
+            Must be False.
 
         Returns
         -------
@@ -282,6 +307,7 @@ class Allocator(object):
         --------
         alloc : The (public) wrapper which also supports allocating triads.
         """
+        assert require_torus is False
         assert (x is None) == (y is None) == (z is None)
         board_requested = x is not None
 

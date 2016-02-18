@@ -9,7 +9,7 @@ setup(
     packages=find_packages(),
 
     # Metadata for PyPi
-    url="https://github.com/project-rig/spinn_partition",
+    url="https://github.com/project-rig/spalloc_server",
     author="Jonathan Heathcote",
     description="A tool for partitioning and allocating large SpiNNaker machines into smaller ones on demand.",
     license="GPLv2",

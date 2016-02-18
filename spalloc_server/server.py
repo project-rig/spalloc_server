@@ -166,6 +166,9 @@ class Server(object):
 
         # Start the server
         self._server_thread.start()
+        
+        # Flag for checking if the server is still alive
+        self._running = True
 
     def _notify(self):
         """Notify the background thread that something has happened.
@@ -281,7 +284,10 @@ class Server(object):
         ----------
         client : :py:class:`socket.Socket`
         """
-        logging.info("Client %s disconnected.", client.getpeername())
+        try:
+            logging.info("Client %s disconnected.", client.getpeername())
+        except:
+            logging.info("Client %s disconnected.", client)
 
         # Remove from the client list
         del self._client_sockets[client.fileno()]
@@ -322,6 +328,10 @@ class Server(object):
         """
         try:
             data = client.recv(1024)
+        except OSError, IOError:  # pragma: no cover
+            # Client disconnected sensibly
+            self._disconnect_client(client)
+            return
         except:  # pragma: no cover
             logging.exception("Could not recv() from client socket.")
             self._disconnect_client(client)
@@ -369,29 +379,39 @@ class Server(object):
         # Notify clients about jobs which have changed
         changed_jobs = self._controller.changed_jobs
         if changed_jobs:
-            for client, jobs in iteritems(self._client_job_watches):
+            for client, jobs in list(iteritems(self._client_job_watches)):
                 if jobs is None or not jobs.isdisjoint(changed_jobs):
-                    client.send(
-                        json.dumps(
-                            {"jobs_changed":
-                             list(changed_jobs)
-                             if jobs is None else
-                             list(changed_jobs.intersection(jobs))}
-                        ).encode("utf-8") + b"\n")
+                    try:
+                        client.send(
+                            json.dumps(
+                                {"jobs_changed":
+                                 list(changed_jobs)
+                                 if jobs is None else
+                                 list(changed_jobs.intersection(jobs))}
+                            ).encode("utf-8") + b"\n")
+                    except OSError, IOError:
+                        logging.exception(
+                            "Could not send notification.")
+                        self._disconnect_client(client)
 
         # Notify clients about machines which have changed
         changed_machines = self._controller.changed_machines
         if changed_machines:
-            for client, machines in iteritems(self._client_machine_watches):
+            for client, machines in list(iteritems(self._client_machine_watches)):
                 if (machines is None or
                         not machines.isdisjoint(changed_machines)):
-                    client.send(
-                        json.dumps(
-                            {"machines_changed":
-                             list(changed_machines)
-                             if machines is None else
-                             list(changed_machines.intersection(machines))}
-                        ).encode("utf-8") + b"\n")
+                    try:
+                        client.send(
+                            json.dumps(
+                                {"machines_changed":
+                                 list(changed_machines)
+                                 if machines is None else
+                                 list(changed_machines.intersection(machines))}
+                            ).encode("utf-8") + b"\n")
+                    except OSError, IOError:
+                        logging.exception(
+                            "Could not send notification.")
+                        self._disconnect_client(client)
 
     def _run(self):
         """The main server thread.
@@ -435,6 +455,10 @@ class Server(object):
             # Send any job/machine change notifications out
             self._send_change_notifications()
 
+    def is_alive(self):
+        """Is the server running?"""
+        return self._running
+
     def join(self):
         """Wait for the server to completely shut down."""
         self._server_thread.join()
@@ -456,14 +480,18 @@ class Server(object):
         logging.info("Closing connections...")
         self._close()
 
-        # Dump controller state to file
+        # Shut down the controller and flush all BMP commands
         logging.info("Waiting for all queued BMP commands...")
-        with open(self._state_filename, "wb") as f:
-            pickle.dump(self._controller, f)
         self._controller.stop()
         self._controller.join()
+        
+        # Dump controller state to file
+        with open(self._state_filename, "wb") as f:
+            pickle.dump(self._controller, f)
 
         logging.info("Server shut down.")
+        
+        self._running = False
 
     @_command
     def version(self, client):
@@ -527,7 +555,7 @@ class Server(object):
             executed on. If None, the first suitable machine available will be
             used, according to the tags selected below. Must be None when tags
             are given. (Default: None)
-        tags : set([str, ...]) or None
+        tags : [str, ...] or None
             *Optional.* The set of tags which any machine running this job must
             have. If None is supplied, only machines with the "default" tag
             will be used. If machine is given, this argument must be None.
@@ -553,6 +581,8 @@ class Server(object):
         int
             The job ID given to the newly allocated job.
         """
+        if kwargs.get("tags", None) is not None:
+            kwargs["tags"] = set(kwargs["tags"])
         return self._controller.create_job(*args, **kwargs)
 
     @_command
@@ -906,7 +936,11 @@ def main(args=None):
     server = Server(config_filename=args.config,
                     cold_start=args.cold_start)
     try:
-        server.join()
+        # NB: Originally this loop was replaced with a call to server.join
+        # however in Python 2, such blocking calls are not interruptable so we
+        # use this rather ugly workaround instead.
+        while server.is_alive():
+            time.sleep(0.1)
     except KeyboardInterrupt:
         server.stop_and_join()
 

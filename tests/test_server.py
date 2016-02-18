@@ -225,7 +225,9 @@ def test_startup_shutdown(simple_config, s):
 
 @pytest.mark.timeout(1.0)
 def test_join(MockABC, simple_config):
+    # Tests join, stop_and_join and is_alive
     s = Server(simple_config)
+    assert s.is_alive() is True
 
     joining_thread = threading.Thread(target=s.join)
     joining_thread.start()
@@ -233,11 +235,12 @@ def test_join(MockABC, simple_config):
     # The server should still be running...
     time.sleep(0.05)
     assert joining_thread.is_alive()
+    assert s.is_alive() is True
 
     # When server is stopped, the joining thread should be complete
     s.stop_and_join()
-    time.sleep(0.05)
-    assert not joining_thread.is_alive()
+    assert s.is_alive() is False
+    joining_thread.join()
 
 
 @pytest.mark.timeout(1.0)
@@ -749,7 +752,9 @@ def test_machine_notify_register_unregister(simple_config, s):
                           ("{} --cold-start", True),
                           ("{} -q --cold-start", True)])
 def test_commandline(monkeypatch, config_file, args, cold_start):
-    Server = Mock()
+    server = Mock()
+    Server = Mock(return_value=server)
+    server.is_alive.return_value = False
     import spalloc_server.server
     monkeypatch.setattr(spalloc_server.server,
                         "Server", Server)
@@ -767,18 +772,20 @@ def test_keyboard_interrupt(monkeypatch, config_file):
     monkeypatch.setattr(spalloc_server.server,
                         "Server", Server)
 
-    s.join.side_effect = KeyboardInterrupt
+    s.is_alive.side_effect = KeyboardInterrupt
     main([config_file])
 
     Server.assert_called_once_with(config_filename=config_file,
                                    cold_start=False)
-    s.join.assert_called_once_with()
+    s.is_alive.assert_called_once_with()
     s.stop_and_join.assert_called_once_with()
 
 
 @pytest.mark.parametrize("args", ["", "--cold-start" "-c"])
 def test_bad_args(monkeypatch, args):
-    Server = Mock()
+    server = Mock()
+    Server = Mock(return_value=server)
+    server.is_alive.return_value = False
     import spalloc_server.server
     monkeypatch.setattr(spalloc_server.server,
                         "Server", Server)
