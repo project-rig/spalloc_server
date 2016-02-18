@@ -328,11 +328,11 @@ class Server(object):
         """
         try:
             data = client.recv(1024)
-        except (OSError, IOError):  # pragma: no cover
+        except (OSError, IOError):
             # Client disconnected sensibly
             self._disconnect_client(client)
             return
-        except:  # pragma: no cover
+        except:
             logging.exception("Could not recv() from client socket.")
             self._disconnect_client(client)
             return
@@ -877,6 +877,8 @@ class Server(object):
             job["state"] = int(job["state"])
             if job["boards"] is not None:
                 job["boards"] = list(job["boards"])
+            if job["kwargs"].get("tags", None) is not None:
+                job["kwargs"]["tags"] = list(job["kwargs"]["tags"])
             out.append(job)
         return out
 
@@ -953,7 +955,7 @@ def main(args=None):
         # NB: Originally this loop was replaced with a call to server.join
         # however in Python 2, such blocking calls are not interruptable so we
         # use this rather ugly workaround instead.
-        while server.is_alive():
+        while server.is_alive():  # pragma: no cover
             time.sleep(0.1)
     except KeyboardInterrupt:
         server.stop_and_join()

@@ -411,7 +411,7 @@ def test_job_management(simple_config, s, c):
     # arguments
 
     # Should get allocated
-    job_id0 = c.call("create_job", owner="me")
+    job_id0 = c.call("create_job", tags=["default"], owner="me")
 
     # Should be queued
     job_id1 = c.call("create_job", 1, 2, owner="me", require_torus=True)
@@ -481,7 +481,7 @@ def test_job_management(simple_config, s, c):
     assert jobs[0]["args"] == []
     assert jobs[1]["args"] == [1, 2]
 
-    assert jobs[0]["kwargs"] == {}
+    assert jobs[0]["kwargs"] == {"tags": ["default"]}
     assert jobs[1]["kwargs"] == {"require_torus": True}
 
     assert jobs[0]["allocated_machine_name"] == "m"

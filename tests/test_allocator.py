@@ -245,6 +245,16 @@ class TestAllocator(object):
         assert a._alloc_triads(4, 5) is None
         assert a._alloc_boards(3*4*3 + 1) is None
 
+    def test_alloc_triads_empty(self):
+        # Should fail if nothing or negative amounts requested
+        a = Allocator(3, 4)
+        assert a._alloc_triads(0, 1) is None
+        assert a._alloc_triads(-1, 1) is None
+        assert a._alloc_triads(1, -1) is None
+        assert a._alloc_triads(1, 0) is None
+        assert a._alloc_boards(0) is None
+        assert a._alloc_boards(-1) is None
+
     def test_alloc_triads_single(self):
         # Should be able to allocate single blocks
         w, h = 3, 4
@@ -636,6 +646,8 @@ class TestAllocator(object):
         assert a._alloc_board_possible(0, 3, 0) is False
         assert a._alloc_board_possible(2, 0, 0) is False
         assert a._alloc_board_possible(2, 3, 0) is False
+        assert a._alloc_board_possible(0, 0, -1) is False
+        assert a._alloc_board_possible(0, 0, 3) is False
 
         # Should fail if the required board is dead
         a.dead_boards.add((0, 0, 1))
