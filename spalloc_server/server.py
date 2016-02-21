@@ -906,9 +906,7 @@ class Server(object):
         """
         out = []
         for machine in self._controller.list_machines():
-            print(machine)
             machine = machine._asdict()
-            print(machine)
             machine["tags"] = list(machine["tags"])
             machine["dead_boards"] = list(machine["dead_boards"])
             machine["dead_links"] = [(x, y, z, int(link))
