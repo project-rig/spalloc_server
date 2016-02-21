@@ -441,20 +441,23 @@ class Controller(object):
                 power = job.power
                 keepalive = job.keepalive
                 reason = None
+                start_time = job.start_time
             elif job_id in self._retired_jobs:
                 # Job has been destroyed at some point
                 state = JobState.destroyed
                 power = None
                 keepalive = None
                 reason = self._retired_jobs[job_id]
+                start_time = None
             else:
                 # Job ID not recognised
                 state = JobState.unknown
                 power = None
                 keepalive = None
                 reason = None
+                start_time = None
 
-            return JobStateTuple(state, power, keepalive, reason)
+            return JobStateTuple(state, power, keepalive, reason, start_time)
 
     def get_job_machine_info(self, job_id):
         """Get information about the machine the job has been allocated.
@@ -781,7 +784,7 @@ class JobState(IntEnum):
 
 
 class JobStateTuple(namedtuple("JobStateTuple",
-                               "state,power,keepalive,reason")):
+                               "state,power,keepalive,reason,start_time")):
     """Tuple describing the state of a particular job, returned by
     :py:meth:`.Controller.get_job_state`.
 
@@ -800,6 +803,8 @@ class JobStateTuple(namedtuple("JobStateTuple",
     reason : str or None
         If the job has been destroyed, this may be a string describing the
         reason the job was terminated.
+    start_time : float or None
+        The Unix time at which the job was created.
     """
 
     # Python 3.4 Workaround: https://bugs.python.org/issue24931

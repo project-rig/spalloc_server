@@ -463,9 +463,11 @@ def test_job_management(simple_config, s, c):
 
     # Should get allocated
     job_id0 = c.call("create_job", tags=["default"], owner="me")
+    s._controller._jobs[job_id0].start_time = 1234.5
 
     # Should be queued
     job_id1 = c.call("create_job", 1, 2, owner="me", require_torus=True)
+    s._controller._jobs[job_id1].start_time = 5432.0
 
     # Should be impossible
     job_id2 = c.call("create_job", 2, 2, owner="me")
@@ -485,14 +487,15 @@ def test_job_management(simple_config, s, c):
     # State should be visible
     assert c.call("get_job_state", job_id0) == {
         "state": JobState.ready, "power": True,
-        "keepalive": 60.0, "reason": None}
+        "keepalive": 60.0, "reason": None, "start_time": 1234.5}
     assert c.call("get_job_state", job_id1) == {
         "state": JobState.queued, "power": None,
-        "keepalive": 60.0, "reason": None}
+        "keepalive": 60.0, "reason": None, "start_time": 5432.0}
     assert c.call("get_job_state", job_id2) == {
         "state": JobState.destroyed,  "power": None,
         "keepalive": None,
-        "reason": "Cancelled: No suitable machines available."}
+        "reason": "Cancelled: No suitable machines available.",
+        "start_time": None}
 
     # Ethernet connections should be visible, where defined
     assert c.call("get_job_machine_info", job_id0) == {
@@ -547,10 +550,12 @@ def test_job_management(simple_config, s, c):
     assert c.call("get_job_state", job_id0) == {
         "state": JobState.destroyed, "power": None,
         "keepalive": None,
-        "reason": "Test reason..."}
+        "reason": "Test reason...",
+        "start_time": None}
     assert c.call("get_job_state", job_id1) == {
         "state": JobState.ready, "power": True,
-        "keepalive": 60.0, "reason": None}
+        "keepalive": 60.0, "reason": None,
+        "start_time": 5432.0}
 
 
 def test_keepalive_expiration(fast_keepalive_config, s, c):

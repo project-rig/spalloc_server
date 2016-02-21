@@ -418,6 +418,7 @@ def test_destroy_timed_out_jobs(conn, m):
 
 def test_get_job_state(conn, m):
     job_id1 = conn.create_job(owner="me", keepalive=123.0)
+    conn._jobs[job_id1].start_time = 1234.5
 
     # Allow Mock BMP time to respond
     time.sleep(0.05)
@@ -428,6 +429,7 @@ def test_get_job_state(conn, m):
     assert job_state.power is True
     assert job_state.keepalive == 123.0
     assert job_state.reason is None
+    assert job_state.start_time == 1234.5
 
     # If the job is killed, this should be reported.
     conn.machines = {}
@@ -436,6 +438,7 @@ def test_get_job_state(conn, m):
     assert job_state.power is None
     assert job_state.keepalive is None
     assert job_state.reason == "Machine removed."
+    assert job_state.start_time is None
 
     # Jobs which are not live should be kept but eventually forgotten
     job_id2 = conn.create_job(owner="me", keepalive=123.0)
@@ -453,6 +456,7 @@ def test_get_job_state(conn, m):
     assert job_state.power is None
     assert job_state.keepalive is None
     assert job_state.reason is None
+    assert job_state.start_time is None
 
 
 @pytest.mark.timeout(1.0)
