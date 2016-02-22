@@ -302,7 +302,8 @@ class Allocator(object):
         # Test to see whether the allocation could succeed in the idle machine
         cf = _CandidateFilter(self.width, self.height,
                               self.dead_boards, self.dead_links,
-                              max_dead_boards, max_dead_links, require_torus)
+                              max_dead_boards, max_dead_links, require_torus,
+                              boards)
         for x, y in set([(0, 0),
                          (self.width - width, 0),
                          (0, self.height - height),
@@ -376,7 +377,8 @@ class Allocator(object):
 
         cf = _CandidateFilter(self.width, self.height,
                               self.dead_boards, self.dead_links,
-                              max_dead_boards, max_dead_links, require_torus)
+                              max_dead_boards, max_dead_links, require_torus,
+                              boards)
 
         xywh = self.pack_tree.alloc_area(triads, min_ratio,
                                          candidate_filter=cf)
@@ -821,7 +823,8 @@ class _CandidateFilter(object):
     """
 
     def __init__(self, width, height, dead_boards, dead_links,
-                 max_dead_boards, max_dead_links, require_torus):
+                 max_dead_boards, max_dead_links, require_torus,
+                 expected_boards=None):
         """Create a new candidate filter.
 
         Parameters
@@ -851,6 +854,12 @@ class _CandidateFilter(object):
             If True, only allocatae blocks with torus connectivity. In general
             this will only succeed for requests to allocate an entire machine
             (when the machine is otherwise not in use!). (Default: False)
+        expected_boards : int or None
+            If given, specifies the number of boards which are expected to be
+            in a candidate. This ensures that when an over-allocation is made,
+            the max_dead_boards figure is offset by any over-allocation.
+
+            If None, assumes the candidate width * candidate height * 3.
         """
         self.width = width
         self.height = height
@@ -859,6 +868,7 @@ class _CandidateFilter(object):
         self.max_dead_boards = max_dead_boards
         self.max_dead_links = max_dead_links
         self.require_torus = require_torus
+        self.expected_boards = expected_boards
 
         self.boards = None
         self.periphery = None
@@ -972,9 +982,12 @@ class _CandidateFilter(object):
 
         # Make sure the maximum dead boards limit isn't exceeded
         if self.max_dead_boards is not None:
-            expected_alive = width * height * 3
+            if self.expected_boards is not None:
+                expected_boards = self.expected_boards
+            else:
+                expected_boards = width * height * 3
             alive = len(boards)
-            dead = expected_alive - alive
+            dead = expected_boards - alive
             if alive == 0 or dead > self.max_dead_boards:
                 return False
         else:

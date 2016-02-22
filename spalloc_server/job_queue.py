@@ -206,7 +206,7 @@ class JobQueue(object):
         # immediately cancel it.
         if not found_machine:
             self.destroy_job(job.id, "No suitable machines available.")
-        
+
         # Advance the queues where possible.
         self._process_queue()
 

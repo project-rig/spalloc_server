@@ -211,6 +211,15 @@ class TestCandidateFilter(object):
         assert cf(0, 0, w, h) is True
         assert cf.torus is True
 
+    @pytest.mark.parametrize("expected_boards", [1, 2, 3])
+    def test_expected_boards(self, expected_boards):
+        dead_boards = set([(0, 0, 2)])
+        dead_links = set()
+        cf = _CandidateFilter(1, 1, dead_boards, dead_links,
+                              0, None, False, expected_boards)
+
+        assert cf(0, 0, 1, 1) == (expected_boards < 3)
+
 
 class TestAllocator(object):
 
@@ -316,6 +325,16 @@ class TestAllocator(object):
         assert len(a._alloc_boards(4)[1]) == 6
         assert len(a._alloc_boards(5)[1]) == 6
         assert len(a._alloc_boards(6)[1]) == 6
+
+    def test_alloc_boards_compensate_for_dead(self):
+        # When over-allocating, extra boards in the allocation should
+        # compensate for dead boards.
+        a = Allocator(4, 2, dead_boards=set([(0, 0, 2)]))
+        assert a._alloc_boards_possible(24, max_dead_boards=0) is False
+        assert a._alloc_boards(24, max_dead_boards=0) is None
+
+        assert a._alloc_boards_possible(23, max_dead_boards=0) is True
+        assert len(a._alloc_boards(23, max_dead_boards=0)[1]) == 23
 
     def test_alloc_board_dead(self):
         # Should fail if a dead board is requested
