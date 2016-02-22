@@ -13,14 +13,13 @@ class JobQueue(object):
     available machines.
 
     For every :py:class:`._Machine` being managed this object contains a queue
-    of outstanding jobs and an
-    :py:class:`spalloc_server.allocator.Allocator` which manages
-    allocation of jobs onto that machine. A simplistic scheduling mechanism is
-    used (see :py:meth:`._enqueue_job`) which simultaneously enqueues any jobs
-    which cannot be immediately allocated to a machine to the queues of all
-    machines the job can fit on. The first machine to accept the job is
-    allocated the job (all other machines which subsequently encounter the job
-    in their queues must skip it).
+    of outstanding jobs and an :py:class:`spalloc_server.allocator.Allocator`
+    which manages allocation of jobs onto that machine. A simplistic scheduling
+    mechanism is used (see :py:meth:`._enqueue_job`) which simultaneously
+    enqueues all jobs to every candidate machine the job could possibly fit on.
+    The first machine to accept the job is allocated the job (all other
+    machines which subsequently encounter the job in their queues must skip
+    it).
 
     Though this object is entirely single threaded (and not thread safe!),
     callbacks (:py:attr:`.on_allocate`, :py:attr:`.on_free` and
@@ -196,24 +195,20 @@ class JobQueue(object):
             machines = [m for m in itervalues(self._machines)
                         if job.tags.issubset(m.tags)]
 
-        # See if any of the selected machines can allocate the job immediately
-        for machine in machines:
-            if self._try_job(job, machine):
-                # Job started!
-                return
-
-        # No machine was available for the job, queue it on all machines it is
-        # compatible with
+        # Queue the job on all suitable machines
         found_machine = False
         for machine in machines:
             if machine.allocator.alloc_possible(*job.args, **job.kwargs):
                 machine.queue.append(job)
                 found_machine = True
 
+        # If no candidate machines were found, the job will never be run,
+        # immediately cancel it.
         if not found_machine:
-            # If no candidate machines were found, the job will never be run,
-            # immediately cancel it.
             self.destroy_job(job.id, "No suitable machines available.")
+        
+        # Advance the queues where possible.
+        self._process_queue()
 
     def _process_queue(self):
         """Try and process any queued jobs."""
