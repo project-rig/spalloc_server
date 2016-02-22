@@ -596,6 +596,12 @@ def test_list_machines(double_config, s, c):
 
 
 @pytest.mark.timeout(1.0)
+def test_get_board_position(simple_config, s, c):
+    assert c.call("get_board_position", "bad", 0, 0, 0) is None
+    assert c.call("get_board_position", "m", 0, 0, 2) == [0, 0, 20]
+
+
+@pytest.mark.timeout(1.0)
 def test_job_notifications(simple_config, s):
     c0 = SimpleClient()
     c1 = SimpleClient()

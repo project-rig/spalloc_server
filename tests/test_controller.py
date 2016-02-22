@@ -661,6 +661,20 @@ def test_list_machines(conn):
     assert machine_list[1].dead_links == set([(0, 0, 0, Links.west)])
 
 
+def test_get_board_position(conn):
+    conn.machines = {"m": simple_machine("m", 1, 1)}
+
+    assert conn.get_board_position("bad", 0, 0, 0) is None
+
+    assert conn.get_board_position("m", 0, 0, 0) == (0, 0, 0)
+    assert conn.get_board_position("m", 0, 0, 1) == (0, 0, 1)
+    assert conn.get_board_position("m", 0, 0, 2) == (0, 0, 2)
+
+    assert conn.get_board_position("m", 1, 0, 0) is None
+    assert conn.get_board_position("m", 0, 1, 0) is None
+    assert conn.get_board_position("m", 0, 0, 3) is None
+
+
 def test_bmp_on_request_complete(MockABC, conn, m):
     job_id = conn.create_job(owner="me")
     job = conn._jobs[job_id]

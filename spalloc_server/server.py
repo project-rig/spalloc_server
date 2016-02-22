@@ -848,9 +848,6 @@ class Server(object):
             job before it is automatically destroyed (or None if the job can
             remain allocated indefinitely).
 
-            "machine" is the name of the machine the job was specified to run
-            on (or None if not specified).
-
             "state" is the current
             :py:class:`~spalloc_server.controller.JobState` of the job.
 
@@ -914,6 +911,25 @@ class Server(object):
                                      in machine["dead_links"]]
             out.append(machine)
         return out
+
+    @_command
+    def get_board_position(self, client, machine_name, x, y, z):
+        """Get the physical location of a specified board.
+
+        Parameters
+        ----------
+        machine_name : str
+            The name of the machine containing the board.
+        x, y, z : int
+            The logical board location within the machine.
+
+        Returns
+        -------
+        (cabinet, frame, board) or None
+            The physical location of the board at the specified location or
+            None if the machine/board are not recognised.
+        """
+        return self._controller.get_board_position(machine_name, x, y, z)
 
 
 def main(args=None):

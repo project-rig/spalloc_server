@@ -590,6 +590,29 @@ class Controller(object):
                 for machine in itervalues(self._machines)
             ]
 
+    def get_board_position(self, machine_name, x, y, z):
+        """Get the physical location of a specified board.
+
+        Parameters
+        ----------
+        machine_name : str
+            The name of the machine containing the board.
+        x, y, z : int
+            The logical board location within the machine.
+
+        Returns
+        -------
+        (cabinet, frame, board) or None
+            The physical location of the board at the specified location or
+            None if the machine/board are not recognised.
+        """
+        with self._lock:
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+            else:
+                return machine.board_locations.get((x, y, z), None)
+
     def destroy_timed_out_jobs(self):
         """Destroy any jobs which have timed out."""
         with self._lock:
