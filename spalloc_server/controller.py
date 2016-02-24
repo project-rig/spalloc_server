@@ -959,7 +959,7 @@ class _Job(object):
         The boards allocated to the job or None if not allocated.
     periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...]) or None
         The links around the periphery of the job or None if not allocated.
-    torus : bool or None
+    torus : :py:class:`spalloc_server.coordinates.WrapAround` or None
         Does the allocated set of boards have wrap-around links? None if
         not allocated.
     bmp_requests_until_ready : int

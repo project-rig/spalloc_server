@@ -2,7 +2,7 @@ import pytest
 
 from rig.links import Links
 
-from spalloc_server.coordinates import board_down_link
+from spalloc_server.coordinates import board_down_link, WrapAround
 from spalloc_server.allocator import \
     _AllocationType, _CandidateFilter, Allocator
 
@@ -57,13 +57,14 @@ class TestCandidateFilter(object):
 
         # For 1x1 we should have just peripheral links all of which are listed
         # even if they're dead.
-        (alive, wrap, dead, dead_wrap, periphery) =\
+        (alive, wrap, dead, dead_wrap, periphery, wrap_around_type) =\
             cf._classify_links(set([(0, 0, 0)]))
         assert alive == set()
         assert wrap == set()
         assert dead == set()
         assert dead_wrap == set()
         assert periphery == set([(0, 0, 0, link) for link in Links])
+        assert wrap_around_type is WrapAround.none
 
         # For a connected block, links to internal dead boards should still be
         # regarded as peripheral. NB: The block of chips is not fully connected
@@ -76,7 +77,7 @@ class TestCandidateFilter(object):
         #  (0, 0, 0) ->  / 0 x___/ 0 \  <- (1, 0, 0)
         #                \___x 2 \___/
         #    (0, h-1, 2) ->  \___/
-        (alive, wrap, dead, dead_wrap, periphery) =\
+        (alive, wrap, dead, dead_wrap, periphery, wrap_around_type) =\
             cf._classify_links(set([(0, 0, 0),
                                     (0, 0, 2),
                                     (1, 1, 0),
@@ -131,6 +132,26 @@ class TestCandidateFilter(object):
             (1, 0, 0, Links.west),
             (0, h-1, 2, Links.north),
         ])
+        assert wrap_around_type == WrapAround.y
+
+    def test_classify_links_wrap_around(self):
+        w, h = 10, 10
+        cf = _CandidateFilter(w, h, set(), set(), 0, 0, False)
+
+        assert cf._classify_links(set([(0, 0, 0), (0, 0, 1)]))[5] == \
+            WrapAround.none
+
+        assert cf._classify_links(set([(0, 0, 0), (0, 0, 1),
+                                       (0, h-1, 2)]))[5] == \
+            WrapAround.y
+
+        assert cf._classify_links(set([(0, 0, 0), (0, 0, 1),
+                                       (w-1, 0, 1)]))[5] == \
+            WrapAround.x
+
+        assert cf._classify_links(set([(0, 0, 0), (0, 0, 1),
+                                       (0, h-1, 2), (w-1, 0, 1)]))[5] == \
+            WrapAround.both
 
     @pytest.mark.parametrize("w,h,max_dead_boards",
                              [(1, 1, 1), (2, 1, 4)])
@@ -148,6 +169,15 @@ class TestCandidateFilter(object):
                               max_dead_boards, 0, False)
 
         assert cf(0, 0, w, h) is False
+
+    def test_not_a_torus(self):
+        w, h = 10, 9
+        cf = _CandidateFilter(w, h, set(), set(), 0, 0, True)
+
+        assert cf(0, 0, w - 1, h - 1) is False
+        assert cf(0, 0, w - 1, h) is True
+        assert cf(0, 0, w, h - 1) is True
+        assert cf(0, 0, w, h) is True
 
     @pytest.mark.parametrize("require_torus", [True, False])
     @pytest.mark.parametrize("dead_on_torus", [True, False])
@@ -196,20 +226,21 @@ class TestCandidateFilter(object):
             (0, 0, z, link)
             for z in range(3) for link in Links
             if board_down_link(0, 0, z, link, w, h)[:2] != (0, 0))
+        assert cf.torus == WrapAround.none
 
     def test_torus(self):
         # Should notice if a torus is allocated
         w, h = 10, 9
         cf = _CandidateFilter(w, h, set(), set(), None, None, False)
         assert cf(0, 0, 1, 1) is True
-        assert cf.torus is False
+        assert cf.torus is WrapAround.none
 
         assert cf(0, 0, w, 1) is True
-        assert cf.torus is True
+        assert cf.torus is WrapAround.x
         assert cf(0, 0, 1, h) is True
-        assert cf.torus is True
+        assert cf.torus is WrapAround.y
         assert cf(0, 0, w, h) is True
-        assert cf.torus is True
+        assert cf.torus is WrapAround.both
 
     @pytest.mark.parametrize("expected_boards", [1, 2, 3])
     def test_expected_boards(self, expected_boards):
@@ -273,7 +304,7 @@ class TestAllocator(object):
         for _ in range(w * h):
             allocation_id, boards, periphery, torus = a._alloc_triads(1, 1)
 
-            assert torus is False
+            assert torus is WrapAround.none
 
             assert allocation_id == next_id
             next_id += 1
@@ -310,7 +341,7 @@ class TestAllocator(object):
                              for y in range(h)
                              for z in range(3))
         assert periphery == set()
-        assert torus is True
+        assert torus is WrapAround.both
 
         # Should get full
         assert a._alloc_triads(1, 1, require_torus=require_torus) is None
@@ -377,7 +408,7 @@ class TestAllocator(object):
 
             assert periphery == set((x, y, z, link) for link in Links)
 
-            assert torus is False
+            assert torus is WrapAround.none
 
         assert all_boards == set((0, 0, z) for z in range(3))
 
@@ -407,7 +438,7 @@ class TestAllocator(object):
 
         assert periphery == set((0, 0, 1, link) for link in Links)
 
-        assert torus is False
+        assert torus is WrapAround.none
 
         # If exhausted, the boards should be removed from the single board
         # triad set.
@@ -452,7 +483,7 @@ class TestAllocator(object):
 
             assert periphery == set((x, y, z, link) for link in Links)
 
-            assert torus is False
+            assert torus is WrapAround.none
 
         assert all_boards == set([(1, 0, 0), (1, 0, 2)])
 
@@ -478,7 +509,7 @@ class TestAllocator(object):
         # Should not be able to allocate that board any more!
         assert a._alloc_board(0, 0, 1) is None
 
-        assert torus is False
+        assert torus is WrapAround.none
 
     def test_free_board(self):
         a = Allocator(2, 1, dead_boards=set([(0, 0, 1)]))

@@ -57,9 +57,8 @@ class JobQueue(object):
                 Enumerates the boards in the allocation.
             periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...])
                 Enumerates the links which leave the set of allocated boards.
-            torus : bool
-                True iff the allocation has at least one working wrap-around
-                link.
+            torus : :py:class:`spalloc_server.coordinates.WrapAround`
+                Specifies which types of wrap-around links may be present.
 
         on_free : f(job_id, reason)
             A callback called when a job which was previously allocated

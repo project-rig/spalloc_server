@@ -15,7 +15,7 @@ from rig.links import Links
 
 from spalloc_server.pack_tree import PackTree
 from spalloc_server.area_to_rect import area_to_rect
-from spalloc_server.coordinates import board_down_link
+from spalloc_server.coordinates import board_down_link, WrapAround
 
 
 class Allocator(object):
@@ -356,7 +356,8 @@ class Allocator(object):
             set of (x, y, z) tuples giving the locations of the (working)
             boards in the allocation. ``periphery`` is a set of (x, y, z, link)
             tuples giving the links which leave the allocated region. ``torus``
-            is True iff at least one torus link is working.
+            is a :py:class:`.WrapAround` value indicating torus connectivity
+            when at least one torus may exist.
 
         See Also
         --------
@@ -479,8 +480,8 @@ class Allocator(object):
             the allocation with the :py:meth:`.free` method. ``boards`` is a
             set of (x, y, z) tuples giving the location of to allocated board.
             ``periphery`` is a set of (x, y, z, link) tuples giving the links
-            which leave the board. ``torus`` is True iff at least one torus
-            link is working. This should always be False for single boards.
+            which leave the board. ``torus`` is always
+            :py:attr:`.WrapAround.none` for single boards.
 
         See Also
         --------
@@ -525,7 +526,7 @@ class Allocator(object):
             return (allocation_id,
                     set([(x, y, z)]),
                     set((x, y, z, link) for link in Links),
-                    False)
+                    WrapAround.none)
 
         # The desired board was not available in an already-allocated triad.
         # Attempt to request that triad.
@@ -739,8 +740,9 @@ class Allocator(object):
             the allocation with the :py:meth:`.free` method. ``boards`` is a
             set of (x, y, z) tuples giving the locations of to allocated
             boards.  ``periphery`` is a set of (x, y, z, link) tuples giving
-            the links which leave the allocated set of boards. ``torus`` is
-            True iff at least one torus link is working.
+            the links which leave the allocated set of boards. ``torus`` is a
+            :py:class:`.WrapAround` value indicating torus connectivity when at
+            least one torus may exist.
         """
         alloc_type = self._alloc_type(*args, **kwargs)
         if alloc_type is _AllocationType.board:
@@ -817,9 +819,8 @@ class _CandidateFilter(object):
         The links around the periphery of the selection of boards which should
         be disabled to isolate the system. None if no candidate has been
         accepted.
-    torus : bool
-        If True, the accepted candidate has at least one working wrap-around
-        link, if False, the accepted candidate has no wrap around links.
+    torus : :py:class:`.WrapAround`
+        Describes the types of wrap-around links the candidate has.
     """
 
     def __init__(self, width, height, dead_boards, dead_links,
@@ -941,12 +942,16 @@ class _CandidateFilter(object):
         periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...])
             Links are those which connect from one board in the set to a board
             outside the set. These links may be dead or alive.
+        wrap_around_type : :py:class:`~spalloc_server.coordinates.WrapAround`
+            What types of wrap-around links are present (making no distinction
+            between dead and alive links)?
         """
         alive = set()
         wrap = set()
         dead = set()
         dead_wrap = set()
         periphery = set()
+        wrap_around_type = WrapAround.none
 
         for x1, y1, z1 in boards:
             for link in Links:
@@ -956,6 +961,8 @@ class _CandidateFilter(object):
                 in_set = (x2, y2, z2) in boards
 
                 if in_set:
+                    wrap_around_type |= wrapped
+
                     if wrapped:
                         if is_dead:
                             dead_wrap.add((x1, y1, z1, link))
@@ -969,7 +976,8 @@ class _CandidateFilter(object):
                 else:
                     periphery.add((x1, y1, z1, link))
 
-        return (alive, wrap, dead, dead_wrap, periphery)
+        return (alive, wrap, dead, dead_wrap, periphery,
+                WrapAround(wrap_around_type))
 
     def __call__(self, x, y, width, height):
         """Test whether the region specified meets the stated requirements.
@@ -994,9 +1002,12 @@ class _CandidateFilter(object):
             if len(boards) == 0:
                 return False
 
-        # Make sure the maximum dead links limit isn't exceeded
-        (alive, wrap, dead, dead_wrap, periphery) = \
+        # Make sure the maximum dead links limit isn't exceeded (and that torus
+        # links exist if requested)
+        (alive, wrap, dead, dead_wrap, periphery, wrap_around_type) = \
             self._classify_links(boards)
+        if self.require_torus and wrap_around_type == WrapAround.none:
+            return False
         if self.max_dead_links is not None:
             if self.require_torus:
                 dead_links = len(dead) + len(dead_wrap)
@@ -1009,5 +1020,5 @@ class _CandidateFilter(object):
         # peripheral links
         self.boards = boards
         self.periphery = periphery
-        self.torus = bool(wrap) or bool(dead_wrap)
+        self.torus = wrap_around_type
         return True

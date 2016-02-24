@@ -117,6 +117,8 @@ The following utilities are provided for working with the above coordinate
 systems.
 """
 
+from enum import IntEnum
+
 from six import iteritems
 
 from rig.links import Links
@@ -159,8 +161,8 @@ def board_down_link(x1, y1, z1, link, width, height):
     -------
     x, y, z : int
         The coordinates of the board down the specified link.
-    wrapped : bool
-        Was the link a wrap-around link?
+    wrapped : :py:class:`.WrapAround`
+        In what way did we wrap-around when following that link?
     """
     dx, dy, dz = link_to_vector[(z1, link)]
 
@@ -172,7 +174,8 @@ def board_down_link(x1, y1, z1, link, width, height):
 
     z2 = z1 + dz
 
-    wrapped = not (x2_ == x2 and y2_ == y2)
+    wrapped = WrapAround((WrapAround.x if x2_ != x2 else 0) |
+                         (WrapAround.y if y2_ != y2 else 0))
 
     return (x2, y2, z2, wrapped)
 
@@ -250,8 +253,8 @@ def triad_dimensions_to_chips(w, h, torus):
     ----------
     w, h : int
         Dimensions of the system in triads.
-    torus : bool
-        Are wrap-around connections present?
+    torus : :py:class`.WrapAround`
+        What wrap-around connections are present?
 
     Returns
     -------
@@ -266,8 +269,40 @@ def triad_dimensions_to_chips(w, h, torus):
     # If not a torus topology, the pieces of boards which would wrap-around and
     # "tuck in" to the opposing sides of the network will be left poking out.
     # Compensate for this.
-    if not torus:
+    if not (torus & WrapAround.x):
         w += 4
+    if not (torus & WrapAround.y):
         h += 4
 
     return (w, h)
+
+
+class WrapAround(IntEnum):
+    """Defines what type of wrap-around links a torus has, if any.
+
+    Values chosen have the following useful properties::
+
+        >>> # Can be meaningfully cast to bool
+        >>> assert bool(WrapAround.none) is False
+        >>> assert bool(WrapAround.x) is True
+        >>> assert bool(WrapAround.y) is True
+        >>> assert bool(WrapAround.both) is True
+
+        >>> # Bit-operations make sense
+        >>> assert bool(WrapAround.both & WrapAround.x) is True
+        >>> assert bool(WrapAround.both & WrapAround.y) is True
+        >>> assert bool(WrapAround.x & WrapAround.x) is True
+        >>> assert bool(WrapAround.x & WrapAround.y) is False
+    """
+
+    none = 0b00
+    """No wrap-around links."""
+
+    x = 0b01
+    """Has wrap around links around X-axis."""
+
+    y = 0b10
+    """Has wrap around links around Y-axis."""
+
+    both = 0b11
+    """Has wrap around links on X and Y axes."""
