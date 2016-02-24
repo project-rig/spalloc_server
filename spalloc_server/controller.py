@@ -657,9 +657,6 @@ class Controller(object):
 
             ``machine`` gives the name of the machine containing the board.
 
-            ``job_id`` is the job ID of the job currently allocated to the
-            board identified or None if the board is not allocated to a job.
-
             ``logical`` the logical board coordinate, (x, y, z) within the
             machine.
 
@@ -671,6 +668,9 @@ class Controller(object):
 
             ``board_chip`` the coordinates of the chip, (x, y), within its
             board.
+
+            ``job_id`` is the job ID of the job currently allocated to the
+            board identified or None if the board is not allocated to a job.
 
             ``job_chip`` the coordinates of the chip, (x, y), within its
             job, if a job is allocated to the board or None otherwise.
