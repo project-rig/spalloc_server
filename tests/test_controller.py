@@ -487,7 +487,7 @@ def test_get_job_state(conn, m):
 @pytest.mark.timeout(1.0)
 def test_get_job_machine_info(conn, m):
     job_id = conn.create_job(1, 1, owner="me")
-    w, h, connections, machine_name = \
+    w, h, connections, machine_name, boards = \
         conn.get_job_machine_info(job_id)
     assert w == 12
     assert h == 16
@@ -497,9 +497,10 @@ def test_get_job_machine_info(conn, m):
         (8, 4): "11.0.0.1",
         (4, 8): "11.0.0.2",
     }
+    assert boards == set([(0, 0, 0), (0, 0, 1), (0, 0, 2)])
 
     # Bad ID should just get Nones
-    assert conn.get_job_machine_info(1234) == (None, None, None, None)
+    assert conn.get_job_machine_info(1234) == (None, None, None, None, None)
 
 
 @pytest.mark.timeout(1.0)
@@ -512,7 +513,7 @@ def test_get_job_machine_info_width_height(conn, args, width, height):
     conn.machines = {"m": simple_machine("m", 2, 3)}
 
     job_id = conn.create_job(*args, owner="me")
-    w, h, connections, machine_name = \
+    w, h, connections, machine_name, boards = \
         conn.get_job_machine_info(job_id)
 
     assert w == width

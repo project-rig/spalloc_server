@@ -476,10 +476,11 @@ class Controller(object):
                 return JobMachineInfoTuple(
                     job.width, job.height,
                     job.connections,
-                    job.allocated_machine.name)
+                    job.allocated_machine.name,
+                    job.boards)
             else:
                 # Job doesn't exist or no boards allocated yet
-                return JobMachineInfoTuple(None, None, None, None)
+                return JobMachineInfoTuple(None, None, None, None, None)
 
     def power_on_job_boards(self, job_id):
         """Power on (or reset if already on) boards associated with a job."""
@@ -1045,7 +1046,8 @@ class JobStateTuple(namedtuple("JobStateTuple",
 
 
 class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
-                                     "width,height,connections,machine_name")):
+                                     "width,height,connections,"
+                                     "machine_name,boards")):
     """Tuple describing the machine alloated to a job, returned by
     :py:meth:`.Controller.get_job_machine_info`.
 
@@ -1060,6 +1062,8 @@ class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
     machine_name : str or None
         The name of the machine the job is allocated on or None if no machine
         allocated.
+    boards : set([(x, y, z), ...]) or None
+        The boards allocated to the job.
     """
 
     # Python 3.4 Workaround: https://bugs.python.org/issue24931

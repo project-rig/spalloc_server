@@ -647,7 +647,7 @@ class Server(object):
                 The dimensions of the machine in chips, e.g. for booting.
 
                 None if no boards are allocated to the job.
-            connections : [((x, y), hostname), ...] or None
+            connections : [[[x, y], hostname], ...] or None
                 A list giving Ethernet-connected chip coordinates in the
                 machine to hostname.
 
@@ -656,15 +656,22 @@ class Server(object):
                 The name of the machine the job is allocated on.
 
                 None if no boards are allocated to the job.
+            boards : [[x, y, z], ...] or None
+                All the boards allocated to the job or None if no boards
+                allocated.
         """
-        width, height, connections, machine_name = \
+        width, height, connections, machine_name, boards = \
             self._controller.get_job_machine_info(job_id)
 
         if connections is not None:
             connections = list(iteritems(connections))
+        if boards is not None:
+            boards = list(boards)
 
         return {"width": width, "height": height,
-                "connections": connections, "machine_name": machine_name}
+                "connections": connections,
+                "machine_name": machine_name,
+                "boards": boards}
 
     @_command
     def power_on_job_boards(self, client, job_id):

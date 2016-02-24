@@ -500,13 +500,15 @@ def test_job_management(simple_config, s, c):
     # Ethernet connections should be visible, where defined
     assert c.call("get_job_machine_info", job_id0) == {
         "width": 8, "height": 8,
-        "connections": [[[0, 0], "11.0.0.0"]], "machine_name": "m"}
+        "connections": [[[0, 0], "11.0.0.0"]],
+        "machine_name": "m",
+        "boards": [[0, 0, 0]]}
     assert c.call("get_job_machine_info", job_id1) == {
         "width": None, "height": None,
-        "connections": None, "machine_name": None}
+        "connections": None, "machine_name": None, "boards": None}
     assert c.call("get_job_machine_info", job_id2) == {
         "width": None, "height": None,
-        "connections": None, "machine_name": None}
+        "connections": None, "machine_name": None, "boards": None}
 
     # Power commands should work
     c.call("power_on_job_boards", job_id0)
