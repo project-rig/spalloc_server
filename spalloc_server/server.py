@@ -931,6 +931,26 @@ class Server(object):
         """
         return self._controller.get_board_position(machine_name, x, y, z)
 
+    @_command
+    def get_board_at_position(self, client, machine_name, x, y, z):
+        """Get the logical location of a board at the specified physical
+        location.
+
+        Parameters
+        ----------
+        machine_name : str
+            The name of the machine containing the board.
+        cabinet, frame, board : int
+            The physical board location within the machine.
+
+        Returns
+        -------
+        (x, y, z) or None
+            The logical location of the board at the specified location or None
+            if the machine/board are not recognised.
+        """
+        return self._controller.get_board_at_position(machine_name, x, y, z)
+
 
 def main(args=None):
     """Command-line launcher for the server.

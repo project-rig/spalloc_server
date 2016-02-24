@@ -613,6 +613,38 @@ class Controller(object):
             else:
                 return machine.board_locations.get((x, y, z), None)
 
+    def get_board_at_position(self, machine_name, cabinet, frame, board):
+        """Get the logical location of a board at the specified physical
+        location.
+
+        Parameters
+        ----------
+        machine_name : str
+            The name of the machine containing the board.
+        cabinet, frame, board : int
+            The physical board location within the machine.
+
+        Returns
+        -------
+        (x, y, z) or None
+            The logical location of the board at the specified location or None
+            if the machine/board are not recognised.
+        """
+        with self._lock:
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+            else:
+                # NB: Assuming this function is only called very rarely,
+                # constructing and maintaining a reverse lookup is not worth
+                # the trouble so instead we just search.
+                for (x, y, z), (c, f, b) in iteritems(machine.board_locations):
+                    if (c, f, b) == (cabinet, frame, board):
+                        return (x, y, z)
+                else:
+                    # No board found
+                    return None
+
     def destroy_timed_out_jobs(self):
         """Destroy any jobs which have timed out."""
         with self._lock:
