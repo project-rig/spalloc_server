@@ -14,8 +14,10 @@ from six import itervalues, iteritems
 
 import time
 
+from rig.geometry import spinn5_chip_coord
+
 from spalloc_server.coordinates import \
-    board_to_chip, triad_dimensions_to_chips
+    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
 from spalloc_server.job_queue import JobQueue
 from spalloc_server.async_bmp_controller import AsyncBMPController
 
@@ -471,35 +473,10 @@ class Controller(object):
 
             job = self._jobs.get(job_id, None)
             if job is not None and job.boards is not None:
-                machine = job.allocated_machine
-                machine_name = machine.name
-
-                # Note that the formulae used below for converting from board
-                # to chip coordinates is only valid when either 'oz' is zero or
-                # only a single board is allocated. Since we only allocate
-                # multi-board regions by the triad this will be the case.
-                ox, oy, oz = min(job.boards)  # Origin
-                bx, by, bz = max(job.boards)  # Top-right bound
-
-                # Get system bounds in chips
-                if len(job.boards) > 1:
-                    width, height = triad_dimensions_to_chips((bx-ox) + 1,
-                                                              (by-oy) + 1,
-                                                              job.torus)
-                else:
-                    # Special case: single board allocations are always 8x8
-                    width = height = 8
-
-                # Get SpiNNaker chip Ethernet IPs (enumerated in terms of chip
-                # coordinates)
-                connections = {
-                    board_to_chip(x-ox, y-oy, z-oz):
-                    machine.spinnaker_ips[(x, y, z)]
-                    for (x, y, z) in job.boards
-                }
-
-                return JobMachineInfoTuple(width, height,
-                                           connections, machine_name)
+                return JobMachineInfoTuple(
+                    job.width, job.height,
+                    job.connections,
+                    job.allocated_machine.name)
             else:
                 # Job doesn't exist or no boards allocated yet
                 return JobMachineInfoTuple(None, None, None, None)
@@ -645,6 +622,182 @@ class Controller(object):
                     # No board found
                     return None
 
+    def where_is(self, **kwargs):
+        """Find out where a SpiNNaker board or chip is located, logically and
+        physically.
+
+        May be called in one of the following styles::
+
+            >>> # Query by logical board coordinate within a machine.
+            >>> where_is(machine=..., x=..., y=..., z=...)
+
+            >>> # Query by physical board location within a machine.
+            >>> where_is(machine=..., cabinet=..., frame=..., board=...)
+
+            >>> # Query by chip coordinate (as if the machine were booted as
+            >>> # one large machine).
+            >>> where_is(machine=..., chip_x=..., chip_y=...)
+
+            >>> # Query by chip coordinate, within the boards allocated to a
+            >>> # job.
+            >>> where_is(job_id=..., chip_x=..., chip_y=...)
+
+        Returns
+        -------
+        {"machine": ..., "logical": ..., "physical": ..., "chip": ..., \
+                "board_chip": ..., "job_chip": ..., "job_id": ...} or None
+            If a board exists at the supplied location, a dictionary giving the
+            location of the board/chip, supplied in a number of alternative
+            forms. If the supplied coordinates do not specify a specific chip,
+            the chip coordinates given are those of the Ethernet connected chip
+            on that board.
+
+            If no board exists at the supplied position, None is returned
+            instead.
+
+            ``machine`` gives the name of the machine containing the board.
+
+            ``job_id`` is the job ID of the job currently allocated to the
+            board identified or None if the board is not allocated to a job.
+
+            ``logical`` the logical board coordinate, (x, y, z) within the
+            machine.
+
+            ``physical`` the physical board location, (cabinet, frame, board),
+            within the machine.
+
+            ``chip`` the coordinates of the chip, (x, y), if the whole machine
+            were booted as a single machine.
+
+            ``board_chip`` the coordinates of the chip, (x, y), within its
+            board.
+
+            ``job_chip`` the coordinates of the chip, (x, y), within its
+            job, if a job is allocated to the board or None otherwise.
+        """
+        with self._lock:
+            # Initially, we normalise the input coordinate into:
+            #
+            #     machine_name, chip_x, chip_y
+            #
+            # and then convert this back into all the output formats required.
+            # At various points, if we encounter a board/job/chip which doesn't
+            # exist we'll drop out.
+
+            keywords = set(kwargs)
+            if keywords == set("machine x y z".split()):
+                # Covert from logical position
+                machine_name = kwargs["machine"]
+                chip_x, chip_y = board_to_chip(
+                    kwargs["x"], kwargs["y"], kwargs["z"])
+            elif keywords == set("machine cabinet frame board".split()):
+                # Covert from physical position (fail if location does not
+                # exist)
+                machine_name = kwargs["machine"]
+                xyz = self.get_board_at_position(machine_name,
+                                                 kwargs["cabinet"],
+                                                 kwargs["frame"],
+                                                 kwargs["board"])
+                if xyz is None:
+                    return None
+                chip_x, chip_y = board_to_chip(*xyz)
+            elif keywords == set("machine chip_x chip_y".split()):
+                # Covert from chip location
+                machine_name = kwargs["machine"]
+                chip_x = kwargs["chip_x"]
+                chip_y = kwargs["chip_y"]
+            elif keywords == set("job_id chip_x chip_y".split()):
+                # Covert from job-relative chip location
+                job = self._jobs.get(kwargs["job_id"], None)
+                if job is None or job.boards is None:
+                    return None
+                machine_name = job.allocated_machine.name
+                job_x, job_y, job_z = map(min, zip(*job.boards))
+                dx, dy = board_to_chip(job_x, job_y, job_z)
+                chip_x = kwargs["chip_x"] + dx
+                chip_y = kwargs["chip_y"] + dy
+
+                # NB: We double-check later that this coordinate is actually a
+                # board within the boards allocated to the job!
+            else:
+                raise TypeError(
+                    "Invalid arguments: {}".format(", ".join(keywords)))
+
+            # Get the actual Machine
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+
+            # Compensate chip coordinates for wrap-around
+            chip_w, chip_h = triad_dimensions_to_chips(
+                self._machines[machine_name].width,
+                self._machines[machine_name].height,
+                WrapAround.both)
+            chip_x %= chip_w
+            chip_y %= chip_h
+
+            # Determine the chip within the board
+            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
+            # numpy integer types which are not JSON serialiseable.
+            board_chip_x, board_chip_y = map(
+                int, spinn5_chip_coord(chip_x, chip_y))
+
+            # Determine the logical board coordinates (and compensate for
+            # wrap-around)
+            x, y, z = chip_to_board(chip_x, chip_y, chip_w, chip_h)
+
+            # Determine the board's physical location (fail if board does not
+            # exist)
+            cfb = self.get_board_position(machine_name, x, y, z)
+            if cfb is None:
+                return None
+            cabinet, frame, board = cfb
+
+            # Determine what job is running on that board
+            for job_id, job in iteritems(self._jobs):
+                # NB: If machine is defined, boards must also be defined.
+                if (job.allocated_machine == machine and
+                        (x, y, z) in job.boards):
+                    # Found the job
+                    break
+            else:
+                # No job is allocated to the board
+                job_id = None
+                job = None
+
+            # If selected by job, make sure the board found is actually running
+            # that job (this won't be the case, e.g. if a user specifies a
+            # board within their machine which is actually dead or allocated to
+            # a neighbouring job)
+            if "job_id" in kwargs and job_id != kwargs["job_id"]:
+                return None
+
+            # Determine chip coordinate within job
+            if job is not None:
+                # Determine the board coordinate within the job
+                job_x, job_y, job_z = map(min, zip(*job.boards))
+                job_x = x - job_x
+                job_y = y - job_y
+                job_z = z - job_z
+
+                # Turn that into a chip coordinate and wrap-around according to
+                # the boards actually available in the allocated machine
+                job_chip_x, job_chip_y = board_to_chip(job_x, job_y, job_z)
+                job_chip = ((job_chip_x + board_chip_x) % job.width,
+                            (job_chip_y + board_chip_y) % job.height)
+            else:
+                job_chip = None
+
+            return {
+                "machine": machine_name,
+                "logical": (x, y, z),
+                "physical": (cabinet, frame, board),
+                "chip": (chip_x, chip_y),
+                "board_chip": (board_chip_x, board_chip_y),
+                "job_id": job_id,
+                "job_chip": job_chip,
+            }
+
     def destroy_timed_out_jobs(self):
         """Destroy any jobs which have timed out."""
         with self._lock:
@@ -748,6 +901,31 @@ class Controller(object):
             job.torus = torus
             self._changed_jobs.add(job.id)
             self._changed_machines.add(machine_name)
+
+            # Compute dimensions of machine the job will run on. Note that the
+            # formulae used below for converting from board to chip coordinates
+            # is only valid when either 'oz' is zero or only a single board is
+            # allocated. Since we only allocate multi-board regions by the
+            # triad this will be the case.
+            ox, oy, oz = min(job.boards)  # Origin
+            bx, by, bz = max(job.boards)  # Top-right bound
+
+            # Get system bounds in chips
+            if len(job.boards) > 1:
+                job.width, job.height = triad_dimensions_to_chips((bx-ox) + 1,
+                                                                  (by-oy) + 1,
+                                                                  job.torus)
+            else:
+                # Special case: single board allocations are always 8x8
+                job.width = job.height = 8
+
+            # Get SpiNNaker chip Ethernet IPs (enumerated in terms of chip
+            # coordinates)
+            job.connections = {
+                board_to_chip(x-ox, y-oy, z-oz):
+                job.allocated_machine.spinnaker_ips[(x, y, z)]
+                for (x, y, z) in job.boards
+            }
 
             # Initialise the boards
             self.power_on_job_boards(job_id)
@@ -994,6 +1172,12 @@ class _Job(object):
     torus : :py:class:`spalloc_server.coordinates.WrapAround` or None
         Does the allocated set of boards have wrap-around links? None if
         not allocated.
+    width, height : int or None
+        The dimensions of the SpiNNaker network in the allocated boards or None
+        if not allocated any boards.
+    connections : {(x, y): hostname, ...} or None
+        If boards are allocated, gives the mapping from chip coordinate to
+        Ethernet connection hostname.
     bmp_requests_until_ready : int
         A counter incremented whenever a BMP command is started and
         decremented when the command completes. When this counter reaches
@@ -1011,6 +1195,9 @@ class _Job(object):
                  boards=None,
                  periphery=None,
                  torus=None,
+                 width=None,
+                 height=None,
+                 connections=None,
                  bmp_requests_until_ready=0):
 
         self.id = id
@@ -1042,6 +1229,11 @@ class _Job(object):
         self.boards = boards
         self.periphery = periphery
         self.torus = torus
+        self.width = width
+        self.height = height
+
+        # IP address lookup for allocated boards
+        self.connections = connections
 
         # The number of BMP requests which must complete before this job may
         # return to the ready state.

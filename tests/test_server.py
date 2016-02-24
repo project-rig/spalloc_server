@@ -596,6 +596,33 @@ def test_list_machines(double_config, s, c):
 
 
 @pytest.mark.timeout(1.0)
+def test_where_is(double_config, s, c):
+    assert c.call("create_job", 1, 1, owner="me") == 1
+
+    assert c.call("where_is", machine="bad", x=0, y=0, z=0) is None
+
+    assert c.call("where_is", job_id=1, chip_x=5, chip_y=9) == {
+        "machine": "m0",
+        "logical": [0, 0, 2],
+        "physical": [0, 0, 20],
+        "chip": [5, 9],
+        "board_chip": [1, 1],
+        "job_id": 1,
+        "job_chip": [5, 9],
+    }
+
+    assert c.call("where_is", machine="m1", x=2, y=1, z=1) == {
+        "machine": "m1",
+        "logical": [2, 1, 1],
+        "physical": [20, 10, 10],
+        "chip": [32, 16],
+        "board_chip": [0, 0],
+        "job_id": None,
+        "job_chip": None,
+    }
+
+
+@pytest.mark.timeout(1.0)
 def test_get_board_position(simple_config, s, c):
     assert c.call("get_board_position", "bad", 0, 0, 0) is None
     assert c.call("get_board_position", "m", 0, 0, 2) == [0, 0, 20]

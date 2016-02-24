@@ -951,6 +951,62 @@ class Server(object):
         """
         return self._controller.get_board_at_position(machine_name, x, y, z)
 
+    @_command
+    def where_is(self, client, **kwargs):
+        """Find out where a SpiNNaker board or chip is located, logically and
+        physically.
+
+        May be called in one of the following styles::
+
+            >>> # Query by logical board coordinate within a machine.
+            >>> where_is(machine=..., x=..., y=..., z=...)
+
+            >>> # Query by physical board location within a machine.
+            >>> where_is(machine=..., cabinet=..., frame=..., board=...)
+
+            >>> # Query by chip coordinate (as if the machine were booted as
+            >>> # one large machine).
+            >>> where_is(machine=..., chip_x=..., chip_y=...)
+
+            >>> # Query by chip coordinate, within the boards allocated to a
+            >>> # job.
+            >>> where_is(job_id=..., chip_x=..., chip_y=...)
+
+        Returns
+        -------
+        {"machine": ..., "logical": ..., "physical": ..., "chip": ..., \
+                "board_chip": ..., "job_chip": ..., "job_id": ...} or None
+            If a board exists at the supplied location, a dictionary giving the
+            location of the board/chip, supplied in a number of alternative
+            forms. If the supplied coordinates do not specify a specific chip,
+            the chip coordinates given are those of the Ethernet connected chip
+            on that board.
+
+            If no board exists at the supplied position, None is returned
+            instead.
+
+            ``machine`` gives the name of the machine containing the board.
+
+            ``job_id`` is the job ID of the job currently allocated to the
+            board identified or None if the board is not allocated to a job.
+
+            ``logical`` the logical board coordinate, (x, y, z) within the
+            machine.
+
+            ``physical`` the physical board location, (cabinet, frame, board),
+            within the machine.
+
+            ``chip`` the coordinates of the chip, (x, y), if the whole machine
+            were booted as a single machine.
+
+            ``board_chip`` the coordinates of the chip, (x, y), within its
+            board.
+
+            ``job_chip`` the coordinates of the chip, (x, y), within its
+            job, if a job is allocated to the board or None otherwise.
+        """
+        return self._controller.where_is(**kwargs)
+
 
 def main(args=None):
     """Command-line launcher for the server.

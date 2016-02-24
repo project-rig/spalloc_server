@@ -477,19 +477,27 @@ def board_locations_from_spinner(filename):
     {(x, y, z): (c, f, b), ...}
         The mapping from board coordinates to physical locations.
     """
-    board_locations = {}
+    # Extract lookup from Ethernet connected chips to locations
+    chip_locations = {}
     with open(filename, "r") as f:
         for entry in csv.DictReader(f):
             cfb = tuple(map(int, (entry["cabinet"],
                                   entry["frame"],
                                   entry["board"])))
 
-            chip_x = int(entry["x"])
-            chip_y = int(entry["y"])
+            chip_xy = (int(entry["x"]), int(entry["y"]))
 
-            xyz = chip_to_board(chip_x, chip_y)
+            assert chip_xy not in chip_locations
+            chip_locations[chip_xy] = cfb
 
-            assert xyz not in board_locations
-            board_locations[xyz] = cfb
+    # Infer machine dimensions
+    max_x, max_y = map(max, zip(*chip_locations))
+    width_triads = (max_x // 12) + 1
+    height_triads = (max_y // 12) + 1
 
-    return board_locations
+    # Convert from chip to board coordinates
+    return {
+        chip_to_board(chip_x, chip_y, width_triads * 12, height_triads * 12):
+        cfb
+        for (chip_x, chip_y), cfb in iteritems(chip_locations)
+    }

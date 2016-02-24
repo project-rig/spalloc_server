@@ -49,6 +49,31 @@ def m(conn):
     return "m"
 
 
+@pytest.fixture
+def big_m(conn):
+    """Add a larger 4x2 machine to the controller."""
+    conn.machines = {"big_m": simple_machine("big_m", 4, 2)}
+    return "big_m"
+
+
+@pytest.fixture
+def big_m_with_hole(conn):
+    """Add a larger 4x2 machine to the controller with board (2, 1, 0) dead."""
+    conn.machines = {
+        "big_m": Machine.with_standard_ips(
+            name="big_m",
+            dead_boards=set([(2, 1, 0)]),
+            board_locations={
+                (x, y, z): (x*10, y*10, z*10)
+                for x in range(4)
+                for y in range(2)
+                for z in range(3)
+                if (x, y, z) != (2, 1, 0)
+            }),
+    }
+    return "big_m"
+
+
 @pytest.mark.timeout(1.0)
 def test_mock_abc(MockABC):
     """Meta testing: make sure the MockAsyncBMPController works."""
@@ -464,6 +489,8 @@ def test_get_job_machine_info(conn, m):
     job_id = conn.create_job(1, 1, owner="me")
     w, h, connections, machine_name = \
         conn.get_job_machine_info(job_id)
+    assert w == 12
+    assert h == 16
     assert machine_name == m
     assert connections == {
         (0, 0): "11.0.0.0",
@@ -479,6 +506,7 @@ def test_get_job_machine_info(conn, m):
 @pytest.mark.parametrize("args,width,height",
                          [([], 8, 8),         # Single board
                           ([1, 1], 16, 16),   # Isolated triad
+                          ([2, 1], 24, 16),   # A strip of torus
                           ([2, 3], 24, 36)])  # Torus
 def test_get_job_machine_info_width_height(conn, args, width, height):
     conn.machines = {"m": simple_machine("m", 2, 3)}
@@ -687,6 +715,184 @@ def test_get_board_at_position(conn):
     assert conn.get_board_at_position("m", 1, 0, 0) is None
     assert conn.get_board_at_position("m", 0, 1, 0) is None
     assert conn.get_board_at_position("m", 0, 0, 3) is None
+
+
+class TestWhereIs(object):
+
+    def test_bad_arguments(self, conn):
+        with pytest.raises(TypeError):
+            conn.where_is()
+        with pytest.raises(TypeError):
+            conn.where_is(machine="m", x=0, y=0)  # z missing
+
+    def test_unknown_machine(self, conn):
+        assert conn.where_is(machine="bad", chip_x=0, chip_y=0) is None
+
+    @pytest.mark.parametrize("chip_xy,logical",
+                             [((0, 0), (0, 0, 0)),
+                              ((1, 1), (0, 0, 0)),
+                              ((3, 3), (0, 0, 0)),
+                              ((7, 7), (0, 0, 0)),
+                              ((0, 4), (3, 0, 1)),
+                              ((44, 4), (3, 0, 1)),
+                              ((3, 11), (3, 0, 1)),
+                              ((5, 0), (0, 1, 2)),
+                              ((4, 20), (0, 1, 2)),
+                              ((0, 12), (0, 1, 0)),
+                              ((36, 12), (3, 1, 0)),
+                              ((-1, -1), (3, 1, 2))])
+    def test_return_logical_board(self, conn, big_m, chip_xy, logical):
+        x, y = chip_xy
+        assert conn.where_is(machine=big_m,
+                             chip_x=x, chip_y=y)["logical"] == logical
+
+    def test_return_machine(self, conn, big_m):
+        assert conn.where_is(machine=big_m,
+                             chip_x=0, chip_y=0)["machine"] == big_m
+
+    @pytest.mark.parametrize("chip_xy_in,chip_xy_out",
+                             [((0, 0), (0, 0)),
+                              ((32, 10), (32, 10)),
+                              ((-1, 0), (47, 0)),
+                              ((0, -1), (0, 23)),
+                              ((0, 24), (0, 0)),
+                              ((48, 0), (0, 0))])
+    def test_return_chip_xy(self, conn, big_m, chip_xy_in, chip_xy_out):
+        x, y = chip_xy_in
+        assert conn.where_is(machine=big_m,
+                             chip_x=x, chip_y=y)["chip"] == chip_xy_out
+
+    @pytest.mark.parametrize("chip_xy,board_chip_xy",
+                             [((0, 0), (0, 0)),
+                              ((4, 7), (4, 7)),
+                              ((7, 7), (7, 7)),
+                              ((7, 4), (7, 4)),
+                              ((8, 4), (0, 0)),
+                              ((4, 8), (0, 0)),
+                              ((-1, -1), (7, 3))])
+    def test_return_board_chip_xy(self, conn, big_m, chip_xy, board_chip_xy):
+        x, y = chip_xy
+        assert conn.where_is(machine=big_m,
+                             chip_x=x, chip_y=y)["board_chip"] == board_chip_xy
+
+    def test_missing_physical_board(self, conn, big_m_with_hole):
+        assert conn.where_is(machine=big_m_with_hole,
+                             chip_x=24, chip_y=12) is None
+
+    @pytest.mark.parametrize("chip_xy,physical",
+                             [((0, 0), (0, 0, 0)),
+                              ((1, 1), (0, 0, 0)),
+                              ((3, 3), (0, 0, 0)),
+                              ((7, 7), (0, 0, 0)),
+                              ((0, 4), (30, 0, 10)),
+                              ((44, 4), (30, 0, 10)),
+                              ((3, 11), (30, 0, 10)),
+                              ((5, 0), (0, 10, 20)),
+                              ((4, 20), (0, 10, 20)),
+                              ((0, 12), (0, 10, 0)),
+                              ((36, 12), (30, 10, 0)),
+                              ((-1, -1), (30, 10, 20))])
+    def test_return_physical_board(self, conn, big_m_with_hole,
+                                   chip_xy, physical):
+        x, y = chip_xy
+        assert conn.where_is(machine=big_m_with_hole,
+                             chip_x=x, chip_y=y)["physical"] == physical
+
+    @pytest.mark.parametrize("chip_xy,job_id",
+                             [((0, 0), 1),
+                              ((0, 12), 1),
+                              ((8, 23), 1),
+                              ((19, 19), 1),
+                              ((8, 2), 1),
+                              ((0, 4), None),
+                              ((3, 23), None),
+                              ((40, 20), 2),
+                              ((-1, -1), 2),
+                              ((-1, 0), 2),
+                              ((-1, 4), None)])
+    def test_return_job_id(self, conn, big_m, chip_xy, job_id):
+        x, y = chip_xy
+        assert conn.create_job(2, 2, owner="me") == 1
+        assert conn.create_job(3, 1, 2, owner="me") == 2
+        assert conn.where_is(machine=big_m,
+                             chip_x=x, chip_y=y)["job_id"] == job_id
+
+    @pytest.mark.parametrize("chip_xy,job_chip",
+                             [((0, 0), (0, 0)),
+                              ((1, 1), (1, 1)),
+                              ((4, 8), (4, 8)),
+                              ((8, 4), (8, 4)),
+                              ((8, 2), (8, 2)),
+                              ((23, 23), (23, 23)),
+                              ((27, 23), (27, 23)),
+                              ((28, 23), None),
+                              ((24, 0), None),
+                              ((0, 4), None),
+                              ((24, 12), None),
+                              ((40, 20), (0, 0)),
+                              ((-1, -1), (7, 3)),
+                              ((41, 0), (1, 4))])
+    def test_return_job_chip(self, conn, big_m, chip_xy, job_chip):
+        x, y = chip_xy
+        conn.create_job(2, 2, owner="me")
+        conn.create_job(3, 1, 2, owner="me")
+        assert conn.where_is(machine=big_m,
+                             chip_x=x, chip_y=y)["job_chip"] == job_chip
+
+    @pytest.mark.parametrize("logical,chip_xy",
+                             [((0, 0, 0), (0, 0)),
+                              ((0, 0, 1), (8, 4)),
+                              ((0, 0, 2), (4, 8)),
+                              ((3, 1, 2), (40, 20)),
+                              ((-1, -1, 2), (40, 20))])
+    def test_input_logical(self, conn, big_m, logical, chip_xy):
+        x, y, z = logical
+        assert conn.where_is(machine=big_m,
+                             x=x, y=y, z=z)["chip"] == chip_xy
+
+    def test_input_missing_board(self, conn, big_m_with_hole):
+        assert conn.where_is(machine=big_m_with_hole,
+                             cabinet=20, frame=10, board=0) is None
+
+    @pytest.mark.parametrize("physical,chip_xy",
+                             [((0, 0, 0), (0, 0)),
+                              ((0, 0, 10), (8, 4)),
+                              ((0, 0, 20), (4, 8)),
+                              ((30, 10, 20), (40, 20))])
+    def test_input_physical(self, conn, big_m_with_hole, physical, chip_xy):
+        c, f, b = physical
+        assert conn.where_is(machine=big_m_with_hole,
+                             cabinet=c,
+                             frame=f,
+                             board=b)["chip"] == chip_xy
+
+    @pytest.mark.parametrize("job_id,job_chip_xy",
+                             [(3, (0, 0)),  # No job
+                              (1, (24, 12)),  # Out of range
+                              (1, (0, 4))])  # Neighbouring board
+    def test_input_bad_job_chip(self, conn, big_m_with_hole,
+                                job_id, job_chip_xy):
+        assert conn.create_job(2, 2, owner="me") == 1
+        assert conn.create_job(2, 1, owner="me") == 2
+
+        x, y = job_chip_xy
+        assert conn.where_is(job_id=job_id, chip_x=x, chip_y=y) is None
+
+    @pytest.mark.parametrize("job_id,job_chip_xy,chip_xy",
+                             [(1, (0, 0), (0, 0)),
+                              (1, (27, 23), (27, 23)),
+                              (2, (0, 0), (24, 0)),
+                              (2, (4, 8), (28, 8)),
+                              (2, (11, 15), (35, 15))])
+    def test_input_job_chip(self, conn, big_m_with_hole,
+                            job_id, job_chip_xy, chip_xy):
+        assert conn.create_job(2, 2, owner="me") == 1
+        assert conn.create_job(2, 1, owner="me") == 2
+
+        x, y = job_chip_xy
+        loc = conn.where_is(job_id=job_id, chip_x=x, chip_y=y)
+        assert loc["machine"] == big_m_with_hole
+        assert loc["chip"] == chip_xy
 
 
 def test_bmp_on_request_complete(MockABC, conn, m):

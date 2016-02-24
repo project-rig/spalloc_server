@@ -63,15 +63,17 @@ def test_board_to_chip(bxyz, cxy):
     assert board_to_chip(*bxyz) == cxy
 
 
-@pytest.mark.parametrize("bxyz,cxy",
-                         [((0, 0, 0), (0, 0)),
-                          ((0, 0, 1), (8, 4)),
-                          ((0, 0, 2), (4, 8)),
-                          ((2, 1, 0), (24, 12)),
-                          ((2, 1, 1), (32, 16)),
-                          ((2, 1, 2), (28, 20))])
-def test_chip_to_board(bxyz, cxy):
-    assert chip_to_board(*cxy) == bxyz
+@pytest.mark.parametrize("bxyz,cxywh",
+                         [((0, 0, 0), (0, 0, 12, 12)),
+                          ((0, 0, 0), (1, 1, 12, 12)),
+                          ((0, 0, 1), (8, 4, 12, 12)),
+                          ((0, 0, 2), (4, 8, 12, 12)),
+                          ((0, 0, 2), (5, 0, 12, 12)),
+                          ((2, 1, 0), (24, 12, 48, 48)),
+                          ((2, 1, 1), (32, 16, 48, 48)),
+                          ((2, 1, 2), (28, 20, 48, 48))])
+def test_chip_to_board(bxyz, cxywh):
+    assert chip_to_board(*cxywh) == bxyz
 
 
 @pytest.mark.parametrize("wht,wh",
