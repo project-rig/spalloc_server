@@ -1,7 +1,5 @@
 import pytest
 
-import time
-
 from mock import Mock, call
 
 import threading
@@ -28,6 +26,39 @@ def bc(abc, monkeypatch):
     return bc
 
 
+class OnDoneEvent(object):
+    """An object which can be used as a dummy callback.
+
+    The object is callable and expects to be called exactly once with a single
+    argument: success or failure. This is recorded in the object's success
+    attribute. Before the object is called this attribute is None.
+
+    The object works like a :py:class:`threading.Event` which is set when the
+    callback is called.
+    """
+
+    def __init__(self):
+        self.event = threading.Event()
+        self.success = None
+
+    def set(self, *args, **kwargs):
+        return self.event.set(*args, **kwargs)
+
+    def wait(self, *args, **kwargs):
+        return self.event.wait(*args, **kwargs)
+
+    def __call__(self, success):
+        # Should be passed a valid success value
+        assert (success is True) or (success is False)
+
+        # Should not have been called before
+        assert self.success is None
+
+        self.success = success
+
+        self.set()
+
+
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("on_thread_start", [None, Mock()])
 def test_start_and_stop(on_thread_start):
@@ -44,30 +75,26 @@ def test_start_and_stop(on_thread_start):
 
 
 @pytest.mark.timeout(1.0)
-def test_set_power(abc, bc):
-    # Make sure that the set power command works
-    e = threading.Event()
-    abc.set_power(10, False, e.set)
+@pytest.mark.parametrize("power_side_effect,success",
+                         [(None, True),
+                          (IOError("Fail."), False)])
+def test_set_power(abc, bc, power_side_effect, success):
+    # Make sure that the set power command works (and failure is reported)
+    e = OnDoneEvent()
+    bc.set_power.side_effect = power_side_effect
+    abc.set_power(10, False, e)
     e.wait()
+    assert e.success is success
     bc.set_power.assert_called_once_with(state=False, board=set([10]))
     bc.set_power.reset_mock()
 
-    e = threading.Event()
-    abc.set_power(11, True, e.set)
+    e = OnDoneEvent()
+    abc.set_power(11, True, e)
+    bc.set_power.side_effect = power_side_effect
     e.wait()
+    assert e.success is success
     bc.set_power.assert_called_once_with(state=True, board=set([11]))
     bc.set_power.reset_mock()
-
-
-@pytest.mark.timeout(1.0)
-def test_set_power_fails(abc, bc):
-    # Make sure that the set power command can fail and the done_event is still
-    # fired.
-    bc.set_power.side_effect = IOError()
-
-    e = threading.Event()
-    abc.set_power(10, False, e.set)
-    e.wait()
 
 
 @pytest.mark.timeout(1.0)
@@ -76,8 +103,8 @@ def test_set_power_blocks(abc, bc):
     event = threading.Event()
     bc.set_power.side_effect = (lambda *a, **k: event.wait())
 
-    done_event = threading.Event()
-    abc.set_power(10, False, done_event.set)
+    done_event = OnDoneEvent()
+    abc.set_power(10, False, done_event)
 
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -89,19 +116,27 @@ def test_set_power_blocks(abc, bc):
     # When the BMP call completes, so should the done_event!
     event.set()
     done_event.wait()
+    assert done_event.success is True
 
 
 @pytest.mark.timeout(1.0)
-def test_set_power_merge(abc, bc):
-    # Make sure we can queue up several power commands which will get merged.
-    events = [threading.Event() for _ in range(3)]
+@pytest.mark.parametrize("power_side_effect,success",
+                         [(None, True),
+                          (IOError("Fail."), False)])
+def test_set_power_merge(abc, bc, power_side_effect, success):
+    bc.set_power.side_effect = power_side_effect
+
+    # Make sure we can queue up several power commands which will get merged
+    # (and any errors duplicated).
+    events = [OnDoneEvent() for _ in range(3)]
     with abc:
-        abc.set_power(10, False, events[0].set)
-        abc.set_power(11, False, events[1].set)
-        abc.set_power(13, False, events[2].set)
+        abc.set_power(10, False, events[0])
+        abc.set_power(11, False, events[1])
+        abc.set_power(13, False, events[2])
 
     for event in events:
         event.wait()
+        assert event.success is success
 
     bc.set_power.assert_called_once_with(state=False, board=set([10, 11, 13]))
 
@@ -109,11 +144,11 @@ def test_set_power_merge(abc, bc):
 @pytest.mark.timeout(1.0)
 def test_set_power_dont_merge(abc, bc):
     # Make sure power commands are only merged with those of the same type
-    events = [threading.Event() for _ in range(3)]
+    events = [OnDoneEvent() for _ in range(3)]
     with abc:
-        abc.set_power(10, False, events[0].set)
-        abc.set_power(11, True, events[1].set)
-        abc.set_power(12, False, events[2].set)
+        abc.set_power(10, False, events[0])
+        abc.set_power(11, True, events[1])
+        abc.set_power(12, False, events[2])
 
     for event in events:
         event.wait()
@@ -134,24 +169,19 @@ def test_set_power_dont_merge(abc, bc):
                           (Links.west, 1, 0x0001005C),
                           (Links.north, 2, 0x0000005C),
                           (Links.north_east, 2, 0x0001005C)])
-def test_set_link_enable(abc, bc, link, fpga, addr, enable, value):
-    # Make sure that the set link command works
-    e = threading.Event()
-    abc.set_link_enable(10, link, enable, e.set)
+@pytest.mark.parametrize("side_effect,success",
+                         [(None, True),
+                          (IOError("Fail."), False)])
+def test_set_link_enable(abc, bc, link, fpga, addr, enable, value,
+                         side_effect, success):
+    # Make sure that the set link command works (and failure is reported)
+    e = OnDoneEvent()
+    bc.write_fpga_reg.side_effect = side_effect
+    abc.set_link_enable(10, link, enable, e)
     e.wait()
+    assert e.success is success
     bc.write_fpga_reg.assert_called_once_with(fpga, addr, value, board=10)
     bc.write_fpga_reg.reset_mock()
-
-
-@pytest.mark.timeout(1.0)
-def test_set_link_enable_fails(abc, bc):
-    # Make sure that the set link command can fail and the done_event is still
-    # fired.
-    bc.write_fpga_reg.side_effect = IOError()
-
-    e = threading.Event()
-    abc.set_link_enable(10, Links.east, False, e.set)
-    e.wait()
 
 
 @pytest.mark.timeout(1.0)
@@ -160,8 +190,8 @@ def test_set_link_enable_blocks(abc, bc):
     event = threading.Event()
     bc.write_fpga_reg.side_effect = (lambda *a, **k: event.wait())
 
-    done_event = threading.Event()
-    abc.set_link_enable(10, Links.east, True, done_event.set)
+    done_event = OnDoneEvent()
+    abc.set_link_enable(10, Links.east, True, done_event)
 
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -185,10 +215,10 @@ def test_power_priority(abc, bc):
     bc.write_fpga_reg.side_effect = (lambda *a, **k: link_event.wait())
 
     with abc:
-        e1, e2, e3 = (threading.Event() for _ in range(3))
-        abc.set_power(10, True, e1.set)
-        abc.set_link_enable(11, Links.east, True, e2.set)
-        abc.set_power(12, False, e3.set)
+        e1, e2, e3 = (OnDoneEvent() for _ in range(3))
+        abc.set_power(10, True, e1)
+        abc.set_link_enable(11, Links.east, True, e2)
+        abc.set_power(12, False, e3)
 
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -233,21 +263,24 @@ def test_power_removes_link_enables(abc, bc):
     # Make sure link enable requests are removed for boards with newly added
     # power commands.
     with abc:
-        e1, e2, e3, e4 = (threading.Event() for _ in range(4))
-        abc.set_power(10, True, e1.set)
-        abc.set_link_enable(10, Links.east, True, e2.set)
-        abc.set_link_enable(11, Links.east, True, e3.set)
-        abc.set_power(11, False, e4.set)
+        e1, e2, e3, e4 = (OnDoneEvent() for _ in range(4))
+        abc.set_power(10, True, e1)
+        abc.set_link_enable(10, Links.east, True, e2)
+        abc.set_link_enable(11, Links.east, True, e3)
+        abc.set_power(11, False, e4)
 
-    # Block for a short time to ensure the background thread gets chance to
-    # execute
-    time.sleep(0.05)
+    # Wait for the commands to complete
+    e1.wait()
+    e2.wait()
+    e3.wait()
+    e4.wait()
 
-    # All commands should have finished
-    assert e1.is_set()
-    assert e2.is_set()
-    assert e3.is_set()
-    assert e4.is_set()
+    # All commands should have finished (but the link enable on board 11 should
+    # have failed)
+    assert e1.success is True
+    assert e2.success is True
+    assert e3.success is False
+    assert e4.success is True
 
     # Make sure both power commands were sent
     assert len(bc.set_power.mock_calls) == 2
@@ -260,16 +293,18 @@ def test_power_removes_link_enables(abc, bc):
 def test_stop_drains(abc, bc):
     # Make sure that the queues are emptied before the stop command is
     # processed
-    set_power_done = threading.Event()
-    set_link_enable_done = threading.Event()
+    set_power_done = OnDoneEvent()
+    set_link_enable_done = OnDoneEvent()
     with abc:
-        abc.set_power(10, False, set_power_done.set)
-        abc.set_link_enable(11, Links.east, False, set_link_enable_done.set)
+        abc.set_power(10, False, set_power_done)
+        abc.set_link_enable(11, Links.east, False, set_link_enable_done)
         abc.stop()
 
     # Both of these should be carried out
     set_power_done.wait()
     set_link_enable_done.wait()
+    assert set_power_done.success is True
+    assert set_link_enable_done.success is True
 
     # And the loop should stop!
     abc.join()

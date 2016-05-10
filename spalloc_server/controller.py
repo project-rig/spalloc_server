@@ -809,7 +809,7 @@ class Controller(object):
                     # Job timed out, destroy it
                     self.destroy_job(job.id, "Job timed out.")
 
-    def _bmp_on_request_complete(self, job):
+    def _bmp_on_request_complete(self, job, success):
         """Callback function called by an AsyncBMPController when it completes
         a previously issued request.
 
@@ -822,9 +822,20 @@ class Controller(object):
         Parameters
         ----------
         job : :py:class:`._Job`
-            The job whose state should be set.
+            The job whose state should be set. (To be defined by wrapping this
+            method in a partial).
+        success : bool
+            Command success indicator provided by the AsyncBMPController.
         """
         with self._lock:
+            # If a BMP command failed, cancel the job
+            if not success:
+                self.destroy_job(
+                    job.id,
+                    "Machine configuration failed, please try again later.")
+
+            # Count down the number of outstanding requests before the job is
+            # ready
             job.bmp_requests_until_ready -= 1
             assert job.bmp_requests_until_ready >= 0
             if job.bmp_requests_until_ready == 0:

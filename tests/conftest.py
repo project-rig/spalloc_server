@@ -27,6 +27,10 @@ def MockABC(monkeypatch):  # pragma: no cover
             # simulate the machine taking some amount of time to respond)
             self.handler_lock = threading.Lock()
 
+            # The success status of commands "executed" by the Mock
+            # AsyncBMPController.
+            self.success = True
+
             self._lock = threading.RLock()
             self._event = threading.Event()
             self._request_queue = deque()
@@ -62,7 +66,7 @@ def MockABC(monkeypatch):  # pragma: no cover
                                     cb = self._request_queue.popleft()
 
                             # Run callback (while not holding any locks)
-                            cb()
+                            cb(self.success)
 
                 # For purposes of testing, do not allow this thread to exit
                 # while the handler_lock is held. This ensures we can mock this
