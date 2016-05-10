@@ -75,15 +75,18 @@ def big_m_with_hole(conn):
 
 
 @pytest.mark.timeout(1.0)
-def test_mock_abc(MockABC):
+@pytest.mark.parametrize("expected_success", [True, False])
+def test_mock_abc(MockABC, expected_success):
     """Meta testing: make sure the MockAsyncBMPController works."""
     # Make sure callbacks are called from another thread
     threads = []
 
-    def cb():
+    def cb(success):
         threads.append(threading.current_thread())
+        assert success is expected_success
 
     abc = MockABC("foo")
+    abc.success = expected_success
 
     assert abc.running_theads == 1
 
@@ -896,7 +899,11 @@ class TestWhereIs(object):
         assert loc["chip"] == chip_xy
 
 
-def test_bmp_on_request_complete(MockABC, conn, m):
+@pytest.mark.parametrize("success,mid_state,end_state",
+                         [(True, JobState.unknown, JobState.ready),
+                          (False, JobState.destroyed, JobState.destroyed)])
+def test_bmp_on_request_complete(MockABC, conn, m,
+                                 success, mid_state, end_state):
     job_id = conn.create_job(owner="me")
     job = conn._jobs[job_id]
 
@@ -909,14 +916,20 @@ def test_bmp_on_request_complete(MockABC, conn, m):
         job.state = JobState.unknown
 
         # The function should simply decrement the counter until it reaches
-        # zero at which point it should flag the object as "Ready"
+        # zero at which point it should flag the object as "Ready" unless
+        # something has gone wrong in which case the job should immediately
+        # become destroyed.
         assert job.bmp_requests_until_ready == 0
         job.bmp_requests_until_ready = 5
-        for _ in range(5):
-            assert job.state == JobState.unknown
-            conn._bmp_on_request_complete(job)
+        for request_num in range(5):
+            if request_num == 0:
+                # Should initially be unknown
+                assert conn.get_job_state(job_id).state == JobState.unknown
+            else:
+                assert conn.get_job_state(job_id).state == mid_state
+            conn._bmp_on_request_complete(job, success)
 
-        assert job.state == JobState.ready
+        assert conn.get_job_state(job_id).state == end_state
 
 
 @pytest.mark.parametrize("power", [True, False])

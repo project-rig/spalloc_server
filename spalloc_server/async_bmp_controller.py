@@ -85,9 +85,10 @@ class AsyncBMPController(object):
             The board to control.
         state : bool
             True = on, False = off.
-        on_done : function()
+        on_done : function(success)
             Function to call when the command completes. May be called from
-            another thread.
+            another thread. Success is a bool which is True if the command
+            completed successfully and False if it did not (or was cancelled).
         """
         with self._lock:
             assert not self._stop
@@ -104,7 +105,7 @@ class AsyncBMPController(object):
                     cancelled.append(request)
 
         for request in cancelled:
-            request.on_done()
+            request.on_done(False)
 
     def set_link_enable(self, board, link, enable, on_done):
         """Enable or disable a link.
@@ -117,9 +118,10 @@ class AsyncBMPController(object):
             The link to configure.
         enable : bool
             True = link enabled, False = link disabled.
-        on_done : function()
+        on_done : function(success)
             Function to call when the command completes. May be called from
-            another thread.
+            another thread. Success is a bool which is True if the command
+            completed successfully and False if it did not (or was cancelled).
         """
         with self._lock:
             assert not self._stop
@@ -158,14 +160,16 @@ class AsyncBMPController(object):
                     try:
                         self._bc.set_power(state=power_request.state,
                                            board=power_request.board)
+                        success = True
                     except IOError:
                         # Communication issue with the machine, log it but not
                         # much we can do for the end-user.
                         logging.exception("Failed to set board power.")
+                        success = False
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
-                        on_done()
+                        on_done(success)
 
                     continue
 
@@ -179,13 +183,15 @@ class AsyncBMPController(object):
                         self._bc.write_fpga_reg(fpga, addr,
                                                 not link_request.enable,
                                                 board=link_request.board)
+                        success = True
                     except IOError:
                         # Communication issue with the machine, log it but not
                         # much we can do for the end-user.
                         logging.exception("Failed to set link state.")
+                        success = False
 
                     # Alert waiting thread
-                    link_request.on_done()
+                    link_request.on_done(success)
 
                     continue
 
@@ -258,7 +264,7 @@ class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
         On (True) or off (False).
     board : int
         Board to change the state of
-    on_done : function()
+    on_done : function(success)
         A function to call when the request has been completed.
     """
 
@@ -278,7 +284,7 @@ class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
         The link whose state should be changed
     enable : bool
         State of the link: Enabled (True), disabled (False).
-    on_done : function()
+    on_done : function(success)
         A function to call when the request has been completed.
     """
 
