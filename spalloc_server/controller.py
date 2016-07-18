@@ -1223,8 +1223,8 @@ class _Job(object):
 
         self.owner = owner
 
-        if start_time is not None:
-            self.start_time = start_time
+        if start_time is not None:  # pragma: no branch
+            self.start_time = start_time  # pragma: no cover
         else:
             now = datetime.now(utc)
             epoch = datetime(1970, 1, 1, tzinfo=utc)
