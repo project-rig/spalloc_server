@@ -34,7 +34,7 @@ setup(
     keywords="spinnaker allocation packing management supercomputer",
 
     # Requirements
-    install_requires=["rig", "six", "enum-compat", "inotify_simple"],
+    install_requires=["rig", "six", "enum-compat", "inotify_simple", "pytz"],
 
     # Scripts
     entry_points={

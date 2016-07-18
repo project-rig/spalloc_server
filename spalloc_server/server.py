@@ -626,8 +626,8 @@ class Server(object):
                 If the job has been destroyed, this may be a string describing
                 the reason the job was terminated.
             start_time : float or None
-                For queued and allocated jobs, gives the Unix time at which the
-                job was created (or None otherwise).
+                For queued and allocated jobs, gives the Unix time (UTC) at
+                which the job was created (or None otherwise).
         """
         out = self._controller.get_job_state(job_id)._asdict()
         out["state"] = int(out["state"])
@@ -849,7 +849,7 @@ class Server(object):
 
             "owner" is the string giving the name of the Job's owner.
 
-            "start_time" is the time the job was created.
+            "start_time" is the time the job was created (Unix time, UTC).
 
             "keepalive" is the maximum time allowed between queries for this
             job before it is automatically destroyed (or None if the job can
