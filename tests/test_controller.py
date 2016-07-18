@@ -6,6 +6,10 @@ import threading
 
 import time
 
+from datetime import datetime
+
+from pytz import utc
+
 from collections import OrderedDict
 
 from rig.links import Links
@@ -641,8 +645,11 @@ def test_list_jobs(conn, m):
     assert jobs[0].owner == "me"
     assert jobs[1].owner == "you"
 
-    assert time.time() - 1.0 <= jobs[0].start_time <= time.time()
-    assert time.time() - 1.0 <= jobs[1].start_time <= time.time()
+    now = datetime.now(utc)
+    epoch = datetime(1970, 1, 1, tzinfo=utc)
+    unixtime_now = (now - epoch).total_seconds()
+    assert unixtime_now - 1.0 <= jobs[0].start_time <= unixtime_now
+    assert unixtime_now - 1.0 <= jobs[1].start_time <= unixtime_now
 
     assert jobs[0].keepalive == 60.0
     assert jobs[1].keepalive is None

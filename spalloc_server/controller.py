@@ -14,6 +14,10 @@ from six import itervalues, iteritems
 
 import time
 
+from datetime import datetime
+
+from pytz import utc
+
 from rig.geometry import spinn5_chip_coord
 
 from spalloc_server.coordinates import \
@@ -1049,7 +1053,7 @@ class JobStateTuple(namedtuple("JobStateTuple",
         If the job has been destroyed, this may be a string describing the
         reason the job was terminated.
     start_time : float or None
-        The Unix time at which the job was created.
+        The Unix time (UTC) at which the job was created.
     """
 
     # Python 3.4 Workaround: https://bugs.python.org/issue24931
@@ -1094,7 +1098,7 @@ class JobTuple(namedtuple("JobTuple",
     owner : str
         The string giving the name of the Job's owner.
     start_time : float
-        The time the job was created (Unix time)
+        The time the job was created (Unix time, UTC)
     keepalive : float or None
         The maximum time allowed between queries for this job before it is
         automatically destroyed (or None if the job can remain allocated
@@ -1158,7 +1162,7 @@ class _Job(object):
     owner : str
         The job's owner.
     start_time : float
-        The time the job was created (Unix time)
+        The time the job was created (Unix time, UTC)
     keepalive : float or None
         The maximum time allowed between queries for this job before it is
         automatically destroyed (or None if the job can remain allocated
@@ -1218,7 +1222,13 @@ class _Job(object):
         self.id = id
 
         self.owner = owner
-        self.start_time = start_time if start_time is not None else time.time()
+
+        if start_time is not None:  # pragma: no branch
+            self.start_time = start_time  # pragma: no cover
+        else:
+            now = datetime.now(utc)
+            epoch = datetime(1970, 1, 1, tzinfo=utc)
+            self.start_time = (now - epoch).total_seconds()
 
         # If None, never kill this job due to inactivity. Otherwise, stop the
         # job if the time exceeds this value. It is the allocator's
