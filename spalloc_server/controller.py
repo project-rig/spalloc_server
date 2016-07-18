@@ -14,7 +14,7 @@ from six import itervalues, iteritems
 
 import time
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from pytz import utc
 
@@ -1228,7 +1228,7 @@ class _Job(object):
         else:
             now = datetime.now(utc)
             epoch = datetime(1970, 1, 1, tzinfo=utc)
-            self.start_time = (now - epoch) / timedelta(seconds=1)
+            self.start_time = (now - epoch).total_seconds()
 
         # If None, never kill this job due to inactivity. Otherwise, stop the
         # job if the time exceeds this value. It is the allocator's

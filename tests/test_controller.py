@@ -6,7 +6,7 @@ import threading
 
 import time
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from pytz import utc
 
@@ -647,7 +647,7 @@ def test_list_jobs(conn, m):
 
     now = datetime.now(utc)
     epoch = datetime(1970, 1, 1, tzinfo=utc)
-    unixtime_now = (now - epoch) / timedelta(seconds=1)
+    unixtime_now = (now - epoch).total_seconds()
     assert unixtime_now - 1.0 <= jobs[0].start_time <= unixtime_now
     assert unixtime_now - 1.0 <= jobs[1].start_time <= unixtime_now
 
