@@ -7,12 +7,12 @@ SpiNNaker Machine Partitioning and Allocation Server (``spalloc_server``)
 .. image:: https://readthedocs.org/projects/spalloc_server/badge/?version=stable
    :alt: Documentation
    :target: http://spalloc_server.readthedocs.org/
-.. image:: https://travis-ci.org/project-rig/spalloc_server.svg?branch=master
+.. image:: https://travis-ci.org/SpiNNakerManchester/spalloc_server.svg?branch=master
    :alt: Build Status
-   :target: https://travis-ci.org/project-rig/spalloc_server
-.. image:: https://coveralls.io/repos/project-rig/spalloc_server/badge.svg?branch=master
+   :target: https://travis-ci.org/SpiNNakerManchester/spalloc_server
+.. image:: https://coveralls.io/repos/SpiNNakerManchester/spalloc_server/badge.svg?branch=master
    :alt: Coverage Status
-   :target: https://coveralls.io/r/project-rig/spalloc_server?branch=master
+   :target: https://coveralls.io/r/SpiNNakerManchester/spalloc_server?branch=master
 
 A SpiNNaker machine management application which manages the partitioning and
 allocation of large SpiNNaker machines into smaller fragments for many

@@ -5,7 +5,7 @@ The SpiNNaker Partitioning Server is a Python program built on Rig_ designed to
 facilitate the sharing and partitioning of large SpiNNaker_ machines.
 
 .. _SpiNNaker: http://apt.cs.manchester.ac.uk/projects/SpiNNaker/
-.. _Rig: https://github.com/project-rig/rig
+.. _Rig: https://github.com/SpiNNakerManchester/rig
 
 This server enables users to request SpiNNaker machines of various shapes and
 sizes. These requests are queued and allocated to available SpiNNaker machines,
