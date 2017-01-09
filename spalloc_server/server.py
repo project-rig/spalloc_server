@@ -607,7 +607,7 @@ class Server(object):
 
         Returns
         -------
-        {"state": state, "power": power
+        {"state": state, "power": power, \
          "keepalive": keepalive, "reason": reason}
             Where:
 
