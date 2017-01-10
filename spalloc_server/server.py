@@ -27,6 +27,7 @@ from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
 from spalloc_server.controller import Controller
 
+BUFFER_SIZE = 1024
 
 _COMMANDS = OrderedDict()
 """A dictionary from command names to (unbound) methods of the
@@ -34,7 +35,7 @@ _COMMANDS = OrderedDict()
 """
 
 
-def _command(f):
+def spalloc_command(f):
     """Decorator which marks a class function of :py:class:`.Server` as a
     command which may be called by a client.
     """
@@ -67,7 +68,7 @@ class Server(object):
 
     A number of callable commands are implemented by the server in the form of
     a subset of the :py:class:`.Server`'s methods indicated by the
-    :py:func:`._command` decorator. These may be called by a client by sending
+    :py:func:`.spalloc_command` decorator. These may be called by a client by sending
     a line ``{"command": "...", "args": [...], "kwargs": {...}}``. If the
     function throws an exception, the client is disconnected. If the function
     returns, it is packed as a JSON line ``{"return": ...}``.
@@ -214,8 +215,7 @@ class Server(object):
             with open(self._config_filename, "r") as f:
                 config_script = f.read()  # pragma: no branch
         except (IOError, OSError):
-            logging.exception("Could not read "
-                              "config file %s", self._config_filename)
+            logging.exception("Could not read config file %s", self._config_filename)
             return False
 
         # The environment in which the configuration script is executed (and
@@ -227,15 +227,15 @@ class Server(object):
             exec(config_script, g)
         except:
             # Executing the config file failed, don't update any settings
-            logging.exception("Error while evaluating "
-                              "config file %s", self._config_filename)
+            logging.exception("Error while evaluating config file %s",
+                              self._config_filename)
             return False
 
         # Make sure a configuration object is specified
         new = g.get("configuration", None)
         if not isinstance(new, Configuration):
-            logging.error("'configuration' must be a Configuration object "
-                          "in config file %s", self._config_filename)
+            logging.error("'configuration' must be a Configuration object in config file %s",
+                          self._config_filename)
             return False
 
         # Update the configuration
@@ -251,14 +251,11 @@ class Server(object):
             self._close()
 
             # Create a new server socket
-            self._server_socket = socket.socket(socket.AF_INET,
-                                                socket.SOCK_STREAM)
-            self._server_socket.setsockopt(socket.SOL_SOCKET,
-                                           socket.SO_REUSEADDR, 1)
+            self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self._server_socket.bind((new.ip, new.port))
             self._server_socket.listen(5)
-            self._poll.register(self._server_socket,
-                                select.POLLIN)
+            self._poll.register(self._server_socket, select.POLLIN)
 
         # Update the controller
         self._controller.max_retired_jobs = new.max_retired_jobs
@@ -310,7 +307,7 @@ class Server(object):
         client, addr = self._server_socket.accept()
         logging.info("New client connected from %s", addr)
 
-        # Watch the client's socket for datat
+        # Watch the client's socket for data
         self._poll.register(client, select.POLLIN)
 
         # Keep a reference to the socket
@@ -319,15 +316,44 @@ class Server(object):
         # Create a buffer for data sent by the client
         self._client_buffers[client] = b""
 
+    def _msg_client(self, client, message):
+        try:
+            client.send(json.dumps(message).encode("utf-8") + b"\n")
+        except:
+            self._disconnect_client(client)
+            raise
+
+
+    def _handle_command(self, client, line):
+        """Dispatch a single command.
+        
+        Parameters
+        ----------
+        client : :py:class:`socket.Socket`
+            The client that made the request, used to provide a session
+            context where relevant.
+        line : string
+            The line parsed from the socket. Should be a complete JSON object
+            with at least a 'command' key.
+        """
+        cmd_obj = json.loads(line.decode("utf-8"))
+        command = _COMMANDS[cmd_obj["command"]]
+        if command is None:
+            raise IOError("unrecognised command name")
+        args = cmd_obj["args"] if "args" in cmd_obj else []
+        kwargs = cmd_obj["kwargs"] if "kwargs" in cmd_obj else {}
+        # Execute the specified command
+        return command(self, client, *args, **kwargs)
+
     def _handle_commands(self, client):
-        """Handle an incomming command from a client.
+        """Handle incoming commands from a client.
 
         Parameters
         ----------
         client : :py:class:`socket.Socket`
         """
         try:
-            data = client.recv(1024)
+            data = client.recv(BUFFER_SIZE)
         except (OSError, IOError):
             data = b""
 
@@ -336,32 +362,35 @@ class Server(object):
             self._disconnect_client(client)
             return
 
+        peer = client.getpeername()
         self._client_buffers[client] += data
 
         # Process any complete commands (whole lines)
         while b"\n" in self._client_buffers[client]:
             line, _, self._client_buffers[client] = \
                 self._client_buffers[client].partition(b"\n")
-
             try:
-                cmd_obj = json.loads(line.decode("utf-8"))
-
-                # Execute the specified command
-                ret_val = _COMMANDS[cmd_obj["command"]](
-                    self, client, *cmd_obj["args"], **cmd_obj["kwargs"])
-
-                # Return the response
-                client.send(json.dumps({"return": ret_val}).encode("utf-8") +
-                            b"\n")
+                # Note that we skip blank lines
+                if len(line) > 0:
+                    self._msg_client(client, {"return": self._handle_command(client, line)})
             except:
                 # If any of the above fails for any reason (e.g. invalid JSON,
                 # unrecognised command, command crashes, etc.), just disconnect
                 # the client.
-                logging.exception("Client %s sent bad command %r, "
-                                  "disconnecting",
-                                  client.getpeername(), line)
-                self._disconnect_client(client)
+                logging.exception("Client %s sent bad command %r, disconnecting",
+                                  peer, line)
                 return
+
+    def _send_notifications(self, label, changes, watches):
+        if changes:
+            for client, items in list(iteritems(watches)):
+                if items is None or not items.isdisjoint(changes):
+                    try:
+                        self._msg_client(client, {label:
+                            list(changes) if items is None else
+                            list(changes.intersection(items))})
+                    except (OSError, IOError):
+                        logging.exception("Could not send notification.")
 
     def _send_change_notifications(self):
         """Send any registered change notifications to clients.
@@ -371,42 +400,13 @@ class Server(object):
         subscribed to be notified of changes to jobs or machines.
         """
         # Notify clients about jobs which have changed
-        changed_jobs = self._controller.changed_jobs
-        if changed_jobs:
-            for client, jobs in list(iteritems(self._client_job_watches)):
-                if jobs is None or not jobs.isdisjoint(changed_jobs):
-                    try:
-                        client.send(
-                            json.dumps(
-                                {"jobs_changed":
-                                 list(changed_jobs)
-                                 if jobs is None else
-                                 list(changed_jobs.intersection(jobs))}
-                            ).encode("utf-8") + b"\n")
-                    except (OSError, IOError):
-                        logging.exception(
-                            "Could not send notification.")
-                        self._disconnect_client(client)
-
+        self._send_notifications("jobs_changed",
+                                self._controller.changed_jobs,
+                                self._client_job_watches)
         # Notify clients about machines which have changed
-        changed_machines = self._controller.changed_machines
-        if changed_machines:
-            for client, machines in list(
-                    iteritems(self._client_machine_watches)):
-                if (machines is None or
-                        not machines.isdisjoint(changed_machines)):
-                    try:
-                        client.send(
-                            json.dumps(
-                                {"machines_changed":
-                                 list(changed_machines)
-                                 if machines is None else
-                                 list(changed_machines.intersection(machines))}
-                            ).encode("utf-8") + b"\n")
-                    except (OSError, IOError):
-                        logging.exception(
-                            "Could not send notification.")
-                        self._disconnect_client(client)
+        self._send_notifications("machines_changed",
+                                 self._controller.changed_machines,
+                                 self._client_machine_watches)
 
     def _run(self):
         """The main server thread.
@@ -488,7 +488,7 @@ class Server(object):
 
         self._running = False
 
-    @_command
+    @spalloc_command
     def version(self, client):
         """
         Returns
@@ -497,7 +497,7 @@ class Server(object):
             The server's version number."""
         return __version__
 
-    @_command
+    @spalloc_command
     def create_job(self, client, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
 
@@ -593,7 +593,7 @@ class Server(object):
             kwargs["tags"] = set(kwargs["tags"])
         return self._controller.create_job(*args, **kwargs)
 
-    @_command
+    @spalloc_command
     def job_keepalive(self, client, job_id):
         """Reset the keepalive timer for the specified job.
 
@@ -601,7 +601,7 @@ class Server(object):
         """
         self._controller.job_keepalive(job_id)
 
-    @_command
+    @spalloc_command
     def get_job_state(self, client, job_id):
         """Poll the state of a running job.
 
@@ -633,7 +633,7 @@ class Server(object):
         out["state"] = int(out["state"])
         return out
 
-    @_command
+    @spalloc_command
     def get_job_machine_info(self, client, job_id):
         """Get the list of Ethernet connections to the allocated machine.
 
@@ -673,7 +673,7 @@ class Server(object):
                 "machine_name": machine_name,
                 "boards": boards}
 
-    @_command
+    @spalloc_command
     def power_on_job_boards(self, client, job_id):
         """Power on (or reset if already on) boards associated with a job.
 
@@ -682,7 +682,7 @@ class Server(object):
         """
         self._controller.power_on_job_boards(job_id)
 
-    @_command
+    @spalloc_command
     def power_off_job_boards(self, client, job_id):
         """Power off boards associated with a job.
 
@@ -691,7 +691,7 @@ class Server(object):
         """
         self._controller.power_off_job_boards(job_id)
 
-    @_command
+    @spalloc_command
     def destroy_job(self, client, job_id, reason=None):
         """Destroy a job.
 
@@ -731,7 +731,7 @@ class Server(object):
                 if len(watches) == 0:
                     del watchset[client]
 
-    @_command
+    @spalloc_command
     def notify_job(self, client, job_id=None):
         r"""Register to be notified about changes to a specific job ID.
 
@@ -755,7 +755,7 @@ class Server(object):
         """
         self._register_for_notifications(client, self._client_job_watches, job_id)
 
-    @_command
+    @spalloc_command
     def no_notify_job(self, client, job_id=None):
         """Stop being notified about a specific job ID.
 
@@ -776,7 +776,7 @@ class Server(object):
         """
         self._unregister_for_notifications(client, self._client_job_watches, job_id)
 
-    @_command
+    @spalloc_command
     def notify_machine(self, client, machine_name=None):
         r"""Register to be notified about a specific machine name.
 
@@ -799,7 +799,7 @@ class Server(object):
         """
         self._register_for_notifications(client, self._client_machine_watches, machine_name)
 
-    @_command
+    @spalloc_command
     def no_notify_machine(self, client, machine_name=None):
         """Unregister to be notified about a specific machine name.
 
@@ -820,7 +820,7 @@ class Server(object):
         """
         self._unregister_for_notifications(client, self._client_machine_watches, machine_name)
 
-    @_command
+    @spalloc_command
     def list_jobs(self, client):
         """Enumerate all non-destroyed jobs.
 
@@ -869,7 +869,7 @@ class Server(object):
             out.append(job)
         return out
 
-    @_command
+    @spalloc_command
     def list_machines(self, client):
         """Enumerates all machines known to the system.
 
@@ -905,7 +905,7 @@ class Server(object):
             out.append(machine)
         return out
 
-    @_command
+    @spalloc_command
     def get_board_position(self, client, machine_name, x, y, z):
         """Get the physical location of a specified board.
 
@@ -924,7 +924,7 @@ class Server(object):
         """
         return self._controller.get_board_position(machine_name, x, y, z)
 
-    @_command
+    @spalloc_command
     def get_board_at_position(self, client, machine_name, x, y, z):
         """Get the logical location of a board at the specified physical
         location.
@@ -944,7 +944,7 @@ class Server(object):
         """
         return self._controller.get_board_at_position(machine_name, x, y, z)
 
-    @_command
+    @spalloc_command
     def where_is(self, client, **kwargs):
         """Find out where a SpiNNaker board or chip is located, logically and
         physically.
