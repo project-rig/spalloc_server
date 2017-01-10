@@ -181,7 +181,7 @@ class Server(object):
     def _watch_config_file(self):
         """Create an inotify watch on the config file.
 
-        This watch is monitored by the main server threead and if the config
+        This watch is monitored by the main server thread and if the config
         file is changed, the config file is re-read.
         """
         # A one-shot watch is used since some editors cause a delete event to
@@ -218,7 +218,7 @@ class Server(object):
                               "config file %s", self._config_filename)
             return False
 
-        # The environment in which the configuration script is exexcuted (and
+        # The environment in which the configuration script is executed (and
         # where the script will store its options.)
         try:
             g = {}
@@ -411,7 +411,7 @@ class Server(object):
     def _run(self):
         """The main server thread.
 
-        This 'infinate' loop runs in a background thread and waits for and
+        This 'infinite' loop runs in a background thread and waits for and
         processes events such as the :py:meth:`._notify` method being called,
         the config file changing, clients sending commands or new clients
         connecting. It also periodically calls destroy_timed_out_jobs on the
@@ -707,6 +707,30 @@ class Server(object):
         """
         self._controller.destroy_job(job_id, reason)
 
+    def _register_for_notifications(self, client, watchset, id):
+        """Helper method that handles the protocol for registration for notifications."""
+        if id is None:
+            watchset[client] = None
+        elif client not in watchset:
+            watchset[client] = set([id])
+        elif watchset[client] is not None:
+            watchset[client].add(id)
+        else:
+            # Client is already notified about all changes, do nothing!
+            pass
+    def _unregister_for_notifications(self, client, watchset, id):
+        """Helper method that handles the protocol for unregistration for notifications."""
+        if client not in watchset:
+            return
+        if id is None:
+            del watchset[client]
+        else:
+            watches = watchset[client]
+            if watches is not None:
+                watches.discard(id)
+                if len(watches) == 0:
+                    del watchset[client]
+
     @_command
     def notify_job(self, client, job_id=None):
         r"""Register to be notified about changes to a specific job ID.
@@ -729,16 +753,7 @@ class Server(object):
         no_notify_job : Stop being notified about a job.
         notify_machine : Register to be notified about changes to machines.
         """
-        if job_id is None:
-            self._client_job_watches[client] = None
-        else:
-            if client not in self._client_job_watches:
-                self._client_job_watches[client] = set([job_id])
-            elif self._client_job_watches[client] is not None:
-                self._client_job_watches[client].add(job_id)
-            else:
-                # Client is already notified about all changes, do nothing!
-                pass
+        self._register_for_notifications(client, self._client_job_watches, job_id)
 
     @_command
     def no_notify_job(self, client, job_id=None):
@@ -759,17 +774,7 @@ class Server(object):
         --------
         notify_job : Register to be notified about changes to a specific job.
         """
-        if client not in self._client_job_watches:
-            return
-
-        if job_id is None:
-            del self._client_job_watches[client]
-        else:
-            watches = self._client_job_watches[client]
-            if watches is not None:
-                watches.discard(job_id)
-                if len(watches) == 0:
-                    del self._client_job_watches[client]
+        self._unregister_for_notifications(client, self._client_job_watches, job_id)
 
     @_command
     def notify_machine(self, client, machine_name=None):
@@ -792,16 +797,7 @@ class Server(object):
         no_notify_machine : Stop being notified about a machine.
         notify_job : Register to be notified about changes to jobs.
         """
-        if machine_name is None:
-            self._client_machine_watches[client] = None
-        else:
-            if client not in self._client_machine_watches:
-                self._client_machine_watches[client] = set([machine_name])
-            elif self._client_machine_watches[client] is not None:
-                self._client_machine_watches[client].add(machine_name)
-            else:
-                # Client is already notified about all changes, do nothing!
-                pass
+        self._register_for_notifications(client, self._client_machine_watches, machine_name)
 
     @_command
     def no_notify_machine(self, client, machine_name=None):
@@ -822,17 +818,7 @@ class Server(object):
         --------
         notify_machine : Register to be notified about changes to a machine.
         """
-        if client not in self._client_machine_watches:
-            return
-
-        if machine_name is None:
-            del self._client_machine_watches[client]
-        else:
-            watches = self._client_machine_watches[client]
-            if watches is not None:
-                watches.discard(machine_name)
-                if len(watches) == 0:
-                    del self._client_machine_watches[client]
+        self._unregister_for_notifications(client, self._client_machine_watches, machine_name)
 
     @_command
     def list_jobs(self, client):
@@ -1018,7 +1004,7 @@ class Server(object):
 def main(args=None):
     """Command-line launcher for the server.
 
-    The server may be cleanly terminated using a keyboard interrupt (e.g.
+    The server may be cleanly terminated using a keyboard interrupt (e.g.,
     ctrl+c).
 
     Parameters
@@ -1047,7 +1033,7 @@ def main(args=None):
                     cold_start=args.cold_start)
     try:
         # NB: Originally this loop was replaced with a call to server.join
-        # however in Python 2, such blocking calls are not interruptable so we
+        # however in Python 2, such blocking calls are not interruptible so we
         # use this rather ugly workaround instead.
         while server.is_alive():  # pragma: no cover
             time.sleep(0.1)
