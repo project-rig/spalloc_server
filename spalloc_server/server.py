@@ -11,15 +11,13 @@ import logging
 import pickle
 import socket
 import select
+import signal
 import threading
 import json
 import argparse
 import time
 
 from collections import OrderedDict
-
-from inotify_simple import INotify
-from inotify_simple import flags as inotify_flags
 
 from six import itervalues, iteritems
 
@@ -33,7 +31,6 @@ _COMMANDS = OrderedDict()
 """A dictionary from command names to (unbound) methods of the
 :py:class:`.Server` class.
 """
-
 
 def spalloc_command(f):
     """Decorator which marks a class function of :py:class:`.Server` as a
@@ -81,7 +78,7 @@ class Server(object):
         config_filename : str
             The filename of the config file for the server which describes the
             machines to be controlled.
-        cold_start : bool
+        cold_start : bool, optional
             If False (the default), the server will attempt to restore its
             previous state, if True, the server will start from scratch.
         """
@@ -160,10 +157,8 @@ class Server(object):
         if not self._read_config_file():
             raise Exception("Config file could not be loaded.")
 
-        # Set up inotify watcher for config file changes
-        self._config_inotify = INotify()
-        self._poll.register(self._config_inotify.fd, select.POLLIN)
-        self._watch_config_file()
+        # Set up SIGHUP signal handler for config file reloading
+        signal.signal(signal.SIGHUP, self._sighup_handler)
 
         # Start the server
         self._server_thread.start()
@@ -179,26 +174,18 @@ class Server(object):
         """
         self._notify_send.send(b"x")
 
-    def _watch_config_file(self):
-        """Create an inotify watch on the config file.
+    def _sighup_handler(self, signum, frame):
+        """Handler for SIGHUP. If such a signal is delivered, will trigger a
+        reread of the configuration file.
 
-        This watch is monitored by the main server thread and if the config
-        file is changed, the config file is re-read.
+        Parameters
+        ----------
+        signum : int
+        frame :
         """
-        # A one-shot watch is used since some editors cause a delete event to
-        # be produced when the file is saved, removing the watch anyway. Using
-        # a one-shot watch simplifies implementation as it requires the watch
-        # to *always* be recreated, rather than just 'sometimes'.
-        self._config_inotify.add_watch(self._config_filename,
-                                       inotify_flags.MODIFY |
-                                       inotify_flags.ATTRIB |
-                                       inotify_flags.CLOSE_WRITE |
-                                       inotify_flags.MOVED_TO |
-                                       inotify_flags.CREATE |
-                                       inotify_flags.DELETE |
-                                       inotify_flags.DELETE_SELF |
-                                       inotify_flags.MOVE_SELF |
-                                       inotify_flags.ONESHOT)
+        if signum == signal.SIGHUP:
+            self._reload_config = True
+            self._notify()
 
     def _read_config_file(self):
         """(Re-)read the server configuration.
@@ -211,6 +198,7 @@ class Server(object):
         bool
             True if reading succeded, False otherwise.
         """
+        self._reload_config = False
         try:
             with open(self._config_filename, "r") as f:
                 config_script = f.read()  # pragma: no branch
@@ -317,12 +305,20 @@ class Server(object):
         self._client_buffers[client] = b""
 
     def _msg_client(self, client, message):
+        """Low-level way to send a message to a client.
+        
+        Parameters
+        ----------
+        client : :py:class:`socket.Socket`
+            The client that we are sending a message to.
+        message :
+            The object or array to send. Will be converted to JSON.
+        """
         try:
             client.send(json.dumps(message).encode("utf-8") + b"\n")
         except:
             self._disconnect_client(client)
             raise
-
 
     def _handle_command(self, client, line):
         """Dispatch a single command.
@@ -382,6 +378,7 @@ class Server(object):
                 return
 
     def _send_notifications(self, label, changes, watches):
+        """How to actually send requested notifications."""
         if changes:
             for client, items in list(iteritems(watches)):
                 if items is None or not items.isdisjoint(changes):
@@ -437,18 +434,17 @@ class Server(object):
                 elif fd in self._client_sockets:
                     # Incoming data from client
                     self._handle_commands(self._client_sockets[fd])
-                elif fd == self._config_inotify.fd:
-                    # Config file changed, re-read it
-                    time.sleep(0.1)
-                    self._config_inotify.read()
-                    self._watch_config_file()
-                    self._read_config_file()
                 else:  # pragma: no cover
                     # Should not get here...
                     assert False
 
             # Send any job/machine change notifications out
             self._send_change_notifications()
+
+            # Config file changed, re-read it
+            if self._reload_config:
+                self._reload_config = False
+                self._read_config_file()
 
     def is_alive(self):
         """Is the server running?"""
@@ -467,9 +463,6 @@ class Server(object):
         self._stop = True
         self._notify()
         self._server_thread.join()
-
-        # Stop watching config file
-        self._config_inotify.close()
 
         # Close all connections
         logging.info("Closing connections...")
@@ -546,39 +539,39 @@ class Server(object):
         ----------
         owner : str
             **Required.** The name of the owner of this job.
-        keepalive : float or None
-            *Optional.* The maximum number of seconds which may elapse between
-            a query on this job before it is automatically destroyed. If None,
-            no timeout is used. (Default: 60.0)
+        keepalive : float or None, optional
+            The maximum number of seconds which may elapse between a query on
+            this job before it is automatically destroyed. If None, no timeout
+            is used. (Default: 60.0)
 
         Other Parameters
         ----------------
-        machine : str or None
-            *Optional.* Specify the name of a machine which this job must be
-            executed on. If None, the first suitable machine available will be
-            used, according to the tags selected below. Must be None when tags
-            are given. (Default: None)
-        tags : [str, ...] or None
-            *Optional.* The set of tags which any machine running this job must
-            have. If None is supplied, only machines with the "default" tag
-            will be used. If machine is given, this argument must be None.
+        machine : str or None, optional
+            Specify the name of a machine which this job must be executed on.
+            If None, the first suitable machine available will be used,
+            according to the tags selected below. Must be None when tags are
+            given. (Default: None)
+        tags : [str, ...] or None, optional
+            The set of tags which any machine running this job must have. If
+            None is supplied, only machines with the "default" tag will be
+            used. If machine is given, this argument must be None.
             (Default: None)
-        min_ratio : float
+        min_ratio : float, optional
             The aspect ratio (h/w) which the allocated region must be 'at least
             as square as'. Set to 0.0 for any allowable shape, 1.0 to be
             exactly square. Ignored when allocating single boards or specific
             rectangles of triads.
-        max_dead_boards : int or None
+        max_dead_boards : int or None, optional
             The maximum number of broken or unreachable boards to allow in the
             allocated region. If None, any number of dead boards is permitted,
             as long as the board on the bottom-left corner is alive (Default:
             None).
-        max_dead_links : int or None
+        max_dead_links : int or None, optional
             The maximum number of broken links allow in the allocated region.
             When require_torus is True this includes wrap-around links,
             otherwise peripheral links are not counted.  If None, any number of
             broken links is allowed. (Default: None).
-        require_torus : bool
+        require_torus : bool, optional
             If True, only allocate blocks with torus connectivity. In general
             this will only succeed for requests to allocate an entire machine
             (when the machine is otherwise not in use!). Must be False when
@@ -598,12 +591,22 @@ class Server(object):
         """Reset the keepalive timer for the specified job.
 
         Note all other job-specific commands implicitly do this.
+
+        Parameters
+        ----------
+        job_id : int
+            A job ID to be kept alive.
         """
         self._controller.job_keepalive(job_id)
 
     @spalloc_command
     def get_job_state(self, client, job_id):
         """Poll the state of a running job.
+
+        Parameters
+        ----------
+        job_id : int
+            A job ID to get the state of.
 
         Returns
         -------
@@ -636,6 +639,11 @@ class Server(object):
     @spalloc_command
     def get_job_machine_info(self, client, job_id):
         """Get the list of Ethernet connections to the allocated machine.
+
+        Parameters
+        ----------
+        job_id : int
+            A job ID to get the machine info for.
 
         Returns
         -------
@@ -679,6 +687,11 @@ class Server(object):
 
         Once called, the job will enter the 'power' state until the power state
         change is complete, this may take some time.
+
+        Parameters
+        ----------
+        job_id : int
+            A job ID to turn boards on for.
         """
         self._controller.power_on_job_boards(job_id)
 
@@ -688,6 +701,11 @@ class Server(object):
 
         Once called, the job will enter the 'power' state until the power state
         change is complete, this may take some time.
+
+        Parameters
+        ----------
+        job_id : int
+            A job ID to turn boards off for.
         """
         self._controller.power_off_job_boards(job_id)
 
@@ -701,9 +719,11 @@ class Server(object):
 
         Parameters
         ----------
-        reason : str or None
-            *Optional.* A human-readable string describing the reason for the
-            job's destruction.
+        job_id : int
+            A job ID to destroy.
+        reason : str, optional
+            A human-readable string describing the reason for the job's
+            destruction.
         """
         self._controller.destroy_job(job_id, reason)
 
@@ -744,7 +764,7 @@ class Server(object):
 
         Parameters
         ----------
-        job_id : int or None
+        job_id : int or None, optional
             A job ID to be notified of or None if all job state changes should
             be reported.
 
@@ -764,7 +784,7 @@ class Server(object):
 
         Parameters
         ----------
-        job_id : id or None
+        job_id : id or None, optional
             A job ID to no longer be notified of or None to not be notified of
             any jobs. Note that if all job IDs were registered for
             notification, this command only has an effect if the specified
@@ -788,7 +808,7 @@ class Server(object):
 
         Parameters
         ----------
-        machine_name : machine or None
+        machine_name : machine or None, optional
             A machine name to be notified of or None if all machine state
             changes should be reported.
 
@@ -808,7 +828,7 @@ class Server(object):
 
         Parameters
         ----------
-        machine_name : name or None
+        machine_name : name or None, optional
             A machine name to no longer be notified of or None to not be
             notified of any machines. Note that if all machines were registered
             for notification, this command only has an effect if the specified
@@ -1009,7 +1029,7 @@ def main(args=None):
 
     Parameters
     ----------
-    args : [arg, ...]
+    args : [arg, ...], optional
         The command-line arguments passed to the program.
     """
     parser = argparse.ArgumentParser(
