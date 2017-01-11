@@ -104,11 +104,11 @@ class Controller(object):
         """
         Parameters
         ----------
-        next_id : int
+        next_id : int, optional
             The next Job ID to assign
-        max_retired_jobs : int
+        max_retired_jobs : int, optional
             See attribute of same name.
-        on_background_state_change : function
+        on_background_state_change : function, optional
             See attribute of same name.
         """
         # The next job ID to assign
@@ -515,8 +515,8 @@ class Controller(object):
 
         Parameters
         ----------
-        reason : str or None
-            *Optional.* A human-readable string describing the reason for the
+        reason : str or None, optional
+            A human-readable string describing the reason for the
             job's destruction.
         """
         with self._lock:
@@ -592,8 +592,7 @@ class Controller(object):
             machine = self._machines.get(machine_name, None)
             if machine is None:
                 return None
-            else:
-                return machine.board_locations.get((x, y, z), None)
+            return machine.board_locations.get((x, y, z), None)
 
     def get_board_at_position(self, machine_name, cabinet, frame, board):
         """Get the logical location of a board at the specified physical
@@ -616,16 +615,264 @@ class Controller(object):
             machine = self._machines.get(machine_name, None)
             if machine is None:
                 return None
+            # NB: Assuming this function is only called very rarely,
+            # constructing and maintaining a reverse lookup is not worth
+            # the trouble so instead we just search.
+            for (x, y, z), (c, f, b) in iteritems(machine.board_locations):
+                if (c, f, b) == (cabinet, frame, board):
+                    return (x, y, z)
             else:
-                # NB: Assuming this function is only called very rarely,
-                # constructing and maintaining a reverse lookup is not worth
-                # the trouble so instead we just search.
-                for (x, y, z), (c, f, b) in iteritems(machine.board_locations):
-                    if (c, f, b) == (cabinet, frame, board):
-                        return (x, y, z)
-                else:
-                    # No board found
-                    return None
+                # No board found
+                return None
+
+    def _where_is_by_logical_triple(self, machine_name, x, y, z):
+        """Helper for :py:meth:`.where_is()`"""
+        with self._lock:
+            # Get the actual Machine
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+
+            chip_x, chip_y = board_to_chip(x, y, z)
+
+            # Compensate chip coordinates for wrap-around
+            chip_w, chip_h = triad_dimensions_to_chips(
+                machine.width, machine.height, WrapAround.both)
+            chip_x %= chip_w
+            chip_y %= chip_h
+
+            # Determine the chip within the board
+            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
+            # numpy integer types which are not JSON serialiseable.
+            board_chip_x, board_chip_y = map(
+                int, spinn5_chip_coord(chip_x, chip_y))
+
+            # Determine the logical board coordinates (and compensate for
+            # wrap-around)
+            x, y, z = chip_to_board(chip_x, chip_y, chip_w, chip_h)
+
+            # Determine the board's physical location (fail if board does not
+            # exist)
+            cfb = machine.board_locations.get((x, y, z), None)
+            if cfb is None:
+                return None
+            cabinet, frame, board = cfb
+
+            # Determine what job is running on that board
+            for job_id, job in iteritems(self._jobs):
+                # NB: If machine is defined, boards must also be defined.
+                if (job.allocated_machine == machine and
+                        (x, y, z) in job.boards):
+                    break
+            else:
+                # No job is allocated to the board
+                job_id = None
+                job = None
+
+            return {
+                "machine": machine_name,
+                "logical": (x, y, z),
+                "physical": (cabinet, frame, board),
+                "chip": (chip_x, chip_y),
+                "board_chip": (board_chip_x, board_chip_y),
+                "job_id": job_id,
+                "job_chip": self._get_job_chip(job, x, y, z)
+            }
+
+    def _where_is_by_physical_triple(self, machine_name, cabinet, frame, board):
+        """Helper for :py:meth:`.where_is()`"""
+        with self._lock:
+            # Get the actual Machine
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+
+            xyz = self.get_board_at_position(machine_name, cabinet, frame, board)
+            if xyz is None:
+                return None
+            chip_x, chip_y = board_to_chip(*xyz)
+
+            # Compensate chip coordinates for wrap-around
+            chip_w, chip_h = triad_dimensions_to_chips(
+                machine.width, machine.height, WrapAround.both)
+            chip_x %= chip_w
+            chip_y %= chip_h
+
+            # Determine the chip within the board
+            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
+            # numpy integer types which are not JSON serialiseable.
+            board_chip_x, board_chip_y = map(
+                int, spinn5_chip_coord(chip_x, chip_y))
+
+            # Determine the logical board coordinates (and compensate for
+            # wrap-around)
+            x, y, z = chip_to_board(chip_x, chip_y, chip_w, chip_h)
+
+            # Determine the board's physical location (fail if board does not
+            # exist)
+            cfb = machine.board_locations.get((x, y, z), None)
+            if cfb is None:
+                return None
+            cabinet, frame, board = cfb
+
+            # Determine what job is running on that board
+            for job_id, job in iteritems(self._jobs):
+                # NB: If machine is defined, boards must also be defined.
+                if (job.allocated_machine == machine and
+                        (x, y, z) in job.boards):
+                    break
+            else:
+                # No job is allocated to the board
+                job_id = None
+                job = None
+
+            return {
+                "machine": machine_name,
+                "logical": (x, y, z),
+                "physical": (cabinet, frame, board),
+                "chip": (chip_x, chip_y),
+                "board_chip": (board_chip_x, board_chip_y),
+                "job_id": job_id,
+                "job_chip": self._get_job_chip(job, x, y, z)
+            }
+
+    def _where_is_by_chip_coordinate(self, machine_name, chip_x, chip_y):
+        """Helper for :py:meth:`.where_is()`"""
+        with self._lock:
+            # Get the actual Machine
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+
+            # Compensate chip coordinates for wrap-around
+            chip_w, chip_h = triad_dimensions_to_chips(
+                machine.width, machine.height, WrapAround.both)
+            chip_x %= chip_w
+            chip_y %= chip_h
+
+            # Determine the chip within the board
+            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
+            # numpy integer types which are not JSON serialiseable.
+            board_chip_x, board_chip_y = map(
+                int, spinn5_chip_coord(chip_x, chip_y))
+
+            # Determine the logical board coordinates (and compensate for
+            # wrap-around)
+            x, y, z = chip_to_board(chip_x, chip_y, chip_w, chip_h)
+
+            # Determine the board's physical location (fail if board does not
+            # exist)
+            cfb = machine.board_locations.get((x, y, z), None)
+            if cfb is None:
+                return None
+            cabinet, frame, board = cfb
+
+            # Determine what job is running on that board
+            for job_id, job in iteritems(self._jobs):
+                # NB: If machine is defined, boards must also be defined.
+                if (job.allocated_machine == machine and
+                        (x, y, z) in job.boards):
+                    break
+            else:
+                # No job is allocated to the board
+                job_id = None
+                job = None
+
+            return {
+                "machine": machine_name,
+                "logical": (x, y, z),
+                "physical": (cabinet, frame, board),
+                "chip": (chip_x, chip_y),
+                "board_chip": (board_chip_x, board_chip_y),
+                "job_id": job_id,
+                "job_chip": self._get_job_chip(job, x, y, z)
+            }
+
+    def _where_is_by_job_chip_coordinate(self, job_id, chip_x, chip_y):
+        """Helper for :py:meth:`.where_is()`"""
+        with self._lock:
+            # Covert from job-relative chip location
+            job = self._jobs.get(job_id, None)
+            if job is None or job.boards is None:
+                return None
+            machine_name = job.allocated_machine.name
+            job_x, job_y, job_z = map(min, zip(*job.boards))
+            dx, dy = board_to_chip(job_x, job_y, job_z)
+            chip_x += dx
+            chip_y += dy
+
+            # Get the actual Machine
+            machine = self._machines.get(machine_name, None)
+            if machine is None:
+                return None
+
+            # Compensate chip coordinates for wrap-around
+            chip_w, chip_h = triad_dimensions_to_chips(
+                machine.width, machine.height, WrapAround.both)
+            chip_x %= chip_w
+            chip_y %= chip_h
+
+            # Determine the chip within the board
+            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
+            # numpy integer types which are not JSON serialiseable.
+            board_chip_x, board_chip_y = map(
+                int, spinn5_chip_coord(chip_x, chip_y))
+
+            # Determine the logical board coordinates (and compensate for
+            # wrap-around)
+            x, y, z = chip_to_board(chip_x, chip_y, chip_w, chip_h)
+
+            # Determine the board's physical location (fail if board does not
+            # exist)
+            cfb = machine.board_locations.get((x, y, z), None)
+            if cfb is None:
+                return None
+            cabinet, frame, board = cfb
+
+            # Determine what job is running on that board
+            for found_job_id, job in iteritems(self._jobs):
+                # NB: If machine is defined, boards must also be defined.
+                if (job.allocated_machine == machine and
+                        (x, y, z) in job.boards):
+                    # Found the job
+                    break
+            else:
+                # No job is allocated to the board
+                found_job_id = None
+                job = None
+
+            # Make sure the board found is actually running that job (this
+            # won't be the case, e.g. if a user specifies a board within their
+            # machine which is actually dead or allocated to a neighbouring
+            # job)
+            if found_job_id != job_id:
+                return None
+
+            return {
+                "machine": machine_name,
+                "logical": (x, y, z),
+                "physical": (cabinet, frame, board),
+                "chip": (chip_x, chip_y),
+                "board_chip": (board_chip_x, board_chip_y),
+                "job_id": job_id,
+                "job_chip": self._get_job_chip(job, x, y, z)
+            }
+
+    def _get_job_chip(self, job, x, y, z):
+        if job is None:
+            return None
+
+        # Determine the board coordinate within the job
+        job_x, job_y, job_z = map(min, zip(*job.boards))
+        job_x = x - job_x
+        job_y = y - job_y
+        job_z = z - job_z
+
+        # Turn that into a chip coordinate and wrap-around according to the
+        # boards actually available in the allocated machine
+        job_chip_x, job_chip_y = board_to_chip(job_x, job_y, job_z)
+        return ((job_chip_x + board_chip_x) % job.width,
+                (job_chip_y + board_chip_y) % job.height)
 
     def where_is(self, **kwargs):
         """Find out where a SpiNNaker board or chip is located, logically and
@@ -680,128 +927,30 @@ class Controller(object):
             ``job_chip`` the coordinates of the chip, (x, y), within its
             job, if a job is allocated to the board or None otherwise.
         """
-        with self._lock:
-            # Initially, we normalise the input coordinate into:
-            #
-            #     machine_name, chip_x, chip_y
-            #
-            # and then convert this back into all the output formats required.
-            # At various points, if we encounter a board/job/chip which doesn't
-            # exist we'll drop out.
+        # Internally, we normalise the input coordinate into:
+        #
+        #     machine_name, chip_x, chip_y
+        #
+        # and then convert this back into all the output formats required.
+        # At various points, if we encounter a board/job/chip which doesn't
+        # exist we'll drop out.
 
-            keywords = set(kwargs)
-            if keywords == set("machine x y z".split()):
-                # Covert from logical position
-                machine_name = kwargs["machine"]
-                chip_x, chip_y = board_to_chip(
+        keywords = set(kwargs)
+        if keywords == set("machine x y z".split()):
+            return self._where_is_by_logical_triple(kwargs["machine"],
                     kwargs["x"], kwargs["y"], kwargs["z"])
-            elif keywords == set("machine cabinet frame board".split()):
-                # Covert from physical position (fail if location does not
-                # exist)
-                machine_name = kwargs["machine"]
-                xyz = self.get_board_at_position(machine_name,
-                                                 kwargs["cabinet"],
-                                                 kwargs["frame"],
-                                                 kwargs["board"])
-                if xyz is None:
-                    return None
-                chip_x, chip_y = board_to_chip(*xyz)
-            elif keywords == set("machine chip_x chip_y".split()):
-                # Covert from chip location
-                machine_name = kwargs["machine"]
-                chip_x = kwargs["chip_x"]
-                chip_y = kwargs["chip_y"]
-            elif keywords == set("job_id chip_x chip_y".split()):
-                # Covert from job-relative chip location
-                job = self._jobs.get(kwargs["job_id"], None)
-                if job is None or job.boards is None:
-                    return None
-                machine_name = job.allocated_machine.name
-                job_x, job_y, job_z = map(min, zip(*job.boards))
-                dx, dy = board_to_chip(job_x, job_y, job_z)
-                chip_x = kwargs["chip_x"] + dx
-                chip_y = kwargs["chip_y"] + dy
-
-                # NB: We double-check later that this coordinate is actually a
-                # board within the boards allocated to the job!
-            else:
-                raise TypeError(
-                    "Invalid arguments: {}".format(", ".join(keywords)))
-
-            # Get the actual Machine
-            machine = self._machines.get(machine_name, None)
-            if machine is None:
-                return None
-
-            # Compensate chip coordinates for wrap-around
-            chip_w, chip_h = triad_dimensions_to_chips(
-                self._machines[machine_name].width,
-                self._machines[machine_name].height,
-                WrapAround.both)
-            chip_x %= chip_w
-            chip_y %= chip_h
-
-            # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip_x, board_chip_y = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
-
-            # Determine the logical board coordinates (and compensate for
-            # wrap-around)
-            x, y, z = chip_to_board(chip_x, chip_y, chip_w, chip_h)
-
-            # Determine the board's physical location (fail if board does not
-            # exist)
-            cfb = self.get_board_position(machine_name, x, y, z)
-            if cfb is None:
-                return None
-            cabinet, frame, board = cfb
-
-            # Determine what job is running on that board
-            for job_id, job in iteritems(self._jobs):
-                # NB: If machine is defined, boards must also be defined.
-                if (job.allocated_machine == machine and
-                        (x, y, z) in job.boards):
-                    # Found the job
-                    break
-            else:
-                # No job is allocated to the board
-                job_id = None
-                job = None
-
-            # If selected by job, make sure the board found is actually running
-            # that job (this won't be the case, e.g. if a user specifies a
-            # board within their machine which is actually dead or allocated to
-            # a neighbouring job)
-            if "job_id" in kwargs and job_id != kwargs["job_id"]:
-                return None
-
-            # Determine chip coordinate within job
-            if job is not None:
-                # Determine the board coordinate within the job
-                job_x, job_y, job_z = map(min, zip(*job.boards))
-                job_x = x - job_x
-                job_y = y - job_y
-                job_z = z - job_z
-
-                # Turn that into a chip coordinate and wrap-around according to
-                # the boards actually available in the allocated machine
-                job_chip_x, job_chip_y = board_to_chip(job_x, job_y, job_z)
-                job_chip = ((job_chip_x + board_chip_x) % job.width,
-                            (job_chip_y + board_chip_y) % job.height)
-            else:
-                job_chip = None
-
-            return {
-                "machine": machine_name,
-                "logical": (x, y, z),
-                "physical": (cabinet, frame, board),
-                "chip": (chip_x, chip_y),
-                "board_chip": (board_chip_x, board_chip_y),
-                "job_id": job_id,
-                "job_chip": job_chip,
-            }
+        elif keywords == set("machine cabinet frame board".split()):
+            return self._where_is_by_physical_triple(kwargs["machine"],
+                    kwargs["cabinet"], kwargs["frame"], kwargs["board"])
+        elif keywords == set("machine chip_x chip_y".split()):
+            return self._where_is_by_chip_coordinate(kwargs["machine"],
+                    kwargs["chip_x"], kwargs["chip_y"])
+        elif keywords == set("job_id chip_x chip_y".split()):
+            return self._where_is_by_job_chip_coordinate(kwargs["job_id"],
+                    kwargs["chip_x"], kwargs["chip_y"])
+        else:
+            raise TypeError(
+                "Invalid arguments: {}".format(", ".join(keywords)))
 
     def destroy_timed_out_jobs(self):
         """Destroy any jobs which have timed out."""
@@ -834,8 +983,7 @@ class Controller(object):
         with self._lock:
             # If a BMP command failed, cancel the job
             if not success:
-                self.destroy_job(
-                    job.id,
+                self.destroy_job(job.id,
                     "Machine configuration failed, please try again later.")
 
             # Count down the number of outstanding requests before the job is
@@ -861,7 +1009,7 @@ class Controller(object):
             The job whose boards should be controlled.
         power : bool
             The power state to apply to the boards. True = on, False = off.
-        link_enable : bool or None
+        link_enable : bool or None, optional
             Whether to enable (True) or disable (False) peripheral links or
             leave them unchanged (None).
         """

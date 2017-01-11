@@ -125,23 +125,21 @@ class Server(object):
         self._state_filename = os.path.join(
             os.path.dirname(self._config_filename),
             ".{}.state.{}".format(os.path.basename(self._config_filename),
-                                  __version__)
-        )
+                                  __version__))
 
         # Attempt to restore saved state if required
         self._controller = None
-        if not self._cold_start:
-            if os.path.isfile(self._state_filename):
-                try:
-                    with open(self._state_filename, "rb") as f:
-                        self._controller = pickle.load(f)
-                    logging.info("Server warm-starting from %s.",
-                                 self._state_filename)
-                except:
-                    # Some other error occurred during unpickling.
-                    logging.exception(
-                        "Server state could not be unpacked from %s.",
-                        self._state_filename)
+        if not self._cold_start and os.path.isfile(self._state_filename):
+            try:
+                with open(self._state_filename, "rb") as f:
+                    self._controller = pickle.load(f)
+                logging.info("Server warm-starting from %s.",
+                            self._state_filename)
+            except:
+                # Some other error occurred during unpickling.
+                logging.exception(
+                    "Server state could not be unpacked from %s.",
+                    self._state_filename)
 
         # Perform cold-start if no saved state was loaded
         if self._controller is None:
@@ -443,8 +441,8 @@ class Server(object):
 
             # Config file changed, re-read it
             if self._reload_config:
-                self._reload_config = False
-                self._read_config_file()
+                if not self._read_config_file():
+                    logging.warning("failed to reread configuration file")
 
     def is_alive(self):
         """Is the server running?"""
