@@ -60,7 +60,7 @@ class Server(object):
 
     To allow the interruption of the server thread on asynchronous events from
     the Controller a :py:func:`~socket.socketpair` (:py:attr:`._notify_send`
-    and :py:attr:`._notify_send`) is used which monitored allong with client
+    and :py:attr:`._notify_send`) is used which monitored along with client
     connections and config file changes.
 
     A number of callable commands are implemented by the server in the form of
@@ -427,7 +427,7 @@ class Server(object):
             for fd, event in events:
                 if fd == self._notify_recv.fileno():
                     # _notify was called
-                    self._notify_recv.recv(1024)
+                    self._notify_recv.recv(BUFFER_SIZE)
                 elif fd == self._server_socket.fileno():
                     # New client connected
                     self._accept_client()
