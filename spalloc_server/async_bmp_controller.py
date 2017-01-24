@@ -6,7 +6,7 @@ import threading
 
 from collections import namedtuple, deque
 
-from rig.links import Links
+from spalloc_server.links import Links
 from rig.machine_control import BMPController
 
 import logging
@@ -73,7 +73,7 @@ class AsyncBMPController(object):
         """When used as a context manager, make requests 'atomic'."""
         self._lock.acquire()
 
-    def __exit__(self, type=None, value=None, traceback=None):
+    def __exit__(self, Type=None, value=None, traceback=None):
         self._lock.release()
 
     def set_power(self, board, state, on_done):
