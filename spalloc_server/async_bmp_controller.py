@@ -144,6 +144,13 @@ class AsyncBMPController(object):
         self._thread.join()
 
     def _set_board_state(self, state, board):
+        """Set the power state of a board.
+        
+        :param state: What to set the state to. True for on, False for off
+        :type state: bool
+        :param board: Which board or boards to set the state of
+        :type board: int or iterable
+        """
         try:
             self._bc.set_power(state=state, board=board)
             return True
@@ -154,6 +161,15 @@ class AsyncBMPController(object):
             return False
 
     def _set_link_state(self, link, enable, board):
+        """Set the power state of a link.
+
+        :param link: The link (direction) to set the enable-state of.
+        :type link: value in Links enum
+        :param state: What to set the state to. True for on, False for off.
+        :type state: bool
+        :param board: Which board or boards to set the link enable-state of.
+        :type board: int or iterable
+        """
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
             self._bc.write_fpga_reg(fpga, addr, not enable, board=board)
@@ -163,7 +179,6 @@ class AsyncBMPController(object):
             # much we can do for the end-user.
             logging.exception("Failed to set link state.")
             return False
-
 
     def _run(self):
         """The background thread for interacting with the BMP.
