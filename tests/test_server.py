@@ -10,6 +10,7 @@ import os.path
 import logging
 import time
 import socket
+import signal
 import json
 
 from six import itervalues
@@ -298,6 +299,7 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
         s.stop_and_join()
 
 
+@pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("missing", [True, False])
 def test_no_initial_config_file(MockABC, config_file, missing):
     # Should fail if config file is not valid/missing first time
@@ -312,6 +314,7 @@ def test_no_initial_config_file(MockABC, config_file, missing):
         Server(config_file)
 
 
+@pytest.mark.timeout(2.0)
 def test_read_config_file(simple_config, s):
     initial_socket_id = id(s._server_socket)
 
@@ -377,6 +380,7 @@ def test_read_config_file(simple_config, s):
     assert list(s._controller.machines) == "m0 m1 m2 m3 m4".split()
 
 
+@pytest.mark.timeout(1.0)
 def test_reread_config_file(simple_config, s):
     # Make sure config re-reading works
     assert list(s._controller.machines) == ["m"]
@@ -384,6 +388,7 @@ def test_reread_config_file(simple_config, s):
     # Modify config file
     with open(simple_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
+    os.kill(os.getpid(), signal.SIGHUP)
     time.sleep(0.2)
 
     # Configuration should have changed accordingly
@@ -560,6 +565,7 @@ def test_job_management(simple_config, s, c):
         "start_time": 5432.0}
 
 
+@pytest.mark.timeout(2.0)
 def test_keepalive_expiration(fast_keepalive_config, s, c):
     job_id = c.call("create_job", keepalive=0.15, owner="me")
 
@@ -845,6 +851,7 @@ def test_machine_notify_register_unregister(simple_config, s):
     assert s._client_machine_watches == {}
 
 
+@pytest.mark.timeout(2.0)
 @pytest.mark.parametrize("args,cold_start",
                          [("{}", False),
                           ("{} -q", False),
@@ -864,6 +871,7 @@ def test_commandline(monkeypatch, config_file, args, cold_start):
                                    cold_start=cold_start)
 
 
+@pytest.mark.timeout(2.0)
 def test_keyboard_interrupt(monkeypatch, config_file):
     s = Mock()
     Server = Mock(return_value=s)
@@ -880,6 +888,7 @@ def test_keyboard_interrupt(monkeypatch, config_file):
     s.stop_and_join.assert_called_once_with()
 
 
+@pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("args", ["", "--cold-start" "-c"])
 def test_bad_args(monkeypatch, args):
     server = Mock()
