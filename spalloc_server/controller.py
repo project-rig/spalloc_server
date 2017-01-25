@@ -644,7 +644,7 @@ class Controller(object):
             # Determine the chip within the board
             # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
             # numpy integer types which are not JSON serialiseable.
-            board_chip_x, board_chip_y = map(
+            board_chip = map(
                 int, spinn5_chip_coord(chip_x, chip_y))
 
             # Determine the logical board coordinates (and compensate for
@@ -674,9 +674,9 @@ class Controller(object):
                 "logical": (x, y, z),
                 "physical": (cabinet, frame, board),
                 "chip": (chip_x, chip_y),
-                "board_chip": (board_chip_x, board_chip_y),
+                "board_chip": board_chip,
                 "job_id": job_id,
-                "job_chip": self._get_job_chip(job, x, y, z)
+                "job_chip": self._get_job_chip(job, x, y, z, board_chip)
             }
 
     def _where_is_by_physical_triple(self, machine_name, cabinet, frame, board):
@@ -701,7 +701,7 @@ class Controller(object):
             # Determine the chip within the board
             # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
             # numpy integer types which are not JSON serialiseable.
-            board_chip_x, board_chip_y = map(
+            board_chip = map(
                 int, spinn5_chip_coord(chip_x, chip_y))
 
             # Determine the logical board coordinates (and compensate for
@@ -731,9 +731,9 @@ class Controller(object):
                 "logical": (x, y, z),
                 "physical": (cabinet, frame, board),
                 "chip": (chip_x, chip_y),
-                "board_chip": (board_chip_x, board_chip_y),
+                "board_chip": board_chip,
                 "job_id": job_id,
-                "job_chip": self._get_job_chip(job, x, y, z)
+                "job_chip": self._get_job_chip(job, x, y, z, board_chip)
             }
 
     def _where_is_by_chip_coordinate(self, machine_name, chip_x, chip_y):
@@ -753,7 +753,7 @@ class Controller(object):
             # Determine the chip within the board
             # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
             # numpy integer types which are not JSON serialiseable.
-            board_chip_x, board_chip_y = map(
+            board_chip = map(
                 int, spinn5_chip_coord(chip_x, chip_y))
 
             # Determine the logical board coordinates (and compensate for
@@ -783,9 +783,9 @@ class Controller(object):
                 "logical": (x, y, z),
                 "physical": (cabinet, frame, board),
                 "chip": (chip_x, chip_y),
-                "board_chip": (board_chip_x, board_chip_y),
+                "board_chip": board_chip,
                 "job_id": job_id,
-                "job_chip": self._get_job_chip(job, x, y, z)
+                "job_chip": self._get_job_chip(job, x, y, z, board_chip)
             }
 
     def _where_is_by_job_chip_coordinate(self, job_id, chip_x, chip_y):
@@ -815,7 +815,7 @@ class Controller(object):
             # Determine the chip within the board
             # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
             # numpy integer types which are not JSON serialiseable.
-            board_chip_x, board_chip_y = map(
+            board_chip = map(
                 int, spinn5_chip_coord(chip_x, chip_y))
 
             # Determine the logical board coordinates (and compensate for
@@ -853,14 +853,15 @@ class Controller(object):
                 "logical": (x, y, z),
                 "physical": (cabinet, frame, board),
                 "chip": (chip_x, chip_y),
-                "board_chip": (board_chip_x, board_chip_y),
+                "board_chip": board_chip,
                 "job_id": job_id,
-                "job_chip": self._get_job_chip(job, x, y, z)
+                "job_chip": self._get_job_chip(job, x, y, z, board_chip)
             }
 
-    def _get_job_chip(self, job, x, y, z):
+    def _get_job_chip(self, job, x, y, z, board_chip):
         if job is None:
             return None
+        board_chip_x, board_chip_y = board_chip
 
         # Determine the board coordinate within the job
         job_x, job_y, job_z = map(min, zip(*job.boards))
@@ -1072,7 +1073,7 @@ class Controller(object):
             # allocated. Since we only allocate multi-board regions by the
             # triad this will be the case.
             ox, oy, oz = min(job.boards)  # Origin
-            bx, by, bz = max(job.boards)  # Top-right bound
+            bx, by, _ = max(job.boards)  # Top-right bound
 
             # Get system bounds in chips
             if len(job.boards) > 1:
@@ -1305,7 +1306,7 @@ class _Job(object):
 
     Attributes
     ----------
-    id : int
+    Id : int
         The ID of the job.
     owner : str
         The job's owner.
@@ -1352,7 +1353,7 @@ class _Job(object):
         :py:class:`.JobState.ready`.
     """
 
-    def __init__(self, id, owner,
+    def __init__(self, Id, owner,
                  start_time=None,
                  keepalive=60.0,
                  state=JobState.queued,
@@ -1366,9 +1367,7 @@ class _Job(object):
                  height=None,
                  connections=None,
                  bmp_requests_until_ready=0):
-
-        self.id = id
-
+        self.id = Id
         self.owner = owner
 
         if start_time is not None:  # pragma: no branch
