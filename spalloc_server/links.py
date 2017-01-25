@@ -43,16 +43,10 @@ class Links(IntEnum):
         arbitrarily favour either wrap-around or non-wrap-around links. This
         function is not meaningful for 1x1 systems.
 
-        Parameters
-        ----------
-        vector : (x, y)
-            The vector from one node to its logical neighbour.
-
-        Returns
-        -------
-        :py:class:`~rig.links.Links`
-            The link direction to travel in the direction indicated by the
-            vector.
+        :param vector: The vector from one node to its logical neighbour.
+        :type vector: pair of ints
+        :return: The link direction to travel in the direction indicated by the vector.
+        :rtype: member of Links enum
         """
         x, y = vector
 
@@ -73,12 +67,16 @@ class Links(IntEnum):
         if abs(y) > 1:
             y = -1 if y > 0 else 1
 
-        lookup, _ = LinksHelper.get_lookups()
+        lookup, _ = _LinksHelper.get_lookups()
         return lookup[(x, y)]
 
     def to_vector(self):
-        """Given a link direction, return the equivalent vector."""
-        _, lookup = LinksHelper.get_lookups()
+        """Given a link direction, return the equivalent vector.
+        
+        :return: The vector for this link direction.
+        :rtype: pair of int
+        """
+        _, lookup = _LinksHelper.get_lookups()
         return lookup[self]
 
     @property
@@ -86,21 +84,30 @@ class Links(IntEnum):
         """Get the opposite link to the one given."""
         return Links((self + 3) % 6)
 
-class LinksHelper(object):
+class _LinksHelper(object):
+    """Builds the bidirectional map between directions and links. Holds a
+    cache of it internally.
+    """
     _link_direction_lookup = None
     _direction_link_lookup = None
+
     @classmethod
     def get_lookups(cls):
-        if LinksHelper._link_direction_lookup is None:
-            LinksHelper._link_direction_lookup = {
+        """Get (and possibly build) the pair of maps.
+
+        :return: The map from directions to links, and from links to directions.
+        :rtype: pair of maps
+        """
+        if _LinksHelper._link_direction_lookup is None:
+            ldl = _LinksHelper._link_direction_lookup = {
                 (+1, +0): Links.east,
                 (-1, +0): Links.west,
                 (+0, +1): Links.north,
                 (+0, -1): Links.south,
                 (+1, +1): Links.north_east,
                 (-1, -1): Links.south_west}
-            LinksHelper._direction_link_lookup = {
-                l: v for (v, l) in iteritems(LinksHelper._link_direction_lookup)}
+            _LinksHelper._direction_link_lookup = {
+                l: v for (v, l) in iteritems(ldl)}
 
             # Special case: Lets assume we've got a 2xN or Nx2 system (N >= 2)
             # where we can "spiral" around the Z axis to reach places which
@@ -114,6 +121,7 @@ class LinksHelper(object):
             #       |   | . |                   /|   | . |
             #     --+---+/--+--                  +---+---+
             #           /                        |   |   |
-            LinksHelper._link_direction_lookup[(+1, -1)] = Links.south_west
-            LinksHelper._link_direction_lookup[(-1, +1)] = Links.north_east
-        return LinksHelper._link_direction_lookup, LinksHelper._direction_link_lookup
+            ldl[(+1, -1)] = Links.south_west
+            ldl[(-1, +1)] = Links.north_east
+        return _LinksHelper._link_direction_lookup, \
+                _LinksHelper._direction_link_lookup
