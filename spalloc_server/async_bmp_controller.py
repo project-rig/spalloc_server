@@ -143,6 +143,28 @@ class AsyncBMPController(object):
         """Wait for the thread to actually stop."""
         self._thread.join()
 
+    def _set_board_state(self, state, board):
+        try:
+            self._bc.set_power(state=state, board=board)
+            return True
+        except IOError:
+            # Communication issue with the machine, log it but not
+            # much we can do for the end-user.
+            logging.exception("Failed to set board power.")
+            return False
+
+    def _set_link_state(self, link, enable, board):
+        try:
+            fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
+            self._bc.write_fpga_reg(fpga, addr, not enable, board=board)
+            return True
+        except IOError:
+            # Communication issue with the machine, log it but not
+            # much we can do for the end-user.
+            logging.exception("Failed to set link state.")
+            return False
+
+
     def _run(self):
         """The background thread for interacting with the BMP.
         """
@@ -157,15 +179,7 @@ class AsyncBMPController(object):
                 power_request = self._get_atomic_power_request()
                 if power_request:
                     # Send the power command
-                    try:
-                        self._bc.set_power(state=power_request.state,
-                                           board=power_request.board)
-                        success = True
-                    except IOError:
-                        # Communication issue with the machine, log it but not
-                        # much we can do for the end-user.
-                        logging.exception("Failed to set board power.")
-                        success = False
+                    success = self._set_board_state(power_request.state, power_request.board)
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
@@ -177,18 +191,7 @@ class AsyncBMPController(object):
                 link_request = self._get_atomic_link_request()
                 if link_request:
                     # Set the link state, as required
-                    try:
-                        fpga, addr \
-                            = FPGA_LINK_STOP_REGISTERS[link_request.link]
-                        self._bc.write_fpga_reg(fpga, addr,
-                                                not link_request.enable,
-                                                board=link_request.board)
-                        success = True
-                    except IOError:
-                        # Communication issue with the machine, log it but not
-                        # much we can do for the end-user.
-                        logging.exception("Failed to set link state.")
-                        success = False
+                    success = self._set_link_state(link_request.link, link_request.enable, link_request.board)
 
                     # Alert waiting thread
                     link_request.on_done(success)
