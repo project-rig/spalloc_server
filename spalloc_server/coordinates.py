@@ -118,12 +118,10 @@ systems.
 """
 
 from enum import IntEnum
-
 from six import iteritems
 
 from rig.links import Links
-from rig.geometry import spinn5_local_eth_coord
-
+from spinn_machine.geometry import Spinn5_geometry
 
 link_to_vector = {
     (0, Links.north): (0, 0, 2),
@@ -230,7 +228,7 @@ def chip_to_board(x, y, w, h):
     # Convert to coordinate of chip at the bottom-left-corner of the board
     # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
     # numpy integer types which are not JSON serialiseable.
-    x, y = map(int, spinn5_local_eth_coord(x, y, w, h))
+    x, y = map(int, Spinn5_geometry.local_eth_coord(x, y, w, h))
 
     # The coordinates of the chip within its triad
     tx = x % 12

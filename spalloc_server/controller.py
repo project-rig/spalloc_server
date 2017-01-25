@@ -18,7 +18,7 @@ from datetime import datetime
 
 from pytz import utc
 
-from rig.geometry import spinn5_chip_coord
+from spinn_machine.geometry import Spinn5_geometry
 
 from spalloc_server.coordinates import \
     board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
@@ -642,10 +642,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = Spinn5_geometry.chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -699,10 +696,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = Spinn5_geometry.chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -751,10 +745,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = Spinn5_geometry.chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -813,10 +804,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = Spinn5_geometry.chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
