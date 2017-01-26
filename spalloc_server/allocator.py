@@ -392,7 +392,7 @@ class Allocator(object):
         allocation_id = self.next_id
         self.next_id += 1
         self.allocation_types[allocation_id] = _AllocationType.triads
-        x, y, w, h = xywh
+        x, y, _, _ = xywh
         self.allocation_board[allocation_id] = (x, y, 0)
 
         return (allocation_id, cf.boards, cf.periphery, cf.torus)
@@ -760,13 +760,13 @@ class Allocator(object):
         allocation_id : int
             The ID of the allocation to free.
         """
-        type = self.allocation_types.pop(allocation_id)
+        Type = self.allocation_types.pop(allocation_id)
         x, y, z = self.allocation_board.pop(allocation_id)
 
-        if type is _AllocationType.triads:
+        if Type is _AllocationType.triads:
             # Simply free the allocation
             self.pack_tree.free(x, y)
-        elif type is _AllocationType.board:
+        elif Type is _AllocationType.board:
             # If the traid the board came from was full, it now isn't...
             if (x, y) in self.full_single_board_triads:
                 self.full_single_board_triads.remove((x, y))
@@ -976,8 +976,8 @@ class _CandidateFilter(object):
                 else:
                     periphery.add((x1, y1, z1, link))
 
-        return (alive, wrap, dead, dead_wrap, periphery,
-                WrapAround(wrap_around_type))
+        return alive, wrap, dead, dead_wrap, periphery, \
+                WrapAround(wrap_around_type)
 
     def __call__(self, x, y, width, height):
         """Test whether the region specified meets the stated requirements.
@@ -1004,15 +1004,14 @@ class _CandidateFilter(object):
 
         # Make sure the maximum dead links limit isn't exceeded (and that torus
         # links exist if requested)
-        (alive, wrap, dead, dead_wrap, periphery, wrap_around_type) = \
+        alive, _, dead, dead_wrap, periphery, wrap_around_type = \
             self._classify_links(boards)
         if self.require_torus and wrap_around_type == WrapAround.none:
             return False
         if self.max_dead_links is not None:
+            dead_links = len(dead)
             if self.require_torus:
-                dead_links = len(dead) + len(dead_wrap)
-            else:
-                dead_links = len(dead)
+                dead_links += len(dead_wrap)
             if dead_links > self.max_dead_links:
                 return False
 
