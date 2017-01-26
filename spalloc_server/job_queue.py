@@ -118,7 +118,7 @@ class JobQueue(object):
         """
         self._postpone_queue_management += 1
 
-    def __exit__(self, type=None, value=None, traceback=None):
+    def __exit__(self, Type=None, value=None, traceback=None):
         self._postpone_queue_management -= 1
         self._regenerate_queues()
 
@@ -450,7 +450,7 @@ class _Job(object):
 
     Attributes
     ----------
-    id : int
+    Id : int
         A unique ID assigned to the job.
     pending : bool
         If True, the job is currently queued for execution, if False the job
@@ -468,14 +468,14 @@ class _Job(object):
     allocation_id : int or None
         The allocation ID for the Job's allocation.
     """
-    def __init__(self, id,
+    def __init__(self, Id,
                  pending=True,
                  machine_name=None,
                  tags=set(),
                  args=tuple(), kwargs={},
                  machine=None,
                  allocation_id=None):
-        self.id = id
+        self.id = Id
         self.pending = pending
         self.machine_name = machine_name
         self.tags = tags if tags is not None else set(["default"])

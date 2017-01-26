@@ -121,7 +121,7 @@ from enum import IntEnum
 
 from six import iteritems
 
-from rig.links import Links
+from spalloc_server.links import Links
 from rig.geometry import spinn5_local_eth_coord
 
 
