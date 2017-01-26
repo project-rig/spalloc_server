@@ -974,8 +974,8 @@ class _CandidateFilter(object):
                 else:
                     periphery.add((x1, y1, z1, link))
 
-        return (alive, wrap, dead, dead_wrap, periphery,
-                WrapAround(wrap_around_type))
+        return alive, wrap, dead, dead_wrap, periphery, \
+                WrapAround(wrap_around_type)
 
     def __call__(self, x, y, width, height):
         """Test whether the region specified meets the stated requirements.
@@ -1002,7 +1002,7 @@ class _CandidateFilter(object):
 
         # Make sure the maximum dead links limit isn't exceeded (and that torus
         # links exist if requested)
-        (alive, _, dead, dead_wrap, periphery, wrap_around_type) = \
+        alive, _, dead, dead_wrap, periphery, wrap_around_type = \
             self._classify_links(boards)
         if self.require_torus and wrap_around_type == WrapAround.none:
             return False
