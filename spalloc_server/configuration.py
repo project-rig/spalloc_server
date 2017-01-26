@@ -229,7 +229,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
                     0 <= z < 3):
                 raise ValueError("Dead board ({}, {}, {}) "
                                  "outside system.".format(x, y, z))
-        for x, y, z, link in dead_links:
+        for x, y, z, _ in dead_links:
             if not (0 <= x < width and
                     0 <= y < height and
                     0 <= z < 3):
@@ -432,7 +432,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         spinnaker_offset = ip_to_int(spinnaker_offset)
 
         # Generate IP addresses for BMPs
-        cabinets_and_frames = set((c, f) for c, f, b in
+        cabinets_and_frames = set((c, f) for c, f, _ in
                                   itervalues(board_locations))
         bmp_ips = {(c, f): int_to_ip(base_ip +
                                      (cabinet_stride * c) +

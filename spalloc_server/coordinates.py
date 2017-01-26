@@ -120,7 +120,7 @@ systems.
 from enum import IntEnum
 from six import iteritems
 
-from rig.links import Links
+from spalloc_server.links import Links
 from spinn_machine.geometry import Spinn5_geometry
 
 link_to_vector = {
