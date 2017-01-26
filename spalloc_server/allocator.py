@@ -11,7 +11,7 @@ from math import ceil
 
 from six import next
 
-from rig.links import Links
+from spalloc_server.links import Links
 
 from spalloc_server.pack_tree import PackTree
 from spalloc_server.area_to_rect import area_to_rect
@@ -392,7 +392,7 @@ class Allocator(object):
         allocation_id = self.next_id
         self.next_id += 1
         self.allocation_types[allocation_id] = _AllocationType.triads
-        x, y, w, h = xywh
+        x, y, _, _ = xywh
         self.allocation_board[allocation_id] = (x, y, 0)
 
         return (allocation_id, cf.boards, cf.periphery, cf.torus)
@@ -513,7 +513,7 @@ class Allocator(object):
                 available = self.single_board_triads[(x, y)]
                 available.remove(z)
 
-            # If we used up the last board, move the traid to the full list
+            # If we used up the last board, move the triad to the full list
             if not available:
                 del self.single_board_triads[(x, y)]
                 self.full_single_board_triads.add((x, y))
@@ -760,14 +760,14 @@ class Allocator(object):
         allocation_id : int
             The ID of the allocation to free.
         """
-        type = self.allocation_types.pop(allocation_id)
+        Type = self.allocation_types.pop(allocation_id)
         x, y, z = self.allocation_board.pop(allocation_id)
 
-        if type is _AllocationType.triads:
+        if Type is _AllocationType.triads:
             # Simply free the allocation
             self.pack_tree.free(x, y)
-        elif type is _AllocationType.board:
-            # If the traid the board came from was full, it now isn't...
+        elif Type is _AllocationType.board:
+            # If the triad the board came from was full, it now isn't...
             if (x, y) in self.full_single_board_triads:
                 self.full_single_board_triads.remove((x, y))
                 self.single_board_triads[(x, y)] = set()
@@ -852,7 +852,7 @@ class _CandidateFilter(object):
             otherwise peripheral links are not counted.  If None, any number of
             broken links is allowed. (Default: None).
         require_torus : bool
-            If True, only allocatae blocks with torus connectivity. In general
+            If True, only allocate blocks with torus connectivity. In general
             this will only succeed for requests to allocate an entire machine
             (when the machine is otherwise not in use!). (Default: False)
         expected_boards : int or None
@@ -906,12 +906,10 @@ class _CandidateFilter(object):
                 x2, y2, z2, _ = board_down_link(x1, y1, z1, link,
                                                 self.width, self.height)
 
-                # Skip links to boards outside the specified range
-                if not (x <= x2 < x + width and
+                # Only process links to boards in the specified range
+                if (x <= x2 < x + width and
                         y <= y2 < y + height):
-                    continue
-
-                to_visit.append((x2, y2, z2))
+                    to_visit.append((x2, y2, z2))
 
         # Return the set of boards we could reach
         return boards
@@ -927,19 +925,19 @@ class _CandidateFilter(object):
 
         Returns
         -------
-        alive : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        alive : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
             Links which are working and connect one board
             in the set to another.
-        wrap : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        wrap : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
             Working links between working boards in the set which wrap-around
             the toroid.
-        dead : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        dead : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
             Links which are not working and connect one board in the set to
             another.
-        dead_wrap : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        dead_wrap : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
             Dead links between working boards in the set which wrap-around the
             toroid.
-        periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        periphery : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
             Links are those which connect from one board in the set to a board
             outside the set. These links may be dead or alive.
         wrap_around_type : :py:class:`~spalloc_server.coordinates.WrapAround`
@@ -976,8 +974,8 @@ class _CandidateFilter(object):
                 else:
                     periphery.add((x1, y1, z1, link))
 
-        return (alive, wrap, dead, dead_wrap, periphery,
-                WrapAround(wrap_around_type))
+        return alive, wrap, dead, dead_wrap, periphery, \
+                WrapAround(wrap_around_type)
 
     def __call__(self, x, y, width, height):
         """Test whether the region specified meets the stated requirements.
@@ -1004,15 +1002,14 @@ class _CandidateFilter(object):
 
         # Make sure the maximum dead links limit isn't exceeded (and that torus
         # links exist if requested)
-        (alive, wrap, dead, dead_wrap, periphery, wrap_around_type) = \
+        alive, _, dead, dead_wrap, periphery, wrap_around_type = \
             self._classify_links(boards)
         if self.require_torus and wrap_around_type == WrapAround.none:
             return False
         if self.max_dead_links is not None:
+            dead_links = len(dead)
             if self.require_torus:
-                dead_links = len(dead) + len(dead_wrap)
-            else:
-                dead_links = len(dead)
+                dead_links += len(dead_wrap)
             if dead_links > self.max_dead_links:
                 return False
 
