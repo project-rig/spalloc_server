@@ -90,6 +90,10 @@ class AsyncBMPController(object):
             another thread. Success is a bool which is True if the command
             completed successfully and False if it did not (or was cancelled).
         """
+        # Verify that our arguments are sane
+        board = int(board)
+        state = bool(state)
+        on_done.__call__
         with self._lock:
             assert not self._stop
 
@@ -123,6 +127,10 @@ class AsyncBMPController(object):
             another thread. Success is a bool which is True if the command
             completed successfully and False if it did not (or was cancelled).
         """
+        # Verify that our arguments are sane
+        board = int(board)
+        enable = bool(enable)
+        on_done.__call__
         with self._lock:
             assert not self._stop
 
@@ -152,11 +160,10 @@ class AsyncBMPController(object):
         :type board: int or iterable
         """
         try:
-            # TODO: What about cabinet and frame?
             if state:
-                self._transciever.power_on(board)
+                self._transciever.power_on(board=board, frame=0, cabinet=0)
             else:
-                self._transciever.power_off(board)
+                self._transciever.power_off(board, frame=0, cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not
@@ -176,8 +183,8 @@ class AsyncBMPController(object):
         """
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
-            # TODO: What about cabinet and frame?
-            self._transciever.write_fpga_register(fpga, addr, int(not enable), board=board)
+            self._transciever.write_fpga_register(fpga, addr, int(not enable),
+                                            board=board, frame=0, cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not
@@ -273,8 +280,7 @@ class AsyncBMPController(object):
         with self._lock:
             if not self._link_requests:
                 return None
-            else:
-                return self._link_requests.popleft()
+            return self._link_requests.popleft()
 
 
 class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
