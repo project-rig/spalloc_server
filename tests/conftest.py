@@ -79,7 +79,8 @@ def MockABC(monkeypatch):  # pragma: no cover
         def __enter__(self):
             self._lock.acquire()
 
-        def __exit__(self, type=None, value=None, traceback=None):
+        def __exit__(self, type=None, value=None,  # @ReservedAssignment
+                     traceback=None):
             self._lock.release()
 
         def set_power(self, board, state, on_done):

@@ -1,6 +1,7 @@
 import unittest
 from spalloc_server.links import Links
 
+
 class TestMulticastRoutingEntry(unittest.TestCase):
     def test_links_from_vector(self):
         # In all but the last of the following tests we assume we're in a 4x8
@@ -32,7 +33,8 @@ class TestMulticastRoutingEntry(unittest.TestCase):
         self.assertEqual(Links.from_vector((-3, -7)), Links.north_east)
         self.assertEqual(Links.from_vector((+3, +7)), Links.south_west)
 
-        # Special case: 2xN or Nx2 system (N >= 2) "spiralling" around the Z axis
+        # Special case: 2xN or Nx2 system (N >= 2) "spiralling" around the Z
+        # axis.
         self.assertEqual(Links.from_vector((1, -1)), Links.south_west)
         self.assertEqual(Links.from_vector((-1, 1)), Links.north_east)
 

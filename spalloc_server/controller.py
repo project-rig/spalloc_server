@@ -625,6 +625,12 @@ class Controller(object):
                 # No board found
                 return None
 
+    # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
+    # numpy integer types which are not JSON serialiseable.
+    def _chip_coord(self, chip_x, chip_y):
+        board_x, board_y = spinn5_chip_coord(chip_x, chip_y)
+        return (int(board_x), int(board_y))
+
     def _where_is_by_logical_triple(self, machine_name, x, y, z):
         """Helper for :py:meth:`.where_is()`"""
         with self._lock:
@@ -642,10 +648,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = self._chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -679,7 +682,8 @@ class Controller(object):
                 "job_chip": self._get_job_chip(job, x, y, z, board_chip)
             }
 
-    def _where_is_by_physical_triple(self, machine_name, cabinet, frame, board):
+    def _where_is_by_physical_triple(self, machine_name, cabinet, frame,
+                                     board):
         """Helper for :py:meth:`.where_is()`"""
         with self._lock:
             # Get the actual Machine
@@ -687,7 +691,8 @@ class Controller(object):
             if machine is None:
                 return None
 
-            xyz = self.get_board_at_position(machine_name, cabinet, frame, board)
+            xyz = self.get_board_at_position(machine_name, cabinet, frame,
+                                             board)
             if xyz is None:
                 return None
             chip_x, chip_y = board_to_chip(*xyz)
@@ -699,10 +704,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = self._chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -751,10 +753,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = self._chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -813,10 +812,7 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-            # numpy integer types which are not JSON serialiseable.
-            board_chip = map(
-                int, spinn5_chip_coord(chip_x, chip_y))
+            board_chip = self._chip_coord(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -939,16 +935,21 @@ class Controller(object):
         keywords = set(kwargs)
         if keywords == set("machine x y z".split()):
             return self._where_is_by_logical_triple(kwargs["machine"],
-                    kwargs["x"], kwargs["y"], kwargs["z"])
+                                                    kwargs["x"], kwargs["y"],
+                                                    kwargs["z"])
         elif keywords == set("machine cabinet frame board".split()):
             return self._where_is_by_physical_triple(kwargs["machine"],
-                    kwargs["cabinet"], kwargs["frame"], kwargs["board"])
+                                                     kwargs["cabinet"],
+                                                     kwargs["frame"],
+                                                     kwargs["board"])
         elif keywords == set("machine chip_x chip_y".split()):
             return self._where_is_by_chip_coordinate(kwargs["machine"],
-                    kwargs["chip_x"], kwargs["chip_y"])
+                                                     kwargs["chip_x"],
+                                                     kwargs["chip_y"])
         elif keywords == set("job_id chip_x chip_y".split()):
             return self._where_is_by_job_chip_coordinate(kwargs["job_id"],
-                    kwargs["chip_x"], kwargs["chip_y"])
+                                                         kwargs["chip_x"],
+                                                         kwargs["chip_y"])
         else:
             raise TypeError(
                 "Invalid arguments: {}".format(", ".join(keywords)))
@@ -984,8 +985,8 @@ class Controller(object):
         with self._lock:
             # If a BMP command failed, cancel the job
             if not success:
-                self.destroy_job(job.id,
-                    "Machine configuration failed, please try again later.")
+                self.destroy_job(job.id, "Machine configuration failed, " +
+                                 "please try again later.")
 
             # Count down the number of outstanding requests before the job is
             # ready
@@ -1306,7 +1307,7 @@ class _Job(object):
 
     Attributes
     ----------
-    Id : int
+    id : int
         The ID of the job.
     owner : str
         The job's owner.
@@ -1353,7 +1354,7 @@ class _Job(object):
         :py:class:`.JobState.ready`.
     """
 
-    def __init__(self, Id, owner,
+    def __init__(self, id, owner,  # @ReservedAssignment
                  start_time=None,
                  keepalive=60.0,
                  state=JobState.queued,
@@ -1367,7 +1368,7 @@ class _Job(object):
                  height=None,
                  connections=None,
                  bmp_requests_until_ready=0):
-        self.id = Id
+        self.id = id
         self.owner = owner
 
         if start_time is not None:  # pragma: no branch
