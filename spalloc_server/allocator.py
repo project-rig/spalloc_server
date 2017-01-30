@@ -925,19 +925,19 @@ class _CandidateFilter(object):
 
         Returns
         -------
-        alive : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
+        alive : set([(x, y, z, :py:class:`.links.Links`), ...])
             Links which are working and connect one board
             in the set to another.
-        wrap : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
+        wrap : set([(x, y, z, :py:class:`.links.Links`), ...])
             Working links between working boards in the set which wrap-around
             the toroid.
-        dead : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
+        dead : set([(x, y, z, :py:class:`.links.Links`), ...])
             Links which are not working and connect one board in the set to
             another.
-        dead_wrap : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
+        dead_wrap : set([(x, y, z, :py:class:`.links.Links`), ...])
             Dead links between working boards in the set which wrap-around the
             toroid.
-        periphery : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
+        periphery : set([(x, y, z, :py:class:`.links.Links`), ...])
             Links are those which connect from one board in the set to a board
             outside the set. These links may be dead or alive.
         wrap_around_type : :py:class:`~spalloc_server.coordinates.WrapAround`
@@ -975,7 +975,7 @@ class _CandidateFilter(object):
                     periphery.add((x1, y1, z1, link))
 
         return alive, wrap, dead, dead_wrap, periphery, \
-                WrapAround(wrap_around_type)
+            WrapAround(wrap_around_type)
 
     def __call__(self, x, y, width, height):
         """Test whether the region specified meets the stated requirements.

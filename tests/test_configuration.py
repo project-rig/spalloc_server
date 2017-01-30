@@ -55,7 +55,6 @@ def test_sensible_defaults():
     c = Configuration()
 
     assert c.machines == []
-    assert c.port == 22244
     assert c.ip == ""
     assert c.timeout_check_interval == 5.0
     assert c.max_retired_jobs == 1200

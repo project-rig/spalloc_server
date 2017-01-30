@@ -5,7 +5,6 @@ SpiNNaker Partitioning Server, containing the :py:func:`function <.main>` which
 is mapped to the ``spalloc-server`` command-line tool.
 """
 
-import os
 import os.path
 import logging
 import pickle
@@ -19,7 +18,7 @@ import time
 
 from collections import OrderedDict
 
-from six import itervalues, iteritems
+from six import itervalues, iteritems, string_types
 
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
@@ -31,6 +30,7 @@ _COMMANDS = OrderedDict()
 """A dictionary from command names to (unbound) methods of the
 :py:class:`.Server` class.
 """
+
 
 def spalloc_command(f):
     """Decorator which marks a class function of :py:class:`.Server` as a
@@ -65,13 +65,13 @@ class Server(object):
 
     A number of callable commands are implemented by the server in the form of
     a subset of the :py:class:`.Server`'s methods indicated by the
-    :py:func:`.spalloc_command` decorator. These may be called by a client by sending
-    a line ``{"command": "...", "args": [...], "kwargs": {...}}``. If the
-    function throws an exception, the client is disconnected. If the function
-    returns, it is packed as a JSON line ``{"return": ...}``.
+    :py:func:`.spalloc_command` decorator. These may be called by a client by
+    sending a line ``{"command": "...", "args": [...], "kwargs": {...}}``. If
+    the function throws an exception, the client is disconnected. If the
+    function returns, it is packed as a JSON line ``{"return": ...}``.
     """
 
-    def __init__(self, config_filename, cold_start=False):
+    def __init__(self, config_filename, cold_start=False, port=22244):
         """
         Parameters
         ----------
@@ -81,9 +81,12 @@ class Server(object):
         cold_start : bool, optional
             If False (the default), the server will attempt to restore its
             previous state, if True, the server will start from scratch.
+        port : int, optional
+            Which port to listen on. Defaults to 22244.
         """
         self._config_filename = config_filename
         self._cold_start = cold_start
+        self._port = port
 
         # Should the background thread terminate?
         self._stop = False
@@ -93,12 +96,12 @@ class Server(object):
                                                name="Server Thread")
 
         # The poll object used for listening for connections
-        self._poll = select.poll()
+        self._poll = select.poll()  # @UndefinedVariable
 
         # This socket pair is used by background threads to interrupt the main
         # event loop.
         self._notify_send, self._notify_recv = socket.socketpair()
-        self._poll.register(self._notify_recv, select.POLLIN)
+        self._register(self._notify_recv)
 
         # Currently open sockets to clients. Once server started, should only
         # be accessed from the server thread.
@@ -134,7 +137,7 @@ class Server(object):
                 with open(self._state_filename, "rb") as f:
                     self._controller = pickle.load(f)
                 logging.info("Server warm-starting from %s.",
-                            self._state_filename)
+                             self._state_filename)
             except:
                 # Some other error occurred during unpickling.
                 logging.exception(
@@ -163,6 +166,19 @@ class Server(object):
 
         # Flag for checking if the server is still alive
         self._running = True
+
+    def _register(self, fd):
+        """Stabilised version to prevent intermittent failures in testing."""
+        if self._poll is not None and fd is not None:
+            self._poll.register(fd, select.POLLIN)  # @UndefinedVariable
+
+    def _unregister(self, fd):
+        """Stabilised version to prevent intermittent failures in testing."""
+        if self._poll is not None and fd is not None:
+            try:
+                self._poll.unregister(fd)
+            except:
+                pass
 
     def _notify(self):
         """Notify the background thread that something has happened.
@@ -201,7 +217,8 @@ class Server(object):
             with open(self._config_filename, "r") as f:
                 config_script = f.read()  # pragma: no branch
         except (IOError, OSError):
-            logging.exception("Could not read config file %s", self._config_filename)
+            logging.exception("Could not read config file %s",
+                              self._config_filename)
             return False
 
         # The environment in which the configuration script is executed (and
@@ -220,8 +237,8 @@ class Server(object):
         # Make sure a configuration object is specified
         new = g.get("configuration", None)
         if not isinstance(new, Configuration):
-            logging.error("'configuration' must be a Configuration object in config file %s",
-                          self._config_filename)
+            logging.error("'configuration' must be a Configuration object " +
+                          "in config file %s", self._config_filename)
             return False
 
         # Update the configuration
@@ -230,18 +247,20 @@ class Server(object):
 
         # Restart the server if the port or IP has changed (or if the server
         # has not yet been started...)
-        if (new.port != old.port or
-                new.ip != old.ip or
+        if (new.ip != old.ip or
                 self._server_socket is None):
             # Close all open connections
-            self._close()
+            if self._close():
+                time.sleep(0.25)  # Ugly hack; fully release socket now
 
             # Create a new server socket
-            self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._server_socket.bind((new.ip, new.port))
+            self._server_socket = socket.socket(socket.AF_INET,
+                                                socket.SOCK_STREAM)
+            self._server_socket.setsockopt(socket.SOL_SOCKET,
+                                           socket.SO_REUSEADDR, 1)
+            self._server_socket.bind((new.ip, self._port))
             self._server_socket.listen(5)
-            self._poll.register(self._server_socket, select.POLLIN)
+            self._register(self._server_socket)
 
         # Update the controller
         self._controller.max_retired_jobs = new.max_retired_jobs
@@ -254,11 +273,15 @@ class Server(object):
 
     def _close(self):
         """Close all server sockets and disconnect all client connections."""
+        result = False
         if self._server_socket is not None:
-            self._poll.unregister(self._server_socket)
+            self._unregister(self._server_socket)
             self._server_socket.close()
+            result = True
+            self._server_socket = None
         for client_socket in list(itervalues(self._client_sockets)):
             self._disconnect_client(client_socket)
+        return result
 
     def _disconnect_client(self, client):
         """Disconnect a client.
@@ -283,18 +306,22 @@ class Server(object):
         self._client_machine_watches.pop(client, None)
 
         # Stop watching the client's socket for data
-        self._poll.unregister(client)
+        self._unregister(client)
 
         # Disconnect the client
         client.close()
 
     def _accept_client(self):
         """Accept a new client."""
-        client, addr = self._server_socket.accept()
+        try:
+            client, addr = self._server_socket.accept()
+        except IOError as e:
+            logging.warn("problem when accepting connection", exc_info=e)
+            return
         logging.info("New client connected from %s", addr)
 
         # Watch the client's socket for data
-        self._poll.register(client, select.POLLIN)
+        self._register(client)
 
         # Keep a reference to the socket
         self._client_sockets[client.fileno()] = client
@@ -304,7 +331,7 @@ class Server(object):
 
     def _msg_client(self, client, message):
         """Low-level way to send a message to a client.
-        
+
         Parameters
         ----------
         client : :py:class:`socket.Socket`
@@ -320,7 +347,7 @@ class Server(object):
 
     def _handle_command(self, client, line):
         """Dispatch a single command.
-        
+
         Parameters
         ----------
         client : :py:class:`socket.Socket`
@@ -331,11 +358,27 @@ class Server(object):
             with at least a 'command' key.
         """
         cmd_obj = json.loads(line.decode("utf-8"))
-        command = _COMMANDS[cmd_obj["command"]]
+        if "command" not in cmd_obj:
+            raise IOError("no command name given")
+        commandName = cmd_obj["command"]
+        if not isinstance(commandName, string_types):
+            raise IOError("parsed gibberish from user")
+        if commandName not in _COMMANDS:
+            logging.info("lookup failure: %s", commandName)
+            raise IOError("unrecognised command name")
+        command = _COMMANDS[commandName]
         if command is None:
+            # Should be unreachable
+            logging.critical("unexpected lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
         args = cmd_obj["args"] if "args" in cmd_obj else []
+        if not isinstance(args, list):
+            raise IOError("bad args; must be JSON array")
         kwargs = cmd_obj["kwargs"] if "kwargs" in cmd_obj else {}
+        if not isinstance(kwargs, dict):
+            raise IOError("bad kwargs: must be JSON dictionary")
+        elif "client" in kwargs:
+            del kwargs["client"]
         # Execute the specified command
         return command(self, client, *args, **kwargs)
 
@@ -359,21 +402,23 @@ class Server(object):
         peer = client.getpeername()
         self._client_buffers[client] += data
 
-        # Process any complete commands (whole lines)
-        while b"\n" in self._client_buffers[client]:
-            line, _, self._client_buffers[client] = \
-                self._client_buffers[client].partition(b"\n")
-            try:
+        try:
+            # Process any complete commands (whole lines)
+            while b"\n" in self._client_buffers[client]:
+                line, _, self._client_buffers[client] = \
+                    self._client_buffers[client].partition(b"\n")
                 # Note that we skip blank lines
                 if len(line) > 0:
-                    self._msg_client(client, {"return": self._handle_command(client, line)})
-            except:
-                # If any of the above fails for any reason (e.g. invalid JSON,
-                # unrecognised command, command crashes, etc.), just disconnect
-                # the client.
-                logging.exception("Client %s sent bad command %r, disconnecting",
-                                  peer, line)
-                return
+                    self._msg_client(client, {
+                        "return": self._handle_command(client, line)
+                    })
+        except:
+            # If any of the above fails for any reason (e.g. invalid JSON,
+            # unrecognised command, command crashes, etc.), just disconnect
+            # the client.
+            logging.exception("Client %s sent bad command %r, disconnecting",
+                              peer, line)
+            self._disconnect_client(client)
 
     def _send_notifications(self, label, changes, watches):
         """How to actually send requested notifications."""
@@ -381,8 +426,8 @@ class Server(object):
             for client, items in list(iteritems(watches)):
                 if items is None or not items.isdisjoint(changes):
                     try:
-                        self._msg_client(client, {label:
-                            list(changes) if items is None else
+                        self._msg_client(client, {
+                            label: list(changes) if items is None else
                             list(changes.intersection(items))})
                     except (OSError, IOError):
                         logging.exception("Could not send notification.")
@@ -396,8 +441,8 @@ class Server(object):
         """
         # Notify clients about jobs which have changed
         self._send_notifications("jobs_changed",
-                                self._controller.changed_jobs,
-                                self._client_job_watches)
+                                 self._controller.changed_jobs,
+                                 self._client_job_watches)
         # Notify clients about machines which have changed
         self._send_notifications("machines_changed",
                                  self._controller.changed_machines,
@@ -415,7 +460,7 @@ class Server(object):
         logging.info("Server running.")
         while not self._stop:
             # Wait for a connection to get opened/closed, a command to arrive,
-            # the config file to change or the timeout to ellapse.
+            # the config file to change or the timeout to elapse.
             events = self._poll.poll(
                 self._configuration.timeout_check_interval)
 
@@ -426,7 +471,8 @@ class Server(object):
                 if fd == self._notify_recv.fileno():
                     # _notify was called
                     self._notify_recv.recv(BUFFER_SIZE)
-                elif fd == self._server_socket.fileno():
+                elif self._server_socket is not None and \
+                        fd == self._server_socket.fileno():
                     # New client connected
                     self._accept_client()
                 elif fd in self._client_sockets:
@@ -434,7 +480,10 @@ class Server(object):
                     self._handle_commands(self._client_sockets[fd])
                 else:  # pragma: no cover
                     # Should not get here...
-                    assert False
+                    logging.critical("unexpected failure: " +
+                                     "unrecognised fd %s event %d", fd, event)
+                    # Got here, so try to unregister so we won't come back
+                    self._unregister(fd)
 
             # Send any job/machine change notifications out
             self._send_change_notifications()
@@ -725,8 +774,10 @@ class Server(object):
         """
         self._controller.destroy_job(job_id, reason)
 
-    def _register_for_notifications(self, client, watchset, id):
-        """Helper method that handles the protocol for registration for notifications."""
+    def _register_for_notifications(self, client, watchset,
+                                    id):  # @ReservedAssignment
+        """Helper method that handles the protocol for registration for
+        notifications."""
         if id is None:
             watchset[client] = None
         elif client not in watchset:
@@ -736,8 +787,11 @@ class Server(object):
         else:
             # Client is already notified about all changes, do nothing!
             pass
-    def _unregister_for_notifications(self, client, watchset, id):
-        """Helper method that handles the protocol for unregistration for notifications."""
+
+    def _unregister_for_notifications(self, client, watchset,
+                                      id):  # @ReservedAssignment
+        """Helper method that handles the protocol for unregistration for
+        notifications."""
         if client not in watchset:
             return
         if id is None:
@@ -771,7 +825,8 @@ class Server(object):
         no_notify_job : Stop being notified about a job.
         notify_machine : Register to be notified about changes to machines.
         """
-        self._register_for_notifications(client, self._client_job_watches, job_id)
+        self._register_for_notifications(client, self._client_job_watches,
+                                         job_id)
 
     @spalloc_command
     def no_notify_job(self, client, job_id=None):
@@ -792,7 +847,8 @@ class Server(object):
         --------
         notify_job : Register to be notified about changes to a specific job.
         """
-        self._unregister_for_notifications(client, self._client_job_watches, job_id)
+        self._unregister_for_notifications(client, self._client_job_watches,
+                                           job_id)
 
     @spalloc_command
     def notify_machine(self, client, machine_name=None):
@@ -815,7 +871,9 @@ class Server(object):
         no_notify_machine : Stop being notified about a machine.
         notify_job : Register to be notified about changes to jobs.
         """
-        self._register_for_notifications(client, self._client_machine_watches, machine_name)
+        self._register_for_notifications(client,
+                                         self._client_machine_watches,
+                                         machine_name)
 
     @spalloc_command
     def no_notify_machine(self, client, machine_name=None):
@@ -836,7 +894,9 @@ class Server(object):
         --------
         notify_machine : Register to be notified about changes to a machine.
         """
-        self._unregister_for_notifications(client, self._client_machine_watches, machine_name)
+        self._unregister_for_notifications(client,
+                                           self._client_machine_watches,
+                                           machine_name)
 
     @spalloc_command
     def list_jobs(self, client):
@@ -1042,13 +1102,15 @@ def main(args=None):
                         default=False,
                         help="force a cold start, erasing any existing "
                              "saved state")
+    parser.add_argument("--port", "-p", type=int, default=22244,
+                        help="port to run the service on")
     args = parser.parse_args(args)
 
     if not args.quiet:
         logging.basicConfig(level=logging.INFO)
 
     server = Server(config_filename=args.config,
-                    cold_start=args.cold_start)
+                    cold_start=args.cold_start, port=args.port)
     try:
         # NB: Originally this loop was replaced with a call to server.join
         # however in Python 2, such blocking calls are not interruptible so we
