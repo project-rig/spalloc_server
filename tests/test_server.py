@@ -436,7 +436,7 @@ def test_version_command(simple_config, s, c):
     assert c.call("version") == __version__
 
 
-@pytest.mark.timeout(1.0)
+@pytest.mark.timeout(2.0)
 def test_job_management(simple_config, s, c):
     # First more complete test of calling a remote method with complex
     # arguments
@@ -492,11 +492,17 @@ def test_job_management(simple_config, s, c):
 
     # Power commands should work
     c.call("power_on_job_boards", job_id0)
+    time.sleep(0.05)
     c.call("power_on_job_boards", job_id1)
+    time.sleep(0.05)
     c.call("power_on_job_boards", job_id2)
+    time.sleep(0.05)
     c.call("power_off_job_boards", job_id0)
+    time.sleep(0.05)
     c.call("power_off_job_boards", job_id1)
+    time.sleep(0.05)
     c.call("power_off_job_boards", job_id2)
+    time.sleep(0.05)
 
     # Job listing should work
     jobs = c.call("list_jobs")
