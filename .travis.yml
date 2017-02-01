@@ -2,7 +2,8 @@ sudo: false
 language: python
 python:
         - 2.7
-        - 3.5
+        # Remove 3.5 because SpiNNMan isn't Py3-compatible yet
+        # - 3.5
 install:
         - python setup.py develop
         - pip install -r requirements-test.txt
