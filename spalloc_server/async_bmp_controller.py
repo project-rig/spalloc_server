@@ -41,7 +41,7 @@ class AsyncBMPController(object):
             The hostname/IP of the BMP to connect to.
         on_thread_start : function() or None
             *Optional.* A function to be called by the controller's background
-            thread before it starts. This can be used to ensure propper
+            thread before it starts. This can be used to ensure proper
             sequencing/handing-over between two AsyncBMPControllers connected
             to the same machine.
         """
@@ -73,7 +73,8 @@ class AsyncBMPController(object):
         """When used as a context manager, make requests 'atomic'."""
         self._lock.acquire()
 
-    def __exit__(self, Type=None, value=None, traceback=None):
+    def __exit__(self, type=None, value=None,  # @ReservedAssignment
+                 traceback=None):
         self._lock.release()
 
     def set_power(self, board, state, on_done):
@@ -291,15 +292,18 @@ class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
     # Python 3.4 Workaround: https://bugs.python.org/issue24931
     __slots__ = tuple()
 
+
+_REG_STOP_OFFSET = 0x5C
+
 # Gives the FPGA number and register addresses for the STOP register (which
 # disables outgoing traffic on a high-speed link) for each link direction.
 # https://github.com/SpiNNakerManchester/spio/tree/master/designs/spinnaker_fpgas#spi-interface
-REG_STOP_OFFSET = 0x5C
+
 FPGA_LINK_STOP_REGISTERS = {
-    Links.east: (0, 0x00000000 + REG_STOP_OFFSET),
-    Links.south: (0, 0x00010000 + REG_STOP_OFFSET),
-    Links.south_west: (1, 0x00000000 + REG_STOP_OFFSET),
-    Links.west: (1, 0x00010000 + REG_STOP_OFFSET),
-    Links.north: (2, 0x00000000 + REG_STOP_OFFSET),
-    Links.north_east: (2, 0x00010000 + REG_STOP_OFFSET),
+    Links.east: (0, 0x00000000 + _REG_STOP_OFFSET),
+    Links.south: (0, 0x00010000 + _REG_STOP_OFFSET),
+    Links.south_west: (1, 0x00000000 + _REG_STOP_OFFSET),
+    Links.west: (1, 0x00010000 + _REG_STOP_OFFSET),
+    Links.north: (2, 0x00000000 + _REG_STOP_OFFSET),
+    Links.north_east: (2, 0x00010000 + _REG_STOP_OFFSET),
 }

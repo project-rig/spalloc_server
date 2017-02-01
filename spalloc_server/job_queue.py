@@ -450,7 +450,7 @@ class _Job(object):
 
     Attributes
     ----------
-    Id : int
+    id : int
         A unique ID assigned to the job.
     pending : bool
         If True, the job is currently queued for execution, if False the job
@@ -468,14 +468,14 @@ class _Job(object):
     allocation_id : int or None
         The allocation ID for the Job's allocation.
     """
-    def __init__(self, Id,
+    def __init__(self, id,  # @ReservedAssignment
                  pending=True,
                  machine_name=None,
                  tags=set(),
                  args=tuple(), kwargs={},
                  machine=None,
                  allocation_id=None):
-        self.id = Id
+        self.id = id
         self.pending = pending
         self.machine_name = machine_name
         self.tags = tags if tags is not None else set(["default"])
