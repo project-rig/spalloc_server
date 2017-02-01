@@ -316,8 +316,6 @@ def test_no_initial_config_file(MockABC, config_file, missing):
 
 @pytest.mark.timeout(2.0)
 def test_read_config_file(simple_config, s):
-    initial_socket_id = id(s._server_socket)
-
     # Should fail if config file is missing
     os.remove(simple_config)
     assert s._read_config_file() is False
@@ -337,29 +335,6 @@ def test_read_config_file(simple_config, s):
         # Make a simple config file
         f.write("configuration = {}".format(repr(Configuration())))
     assert s._read_config_file() is True
-
-    # Should restart server only if IP/port change
-    assert initial_socket_id == id(s._server_socket)
-    with open(simple_config, "w") as f:
-        f.write("configuration = {}".format(repr(Configuration(port=30201))))
-    assert s._read_config_file() is True
-    assert initial_socket_id != id(s._server_socket)
-    initial_socket_id = id(s._server_socket)
-
-    assert initial_socket_id == id(s._server_socket)
-    with open(simple_config, "w") as f:
-        f.write("configuration = {}".format(repr(
-            Configuration(ip="127.0.0.1", port=30201))))
-    assert s._read_config_file() is True
-    assert initial_socket_id != id(s._server_socket)
-    initial_socket_id = id(s._server_socket)
-
-    assert initial_socket_id == id(s._server_socket)
-    with open(simple_config, "w") as f:
-        f.write("configuration = {}".format(repr(Configuration())))
-    assert s._read_config_file() is True
-    assert initial_socket_id != id(s._server_socket)
-    initial_socket_id = id(s._server_socket)
 
     # Should pass on parameters to controller
     with open(simple_config, "w") as f:
@@ -709,6 +684,7 @@ def test_machine_notifications(double_config, s):
     # Make sure machine changes get announced
     with open(double_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
+    os.kill(os.getpid(), signal.SIGHUP)
 
     assert c0.get_notification() == {"machines_changed": ["m0"]}
     assert c1.get_notification() in ({"machines_changed": ["m0", "m1"]},
@@ -868,7 +844,7 @@ def test_commandline(monkeypatch, config_file, args, cold_start):
     main(args.format(config_file).split())
 
     Server.assert_called_once_with(config_filename=config_file,
-                                   cold_start=cold_start)
+                                   cold_start=cold_start, port=22244)
 
 
 @pytest.mark.timeout(2.0)
@@ -883,7 +859,7 @@ def test_keyboard_interrupt(monkeypatch, config_file):
     main([config_file])
 
     Server.assert_called_once_with(config_filename=config_file,
-                                   cold_start=False)
+                                   cold_start=False, port=22244)
     s.is_alive.assert_called_once_with()
     s.stop_and_join.assert_called_once_with()
 

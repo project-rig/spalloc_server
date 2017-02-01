@@ -4,6 +4,7 @@
 from six import iteritems
 from enum import IntEnum
 
+
 class Links(IntEnum):
     """Enumeration of links from a SpiNNaker chip.
 
@@ -45,7 +46,8 @@ class Links(IntEnum):
 
         :param vector: The vector from one node to its logical neighbour.
         :type vector: pair of ints
-        :return: The link direction to travel in the direction indicated by the vector.
+        :return: The link direction to travel in the direction indicated by the
+                vector.
         :rtype: member of Links enum
         """
         x, y = vector
@@ -72,7 +74,7 @@ class Links(IntEnum):
 
     def to_vector(self):
         """Given a link direction, return the equivalent vector.
-        
+
         :return: The vector for this link direction.
         :rtype: pair of int
         """
@@ -83,6 +85,7 @@ class Links(IntEnum):
     def opposite(self):
         """Get the opposite link to the one given."""
         return Links((self + 3) % 6)
+
 
 class _LinksHelper(object):
     """Builds the bidirectional map between directions and links. Holds a
@@ -95,7 +98,8 @@ class _LinksHelper(object):
     def get_lookups(cls):
         """Get (and possibly build) the pair of maps.
 
-        :return: The map from directions to links, and from links to directions.
+        :return: The map from directions to links, and from links to
+                directions.
         :rtype: pair of maps
         """
         if _LinksHelper._link_direction_lookup is None:
@@ -124,4 +128,4 @@ class _LinksHelper(object):
             ldl[(+1, -1)] = Links.south_west
             ldl[(-1, +1)] = Links.north_east
         return _LinksHelper._link_direction_lookup, \
-                _LinksHelper._direction_link_lookup
+            _LinksHelper._direction_link_lookup
