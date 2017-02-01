@@ -4,6 +4,8 @@ python:
         - 2.7
         - 3.5
 install:
+        # Workaround for code not yet hitting master
+        - pip install git+git://github.com/SpiNNakerManchester/SpiNNMachine.git@rigged-geometry
         - python setup.py develop
         - pip install -r requirements-test.txt
         - pip install python-coveralls
