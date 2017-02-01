@@ -20,9 +20,9 @@ def abc():
 
 @pytest.fixture
 def bc(abc, monkeypatch):
-    """Mock out the BMPController object."""
+    """Mock out the Transceiver object."""
     bc = Mock()
-    monkeypatch.setattr(abc, "_bc", bc)
+    monkeypatch.setattr(abc, "_transceiver", bc)
     return bc
 
 

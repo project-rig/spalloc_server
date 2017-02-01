@@ -47,7 +47,7 @@ class AsyncBMPController(object):
         """
         self._on_thread_start = on_thread_start
 
-        self._transciever = create_transceiver_from_hostname(hostname, 5)
+        self._transceiver = create_transceiver_from_hostname(hostname, 5)
 
         self._stop = False
 
@@ -162,9 +162,9 @@ class AsyncBMPController(object):
         """
         try:
             if state:
-                self._transciever.power_on(board=board, frame=0, cabinet=0)
+                self._transceiver.power_on(board=board, frame=0, cabinet=0)
             else:
-                self._transciever.power_off(board, frame=0, cabinet=0)
+                self._transceiver.power_off(board, frame=0, cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not
@@ -184,7 +184,7 @@ class AsyncBMPController(object):
         """
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
-            self._transciever.write_fpga_register(fpga, addr, int(not enable),
+            self._transceiver.write_fpga_register(fpga, addr, int(not enable),
                                             board=board, frame=0, cabinet=0)
             return True
         except IOError:
