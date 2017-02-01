@@ -81,7 +81,7 @@ def test_start_and_stop(on_thread_start):
 def test_set_power(abc, bc, power_side_effect, success):
     # Make sure that the set power command works (and failure is reported)
     e = OnDoneEvent()
-    bc.set_power.side_effect = power_side_effect
+    bc.power_on.side_effect = power_side_effect
     abc.set_power(10, False, e)
     e.wait()
     assert e.success is success
@@ -90,7 +90,7 @@ def test_set_power(abc, bc, power_side_effect, success):
 
     e = OnDoneEvent()
     abc.set_power(11, True, e)
-    bc.set_power.side_effect = power_side_effect
+    bc.power_on.side_effect = power_side_effect
     e.wait()
     assert e.success is success
     bc.set_power.assert_called_once_with(state=True, board=set([11]))
@@ -101,7 +101,7 @@ def test_set_power(abc, bc, power_side_effect, success):
 def test_set_power_blocks(abc, bc):
     # Make sure that the set power command can block
     event = threading.Event()
-    bc.set_power.side_effect = (lambda *a, **k: event.wait())
+    bc.power_on.side_effect = (lambda *a, **k: event.wait())
 
     done_event = OnDoneEvent()
     abc.set_power(10, False, done_event)
@@ -111,7 +111,7 @@ def test_set_power_blocks(abc, bc):
     assert done_event.wait(0.1) is False
 
     # We should be sure the power command is blocking on the BMP call
-    bc.set_power.assert_called_once_with(state=False, board=set([10]))
+    bc.power_on.assert_called_once_with(state=False, board=set([10]))
 
     # When the BMP call completes, so should the done_event!
     event.set()
@@ -124,7 +124,7 @@ def test_set_power_blocks(abc, bc):
                          [(None, True),
                           (IOError("Fail."), False)])
 def test_set_power_merge(abc, bc, power_side_effect, success):
-    bc.set_power.side_effect = power_side_effect
+    bc.power_on.side_effect = power_side_effect
 
     # Make sure we can queue up several power commands which will get merged
     # (and any errors duplicated).
@@ -138,7 +138,7 @@ def test_set_power_merge(abc, bc, power_side_effect, success):
         event.wait()
         assert event.success is success
 
-    bc.set_power.assert_called_once_with(state=False, board=set([10, 11, 13]))
+    bc.power_on.assert_called_once_with(state=False, board=set([10, 11, 13]))
 
 
 @pytest.mark.timeout(1.0)
@@ -153,7 +153,7 @@ def test_set_power_dont_merge(abc, bc):
     for event in events:
         event.wait()
 
-    assert bc.set_power.mock_calls == [
+    assert bc.power_on.mock_calls == [
         call(state=False, board=set([10])),
         call(state=True, board=set([11])),
         call(state=False, board=set([12])),
@@ -176,19 +176,19 @@ def test_set_link_enable(abc, bc, link, fpga, addr, enable, value,
                          side_effect, success):
     # Make sure that the set link command works (and failure is reported)
     e = OnDoneEvent()
-    bc.write_fpga_reg.side_effect = side_effect
+    bc.write_fpga_register.side_effect = side_effect
     abc.set_link_enable(10, link, enable, e)
     e.wait()
     assert e.success is success
-    bc.write_fpga_reg.assert_called_once_with(fpga, addr, value, board=10)
-    bc.write_fpga_reg.reset_mock()
+    bc.write_fpga_register.assert_called_once_with(fpga, addr, value, board=10)
+    bc.write_fpga_register.reset_mock()
 
 
 @pytest.mark.timeout(1.0)
 def test_set_link_enable_blocks(abc, bc):
     # Make sure that the set power command can block
     event = threading.Event()
-    bc.write_fpga_reg.side_effect = (lambda *a, **k: event.wait())
+    bc.write_fpga_register.side_effect = (lambda *a, **k: event.wait())
 
     done_event = OnDoneEvent()
     abc.set_link_enable(10, Links.east, True, done_event)
@@ -198,7 +198,7 @@ def test_set_link_enable_blocks(abc, bc):
     assert done_event.wait(0.1) is False
 
     # We should be sure the power command is blocking on the BMP call
-    bc.write_fpga_reg.assert_called_once_with(0, 0x5C, False, board=10)
+    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=10)
 
     # When the BMP call completes, so should the done_event!
     event.set()
@@ -210,9 +210,9 @@ def test_power_priority(abc, bc):
     # Make sure that power queue has higher priority
     power_events = [threading.Event(), threading.Event()]
     link_event = threading.Event()
-    bc.set_power.side_effect = (
+    bc.power_on.side_effect = (
         lambda e=power_events[:], *a, **k: e.pop().wait())
-    bc.write_fpga_reg.side_effect = (lambda *a, **k: link_event.wait())
+    bc.write_fpga_register.side_effect = (lambda *a, **k: link_event.wait())
 
     with abc:
         e1, e2, e3 = (OnDoneEvent() for _ in range(3))
@@ -225,9 +225,9 @@ def test_power_priority(abc, bc):
     assert e1.wait(0.1) is False
 
     # Make sure just the power command has been called
-    bc.set_power.assert_called_once_with(state=True, board=set([10]))
-    bc.set_power.reset_mock()
-    assert len(bc.write_fpga_reg.mock_calls) == 0
+    bc.power_on.assert_called_once_with(state=True, board=set([10]))
+    bc.power_on.reset_mock()
+    assert len(bc.write_fpga_register.mock_calls) == 0
 
     # Let the first power command complete
     power_events.pop().set()
@@ -238,9 +238,9 @@ def test_power_priority(abc, bc):
 
     # Make sure just the power command has been called a second time (and not
     # the link setting command)
-    bc.set_power.assert_called_once_with(state=False, board=set([12]))
-    bc.set_power.reset_mock()
-    assert len(bc.write_fpga_reg.mock_calls) == 0
+    bc.power_on.assert_called_once_with(state=False, board=set([12]))
+    bc.power_on.reset_mock()
+    assert len(bc.write_fpga_register.mock_calls) == 0
 
     # Let the second power command complete
     power_events.pop().set()
@@ -250,8 +250,9 @@ def test_power_priority(abc, bc):
     assert e2.wait(0.1) is False
 
     # We should be sure the power command is blocking on the BMP call
-    assert len(bc.set_power.mock_calls) == 0
-    bc.write_fpga_reg.assert_called_once_with(0, 0x5C, False, board=11)
+    assert len(bc.power_on.mock_calls) == 0
+    assert len(bc.power_off.mock_calls) == 0
+    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=11)
 
     # Make BMP call complete and the last event finish
     link_event.set()
@@ -283,10 +284,10 @@ def test_power_removes_link_enables(abc, bc):
     assert e4.success is True
 
     # Make sure both power commands were sent
-    assert len(bc.set_power.mock_calls) == 2
+    assert len(bc.power_on.mock_calls) == 2
 
     # But only one link command should be around
-    bc.write_fpga_reg.assert_called_once_with(0, 0x5C, False, board=10)
+    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=10)
 
 
 @pytest.mark.timeout(1.0)
