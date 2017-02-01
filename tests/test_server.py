@@ -393,7 +393,7 @@ def test_bad_disconnect(simple_config, s, monkeypatch):
     client = Mock()
     client.fileno.return_value = 1
     client.getpeername.side_effect = OSError()
-    monkeypatch.setattr(s, "_client_sockets", {1: client})
+    monkeypatch.setattr(s, "_fdmap", {1: client})
     monkeypatch.setattr(s, "_client_buffers", {client: b""})
     monkeypatch.setattr(s, "_poll", Mock())
 
@@ -704,9 +704,17 @@ def test_job_notify_register_unregister(simple_config, s):
     assert c1.call("version") == __version__
 
     # Get the sockets connected to the clients
-    s0, s1 = itervalues(s._client_sockets)
-    if s0.getpeername() != c0.sock.getsockname():  # pragma: no cover
-        s0, s1 = s1, s0
+    s0 = s1 = None
+    for sock in itervalues(s._fdmap):
+        try:
+            peer = sock.getpeername()
+        except:
+            continue
+        if peer == c0.sock.getsockname():
+            s0 = sock
+        elif peer == c1.sock.getsockname():
+            s1 = sock
+    assert s0 is not None and s1 is not None
 
     # Initially no matches should be present
     assert s._client_job_watches == {}
@@ -772,9 +780,17 @@ def test_machine_notify_register_unregister(simple_config, s):
     assert c1.call("version") == __version__
 
     # Get the sockets connected to the clients
-    s0, s1 = itervalues(s._client_sockets)
-    if s0.getpeername() != c0.sock.getsockname():  # pragma: no cover
-        s0, s1 = s1, s0
+    s0 = s1 = None
+    for sock in itervalues(s._fdmap):
+        try:
+            peer = sock.getpeername()
+        except:
+            continue
+        if peer == c0.sock.getsockname():
+            s0 = sock
+        elif peer == c1.sock.getsockname():
+            s1 = sock
+    assert s0 is not None and s1 is not None
 
     # Initially no matches should be present
     assert s._client_machine_watches == {}

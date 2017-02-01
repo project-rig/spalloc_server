@@ -52,18 +52,23 @@ class PollingServerCore(object):
         # event loop.
         self._notify_send, self._notify_recv = socket.socketpair()
         self.register_channel(self._notify_recv)
+
     def register_channel(self, channel):
         """Register a channel (file, socket, etc.) for being reported via the
         :py:meth:`.ready_channels` method.
-        """  
-        self._poll.register(channel.fileno(), select.POLLIN)  # @UndefinedVariable
+        """
+        self._poll.register(channel.fileno(),
+                            select.POLLIN)  # @UndefinedVariable
         self._fdmap[channel.fileno()] = channel
+
     def unregister_channel(self, channel):
         """Unregister a channel (file, socket, etc.) for being reported via
         the :py:meth:`.ready_channels` method.
-        """  
+        """
         self._poll.unregister(channel)
-        del self._fdmap[channel.fileno()]
+        if channel.fileno() in self._fdmap:
+            del self._fdmap[channel.fileno()]
+
     def ready_channels(self, timeout_check_interval):
         """Waits up to timeout_check_interval milliseconds for a channel to
         become readable. Multiple channels may become readable at once.
@@ -78,6 +83,7 @@ class PollingServerCore(object):
                 self._notify_recv.recv(BUFFER_SIZE)
             else:
                 yield self._fdmap[fd]
+
     def wake(self):
         """Notify the waiting thread that something has happened.
 
@@ -166,8 +172,9 @@ class Server(PollingServerCore):
 
         # Infer the saved-state location
         self._state_filename = path.join(path.dirname(self._config_filename),
-            ".{}.state.{}".format(path.basename(self._config_filename),
-                                  __version__))
+                                         ".{}.state.{}".format(path.basename(
+                                             self._config_filename),
+                                                               __version__))
 
         # Attempt to restore saved state if required
         self._controller = None
@@ -477,9 +484,10 @@ class Server(PollingServerCore):
         """The main server thread.
 
         This 'infinite' loop runs in a background thread and waits for and
-        processes events such as the :py:meth:`._notify` method being called,
-        the config file changing, clients sending commands or new clients
-        connecting. It also periodically calls destroy_timed_out_jobs on the
+        processes events such as the :py:meth:`.PollingServerCore.wake` method
+        being called, the config file changing, clients sending commands or
+        new clients connecting. It also periodically calls
+        :py:meth:`.controller.Controller.destroy_timed_out_jobs` on the
         controller.
         """
         logging.info("Server running.")
@@ -501,7 +509,7 @@ class Server(PollingServerCore):
                 else:
                     # Incoming data from client
                     self._handle_commands(channel)
-                
+
             # Send any job/machine change notifications out
             self._send_change_notifications()
 
@@ -525,7 +533,7 @@ class Server(PollingServerCore):
 
         # Shut down server thread
         self._stop = True
-        self._notify()
+        self.wake()
         self._server_thread.join()
 
         # Close all connections
