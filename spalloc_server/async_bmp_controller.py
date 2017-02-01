@@ -154,7 +154,7 @@ class AsyncBMPController(object):
 
     def _set_board_state(self, state, board):
         """Set the power state of a board.
-        
+
         :param state: What to set the state to. True for on, False for off
         :type state: bool
         :param board: Which board or boards to set the state of
@@ -164,7 +164,7 @@ class AsyncBMPController(object):
             if state:
                 self._transceiver.power_on(board=board, frame=0, cabinet=0)
             else:
-                self._transceiver.power_off(board, frame=0, cabinet=0)
+                self._transceiver.power_off(board=board, frame=0, cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not
@@ -185,7 +185,8 @@ class AsyncBMPController(object):
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
             self._transceiver.write_fpga_register(fpga, addr, int(not enable),
-                                            board=board, frame=0, cabinet=0)
+                                                  board=board, frame=0,
+                                                  cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not
@@ -207,7 +208,8 @@ class AsyncBMPController(object):
                 power_request = self._get_atomic_power_request()
                 if power_request:
                     # Send the power command
-                    success = self._set_board_state(power_request.state, power_request.board)
+                    success = self._set_board_state(power_request.state,
+                                                    power_request.board)
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
@@ -219,7 +221,9 @@ class AsyncBMPController(object):
                 link_request = self._get_atomic_link_request()
                 if link_request:
                     # Set the link state, as required
-                    success = self._set_link_state(link_request.link, link_request.enable, link_request.board)
+                    success = self._set_link_state(link_request.link,
+                                                   link_request.enable,
+                                                   link_request.board)
 
                     # Alert waiting thread
                     link_request.on_done(success)
