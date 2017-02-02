@@ -217,12 +217,11 @@ def test_set_link_enable_blocks(abc, bc):
 @pytest.mark.timeout(1.0)
 def test_power_priority(abc, bc):
     # Make sure that power queue has higher priority
-    power_events = [threading.Event(), threading.Event()]
+    power_on_event = threading.Event()
+    power_off_event = threading.Event()
     link_event = threading.Event()
-    bc.power_on.side_effect = (
-        lambda e=power_events[:], *a, **k: e.pop().wait(1.0))
-    bc.power_off.side_effect = (
-        lambda e=power_events[:], *a, **k: e.pop().wait(1.0))
+    bc.power_on.side_effect = (lambda *a, **k: power_on_event.wait(1.0))
+    bc.power_off.side_effect = (lambda *a, **k: power_off_event.wait(1.0))
     bc.write_fpga_register.side_effect = (lambda *a, **k: link_event.wait(1.0))
 
     with abc:
@@ -242,7 +241,7 @@ def test_power_priority(abc, bc):
     assert len(bc.write_fpga_register.mock_calls) == 0
 
     # Let the first power command complete
-    power_events.pop().set()
+    power_on_event.set()
     e1.wait(1.0)
 
     # Block for a short time to ensure background thread gets chance to execute
@@ -256,7 +255,7 @@ def test_power_priority(abc, bc):
     assert len(bc.write_fpga_register.mock_calls) == 0
 
     # Let the second power command complete
-    power_events.pop().set()
+    power_off_event.set()
     e3.wait(1.0)
 
     # Block for a short time to ensure background thread gets chance to execute
