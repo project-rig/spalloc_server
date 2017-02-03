@@ -31,6 +31,10 @@ pytestmark = pytest.mark.usefixtures("MockABC")
 logging.basicConfig(level=logging.INFO)
 
 
+class DisconnectedException(Exception):
+    pass
+
+
 class SimpleClient(object):  # pragma: no cover
     """A simple line receiving and sending client."""
 
@@ -45,7 +49,7 @@ class SimpleClient(object):  # pragma: no cover
         while b"\n" not in self.buf:
             data = self.sock.recv(length)
             if not data:
-                raise Exception("Socket disconnected!")
+                raise DisconnectedException("Socket disconnected!")
             self.buf += data
         line, _, self.buf = self.buf.partition(b"\n")
         return line
@@ -82,6 +86,58 @@ class SimpleClient(object):  # pragma: no cover
         else:
             line = self.recv_line()
             return json.loads(line.decode("utf-8"))
+
+
+class EvilClient(object):  # pragma: no cover
+    """An evil line receiving and sending client."""
+
+    def __init__(self, host="127.0.0.1", port=22244):
+        self._host = host
+        self._port = port
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_INET,
+                                  socket.SOCK_STREAM)
+        self.sock.connect((self._host, self._port))
+        self.buf = b""
+        self.notifications = []
+
+    def _recv_line(self, length=1024):
+        while b"\n" not in self.buf:
+            data = self.sock.recv(length)
+            if not data:
+                raise DisconnectedException("Socket disconnected!")
+            self.buf += data
+        line, _, self.buf = self.buf.partition(b"\n")
+        return line
+
+    def close(self):
+        try:
+            self.sock.close()
+        except:
+            pass
+
+    def get_return(self):
+        while True:
+            line = self._recv_line()
+            try:
+                resp = json.loads(line.decode("utf-8"))
+            except:
+                print("Bad line: {}".format(repr(line)))
+                raise
+            if "return" in resp:
+                return resp["return"]
+            self.notifications.append(resp)
+
+    def call(self, call):
+        self.sock.send(call.replace("'", "\"").encode("utf-8") + b"\n")
+        return self.get_return()
+
+    def get_notification(self):
+        if self.notifications:
+            return self.notifications.pop(0)
+        line = self._recv_line()
+        return json.loads(line.decode("utf-8"))
 
 
 @pytest.yield_fixture
@@ -217,6 +273,13 @@ def c():
     c = SimpleClient()
     yield c
     c.close()
+
+
+@pytest.yield_fixture
+def evil():
+    evil = EvilClient()
+    yield evil
+    evil.close()
 
 
 @pytest.mark.timeout(1.0)
@@ -434,6 +497,27 @@ def test_bad_send_change_notifications(monkeypatch, simple_config, s):
 def test_version_command(simple_config, s, c):
     # First basic test of calling a remote method
     assert c.call("version") == __version__
+
+
+@pytest.mark.timeout(2.0)
+@pytest.mark.parametrize("badreq",
+                         ["{", "{}", "{'command':123}",
+                          "{'command':'no such command'}",
+                          "{'command':'version','args':'hoho'}",
+                          "{'command':'version','kwargs':'hoho'}"])
+def test_evil_calls(simple_config, s, evil, badreq):
+    evil.connect()
+    assert evil.call("{'command':'version'}") == __version__
+    with pytest.raises(DisconnectedException):
+        evil.call(badreq)
+
+
+@pytest.mark.timeout(3.0)
+def test_evil_calls2(simple_config, s, evil):
+    evil.connect()
+    assert evil.call("{'command':'version'}") == __version__
+    assert evil.call("{'command':'version','kwargs':{'client':'hoho'}}") \
+        == __version__
 
 
 @pytest.mark.timeout(1.0)
