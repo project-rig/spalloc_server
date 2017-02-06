@@ -216,7 +216,7 @@ class Server(PollingServerCore):
         """How to get the name of the state file from the name of another file
         (expected to be the config file). Assumes that the config file is in a
         directory that can be written to.
-        
+
         :param str cfg: The name of the file to use as a base.
         """
         # Factored out for ease of reading.
@@ -304,7 +304,7 @@ class Server(PollingServerCore):
 
     def _open(self, ipaddress):
         """Create a new server socket.
-        
+
         :param str ipaddress: The local address of the socket.
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -665,7 +665,8 @@ class Server(PollingServerCore):
         if owner is None:
             raise TypeError("owner must be specified for all jobs")
         kwargs["owner"] = str(owner)
-        kwargs["keepalive"] = float(kwargs.get("keepalive", 60.0))
+        keepalive = kwargs.get("keepalive", 60.0)
+        kwargs["keepalive"] = (None if keepalive is None else float(keepalive))
         return self._controller.create_job(*args, **kwargs)
 
     @spalloc_command
