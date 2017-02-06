@@ -396,13 +396,11 @@ class Controller(object):
         job_id : int
             The Job ID assigned to the job.
         """
-        with self._lock:
-            # Extract non-allocator arguments
-            owner = kwargs.pop("owner", None)
-            if owner is None:
-                raise TypeError("owner must be specified for all jobs.")
-            keepalive = kwargs.pop("keepalive", 60.0)
+        # Extract non-allocator arguments
+        owner = kwargs.pop("owner")
+        keepalive = kwargs.pop("keepalive")
 
+        with self._lock:
             # Generate a job ID
             job_id = self._next_id
             self._next_id += 1

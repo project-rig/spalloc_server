@@ -46,6 +46,8 @@ class PollingServerCore(object):
     def __init__(self):
         # The poll object used for listening for connections
         self._poll = select.poll()  # @UndefinedVariable
+        if self._poll is None:
+            raise Exception("total failure to make a poller")
         # Used to map file descriptors to channels
         self._fdmap = {}
         # This socket pair is used by background threads to interrupt the main
@@ -171,10 +173,7 @@ class Server(PollingServerCore):
         self._configuration = Configuration()
 
         # Infer the saved-state location
-        self._state_filename = path.join(path.dirname(self._config_filename),
-                                         ".{}.state.{}".format(path.basename(
-                                             self._config_filename),
-                                                               __version__))
+        self._state_filename = self._get_state_filename(self._config_filename)
 
         # Attempt to restore saved state if required
         self._controller = None
@@ -213,18 +212,18 @@ class Server(PollingServerCore):
         # Flag for checking if the server is still alive
         self._running = True
 
-    def _register(self, fd):
-        """Stabilised version to prevent intermittent failures in testing."""
-        if self._poll is not None and fd is not None:
-            self._poll.register(fd, select.POLLIN)  # @UndefinedVariable
-
-    def _unregister(self, fd):
-        """Stabilised version to prevent intermittent failures in testing."""
-        if self._poll is not None and fd is not None:
-            try:
-                self._poll.unregister(fd)
-            except:
-                pass
+    def _get_state_filename(self, cfg):
+        """How to get the name of the state file from the name of another file
+        (expected to be the config file). Assumes that the config file is in a
+        directory that can be written to.
+        
+        :param str cfg: The name of the file to use as a base.
+        """
+        # Factored out for ease of reading.
+        dirname = path.dirname(cfg)
+        basename = path.basename(cfg)
+        filename = ".{}.state.{}".format(basename, __version__)
+        return path.join(dirname, filename)
 
     def _sighup_handler(self, signum, frame):
         """Handler for SIGHUP. If such a signal is delivered, will trigger a
@@ -292,13 +291,7 @@ class Server(PollingServerCore):
                 time.sleep(0.25)  # Ugly hack; fully release socket now
 
             # Create a new server socket
-            self._server_socket = socket.socket(socket.AF_INET,
-                                                socket.SOCK_STREAM)
-            self._server_socket.setsockopt(socket.SOL_SOCKET,
-                                           socket.SO_REUSEADDR, 1)
-            self._server_socket.bind((new.ip, self._port))
-            self._server_socket.listen(5)
-            self.register_channel(self._server_socket)
+            self._open(new.ip)
 
         # Update the controller
         self._controller.max_retired_jobs = new.max_retired_jobs
@@ -308,6 +301,18 @@ class Server(PollingServerCore):
         logging.info("Config file %s read successfully.",
                      self._config_filename)
         return True
+
+    def _open(self, ipaddress):
+        """Create a new server socket.
+        
+        :param str ipaddress: The local address of the socket.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((ipaddress, self._port))
+        sock.listen(5)
+        self.register_channel(sock)
+        self._server_socket = sock
 
     def _close(self):
         """Close all server sockets and disconnect all client connections."""
@@ -656,6 +661,11 @@ class Server(PollingServerCore):
         """
         if kwargs.get("tags", None) is not None:
             kwargs["tags"] = set(kwargs["tags"])
+        owner = kwargs.get("owner", None)
+        if owner is None:
+            raise TypeError("owner must be specified for all jobs")
+        kwargs["owner"] = str(owner)
+        kwargs["keepalive"] = float(kwargs.get("keepalive", 60.0))
         return self._controller.create_job(*args, **kwargs)
 
     @spalloc_command

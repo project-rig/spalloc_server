@@ -365,10 +365,6 @@ def test_get_machines(conn, m):
 def test_create_job(conn, m):
     controller = conn._bmp_controllers[m][(0, 0)]
 
-    # Should fail with missing owner
-    with pytest.raises(TypeError):
-        conn.create_job()
-
     with controller.handler_lock:
         # Make sure newly added jobs can start straight away and have the BMP
         # block

@@ -504,7 +504,9 @@ def test_version_command(simple_config, s, c):
                          ["{", "{}", "{'command':123}",
                           "{'command':'no such command'}",
                           "{'command':'version','args':'hoho'}",
-                          "{'command':'version','kwargs':'hoho'}"])
+                          "{'command':'version','kwargs':'hoho'}",
+                          # create_job without owner should fail
+                          "{'command':'create_job'}"])
 def test_evil_calls(simple_config, s, evil, badreq):
     evil.connect()
     assert evil.call("{'command':'version'}") == __version__
