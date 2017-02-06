@@ -46,7 +46,7 @@ class PollingServerCore(object):
     def __init__(self):
         # The poll object used for listening for connections
         self._poll = select.poll()  # @UndefinedVariable
-        if self._poll is None:
+        if self._poll is None:  # pragma: no cover
             raise Exception("total failure to make a poller")
         # Used to map file descriptors to channels
         self._fdmap = {}
@@ -252,8 +252,8 @@ class Server(PollingServerCore):
         self._reload_config = False
         try:
             with open(self._config_filename, "r") as f:
-                config_script = f.read()  # pragma: no branch
-        except (IOError, OSError):
+                config_script = f.read()
+        except (IOError, OSError):  # pragma: no cover
             logging.exception("Could not read config file %s",
                               self._config_filename)
             return False
@@ -287,7 +287,7 @@ class Server(PollingServerCore):
         if (new.ip != old.ip or
                 self._server_socket is None):
             # Close all open connections
-            if self._close():
+            if self._close():  # pragma: no cover
                 time.sleep(0.25)  # Ugly hack; fully release socket now
 
             # Create a new server socket
@@ -355,7 +355,7 @@ class Server(PollingServerCore):
         """Accept a new client."""
         try:
             client, addr = self._server_socket.accept()
-        except IOError as e:
+        except IOError as e:  # pragma: no cover
             logging.warn("problem when accepting connection", exc_info=e)
             return
         logging.info("New client connected from %s", addr)
@@ -404,7 +404,7 @@ class Server(PollingServerCore):
             logging.info("lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
         command = _COMMANDS[commandName]
-        if command is None:
+        if command is None:  # pragma: no cover
             # Should be unreachable
             logging.critical("unexpected lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
@@ -506,7 +506,7 @@ class Server(PollingServerCore):
             self._controller.destroy_timed_out_jobs()
 
             for channel in channels:
-                if channel is None:
+                if channel is None:  # pragma: no cover
                     continue
                 if channel == self._server_socket:
                     # New client connected
