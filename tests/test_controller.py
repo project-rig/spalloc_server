@@ -732,8 +732,14 @@ class TestWhereIs(object):
         with pytest.raises(TypeError):
             conn.where_is(machine="m", x=0, y=0)  # z missing
 
-    def test_unknown_machine(self, conn):
-        assert conn.where_is(machine="bad", chip_x=0, chip_y=0) is None
+    def test_failed_search(self, conn, big_m):
+        # Searches that don't find anything useful should return None
+        bad = "bad"
+        assert conn.where_is(machine=bad, chip_x=0, chip_y=0) is None
+        assert conn.where_is(machine=bad, cabinet=0, frame=0, board=0) is None
+        assert conn.where_is(machine=bad, x=0, y=0, z=0) is None
+        assert conn.where_is(machine=big_m, cabinet=9001, frame=9001,
+                             board=9001) is None
 
     @pytest.mark.parametrize("chip_xy,logical",
                              [((0, 0), (0, 0, 0)),

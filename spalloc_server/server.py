@@ -520,7 +520,7 @@ class Server(PollingServerCore):
 
             # Config file changed, re-read it
             if self._reload_config:
-                if not self._read_config_file():
+                if not self._read_config_file():  # pragma: no cover
                     logging.warning("failed to reread configuration file")
 
     def is_alive(self):

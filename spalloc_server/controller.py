@@ -664,7 +664,7 @@ class Controller(object):
             # Determine the board's physical location (fail if board does not
             # exist)
             cfb = machine.board_locations.get((x, y, z), None)
-            if cfb is None:
+            if cfb is None:  # pragma: no cover
                 return None
             cabinet, frame, board = cfb
 
@@ -712,7 +712,7 @@ class Controller(object):
             # Determine the board's physical location (fail if board does not
             # exist)
             cfb = machine.board_locations.get((x, y, z), None)
-            if cfb is None:
+            if cfb is None:  # pragma: no cover
                 return None
             cabinet, frame, board = cfb
 
