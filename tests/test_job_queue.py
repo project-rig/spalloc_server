@@ -2,8 +2,7 @@ import pytest
 
 from mock import Mock
 
-from rig.links import Links
-
+from spalloc_server.links import Links
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.job_queue import JobQueue
 

@@ -5,8 +5,7 @@ import os
 
 from spalloc_server.configuration import \
     Configuration, Machine, board_locations_from_spinner
-
-from rig.links import Links
+from spalloc_server.links import Links
 
 
 @pytest.yield_fixture

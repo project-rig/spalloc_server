@@ -5,8 +5,7 @@ from mock import Mock, call
 import threading
 
 from spalloc_server.async_bmp_controller import AsyncBMPController
-
-from rig.links import Links
+from spalloc_server.links import Links
 
 
 @pytest.yield_fixture
