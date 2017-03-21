@@ -10,6 +10,7 @@ from spalloc_server.links import Links
 from spinnman.transceiver import create_transceiver_from_hostname
 
 import logging
+from spinnman.model.bmp_connection_data import BMPConnectionData
 
 
 class AsyncBMPController(object):
@@ -47,7 +48,9 @@ class AsyncBMPController(object):
         """
         self._on_thread_start = on_thread_start
 
-        self._transceiver = create_transceiver_from_hostname(hostname, 5)
+        self._transceiver = create_transceiver_from_hostname(
+            None, 5,
+            bmp_connection_data=BMPConnectionData(0, 0, hostname, [0], None))
 
         self._stop = False
 
