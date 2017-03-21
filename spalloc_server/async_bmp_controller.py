@@ -269,12 +269,12 @@ class AsyncBMPController(object):
 
             # Otherwise, accumulate as many boards as possible
             state = self._power_requests[0].state
-            boards = set()
+            boards = list()
             on_done = []
             while (self._power_requests and
                    self._power_requests[0].state == state):
                 request = self._power_requests.popleft()
-                boards.add(request.board)
+                boards.append(request.board)
                 on_done.append(request.on_done)
             return _PowerRequest(state, boards, on_done)
 
