@@ -211,8 +211,8 @@ class AsyncBMPController(object):
                 power_request = self._get_atomic_power_request()
                 if power_request:
                     # Send the power command
-                    success = self._set_board_state(power_request.state,
-                                                    power_request.board)
+                    success = self._set_board_state(
+                        power_request.state, power_request.board)
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
@@ -224,9 +224,9 @@ class AsyncBMPController(object):
                 link_request = self._get_atomic_link_request()
                 if link_request:
                     # Set the link state, as required
-                    success = self._set_link_state(link_request.link,
-                                                   link_request.enable,
-                                                   link_request.board)
+                    success = self._set_link_state(
+                        link_request.link, link_request.enable,
+                        link_request.board)
 
                     # Alert waiting thread
                     link_request.on_done(success)
@@ -247,7 +247,7 @@ class AsyncBMPController(object):
         except:  # pragma: no cover
             # If the thread crashes something has gone wrong with this program
             # (not the machine), setting _stop will cause set_power and
-            # set_link_enable to fail, hopefully propogating news of this
+            # set_link_enable to fail, hopefully propagating news of this
             # crash..
             with self._lock:
                 self._stop = True
@@ -292,7 +292,7 @@ class AsyncBMPController(object):
 
 
 class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
-    """Reuqests that a specific board should have its power state set to a
+    """Requests that a specific board should have its power state set to a
     particular value.
 
     Parameters
@@ -310,7 +310,7 @@ class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
 
 
 class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
-    """Reuqests that a specific board should have its power state set to a
+    """Requests that a specific board should have its power state set to a
     particular value.
 
     Parameters
