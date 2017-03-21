@@ -1083,7 +1083,7 @@ def main(args=None):
     """Command-line launcher for the server.
 
     The server may be cleanly terminated using a keyboard interrupt (e.g.,
-    ctrl+c).
+    ctrl+c), and may be told to reload its configuration via SIGHUP.
 
     Parameters
     ----------

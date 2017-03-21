@@ -115,7 +115,9 @@ class Configuration(namedtuple("Configuration",
         The list of machines, highest priority first, the server is to
         manage. (Default: [])
     port : int
-        The port number the server should listen on. (Default: 22244)
+        The port number the server should listen on. Note that this is now
+        deprecated; the port should be specified by the ``--port`` option on
+        the spalloc_server command line. (Default: 22244)
     ip : str
         The IP the server should listen on. (Default: "", i.e. all interfaces)
     timeout_check_interval : float

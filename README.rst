@@ -2,17 +2,17 @@ SpiNNaker Machine Partitioning and Allocation Server (``spalloc_server``)
 =========================================================================
 
 .. image:: https://img.shields.io/pypi/v/spalloc_server.svg?style=flat
-   :alt: PyPi version
-   :target: https://pypi.python.org/pypi/spalloc_server/
+ :target: https://pypi.python.org/pypi/spalloc_server/
+ :alt: PyPi version
 .. image:: https://readthedocs.org/projects/spalloc_server/badge/?version=stable
-   :alt: Documentation
-   :target: http://spalloc_server.readthedocs.org/
+ :target: http://spalloc_server.readthedocs.org/
+ :alt: Documentation
 .. image:: https://travis-ci.org/SpiNNakerManchester/spalloc_server.svg?branch=master
-   :alt: Build Status
-   :target: https://travis-ci.org/SpiNNakerManchester/spalloc_server
+ :target: https://travis-ci.org/SpiNNakerManchester/spalloc_server
+ :alt: Build Status
 .. image:: https://coveralls.io/repos/SpiNNakerManchester/spalloc_server/badge.svg?branch=master
-   :alt: Coverage Status
-   :target: https://coveralls.io/r/SpiNNakerManchester/spalloc_server?branch=master
+ :target: https://coveralls.io/r/SpiNNakerManchester/spalloc_server?branch=master
+ :alt: Coverage Status
 
 A SpiNNaker machine management application which manages the partitioning and
 allocation of large SpiNNaker machines into smaller fragments for many
