@@ -182,7 +182,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         dead_boards.
     dead_boards : set([(x, y, z), ...])
         The board coordinates of all dead boards in the machine.
-    dead_links : set([(x, y, z, :py:class:`~rig.links.Links`), ...])
+    dead_links : set([(x, y, z, :py:class:`~spalloc_server.links.Links`), ...])
         The board coordinates of all dead links in the machine. Links to dead
         boards are implicitly dead and may or may not be included in this set.
     board_locations : {(x, y, z): (c, f, b), ...}
@@ -375,7 +375,8 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             dead_boards.
         dead_boards : set([(x, y, z), ...])
             The board coordinates of all dead boards in the machine.
-        dead_links : set([(x, y, z, :py:class:`~rig.links.Links`), ...])
+        dead_links : set([(x, y, z,\
+                           :py:class:`~spalloc_server.links.Links`), ...])
             The board coordinates of all dead links in the machine. Links to
             dead boards are implicitly dead and may or may not be included in
             this set.

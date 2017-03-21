@@ -4,3 +4,4 @@ enum-compat
 inotify_simple
 pytz
 SpiNNMan
+SpiNNMachine

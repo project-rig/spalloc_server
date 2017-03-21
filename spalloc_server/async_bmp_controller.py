@@ -18,8 +18,8 @@ class AsyncBMPController(object):
 
     Since BMP commands, particularly power-on commands, take some time to
     complete, it is desirable for them to be executed asynchronously. This
-    object uses a Rig :py:class:`~rig.machine_control.BMPController` object to
-    communicate with a BMP controlling a single frame of boards.
+    object uses a SpiNNMan :py:class:`~spinnman.transceiver.Transceiver` object
+    to communicate with a BMP controlling a single frame of boards.
 
     Power and link configuration commands are queued and executed in a
     background thread. When a command completes, a user-supplied callback is
@@ -119,7 +119,7 @@ class AsyncBMPController(object):
         ----------
         board : int
             The board on which the link resides.
-        link : :py:class:`rig.links.Links`
+        link : :py:class:`spalloc_server.links.Links`
             The link to configure.
         enable : bool
             True = link enabled, False = link disabled.
@@ -314,7 +314,7 @@ class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
     ----------
     board : int
         Board whose link should be blocked/unblocked
-    link : :py:class:`rig.links.Link`
+    link : :py:class:`spalloc_server.links.Link`
         The link whose state should be changed
     enable : bool
         State of the link: Enabled (True), disabled (False).

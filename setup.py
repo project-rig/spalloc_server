@@ -11,7 +11,8 @@ setup(
     # Metadata for PyPi
     url="https://github.com/SpiNNakerManchester/spalloc_server",
     author="Jonathan Heathcote",
-    description="A tool for partitioning and allocating large SpiNNaker machines into smaller ones on demand.",
+    description="A tool for partitioning and allocating large SpiNNaker"
+                " machines into smaller ones on demand.",
     license="GPLv2",
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -34,7 +35,9 @@ setup(
     keywords="spinnaker allocation packing management supercomputer",
 
     # Requirements
-    install_requires=["rig", "six", "enum-compat", "inotify_simple", "pytz", "SpiNNMan >= 3.0.0, < 4.0.0"],
+    install_requires=[
+        "six", "enum-compat", "inotify_simple", "pytz",
+        "SpiNNMan >= 3.0.0, < 4.0.0"],
 
     # Scripts
     entry_points={
