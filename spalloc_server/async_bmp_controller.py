@@ -162,9 +162,9 @@ class AsyncBMPController(object):
         """
         try:
             if state:
-                self._transceiver.power_on(board=board, frame=0, cabinet=0)
+                self._transceiver.power_on(boards=board, frame=0, cabinet=0)
             else:
-                self._transceiver.power_off(board=board, frame=0, cabinet=0)
+                self._transceiver.power_off(boards=board, frame=0, cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not
