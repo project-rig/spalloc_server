@@ -50,7 +50,7 @@ class AsyncBMPController(object):
 
         self._transceiver = create_transceiver_from_hostname(
             None, 5,
-            bmp_connection_data=BMPConnectionData(0, 0, hostname, [0], None))
+            bmp_connection_data=[BMPConnectionData(0, 0, hostname, [0], None)])
 
         self._stop = False
 
