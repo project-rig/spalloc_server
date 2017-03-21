@@ -5,6 +5,9 @@ python:
         # Remove 3.5 because SpiNNMan isn't Py3-compatible yet
         # - 3.5
 install:
+        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNUtils.git@master
+        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMachine.git@master
+        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMan.git@master
         - python setup.py develop
         - pip install -r requirements-test.txt
         - pip install python-coveralls
