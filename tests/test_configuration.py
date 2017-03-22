@@ -23,6 +23,7 @@ def spinner_ethernet_chips_csv():
                 "0,0,3,16,8\n"
                 "0,0,1,20,4\n")
 
+    os.close(fd)
     yield filename
 
     os.remove(filename)
