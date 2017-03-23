@@ -55,7 +55,8 @@ class JobQueue(object):
                 The name of the machine the job was allocated on.
             boards : set([(x, y, z), ...])
                 Enumerates the boards in the allocation.
-            periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+            periphery : set([(x, y, z,\
+                             :py:class:`spalloc_server.links.Links`), ...])
                 Enumerates the links which leave the set of allocated boards.
             torus : :py:class:`spalloc_server.coordinates.WrapAround`
                 Specifies which types of wrap-around links may be present.
@@ -275,7 +276,8 @@ class JobQueue(object):
             tags are not otherwise specified. Defaults to set(["default"])
         dead_boards : set([(x, y, z), ...])
             The boards in the machine which do not work.
-        dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        dead_links : set([(x, y, z,\
+                          :py:class:`spalloc_server.links.Links`), ...])
             The board-to-board links in the machine which do not work.
 
         See Also
@@ -325,7 +327,8 @@ class JobQueue(object):
             If not None, change the Machine's tags to match the supplied set.
         dead_boards : set([(x, y, z), ...])
             If not None, change the set of dead boards in the machine.
-        dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        dead_links : set([(x, y, z,\
+                          :py:class:`spalloc_server.links.Links`), ...])
             If not None, change the set of dead links in the machine.
         """
         machine = self._machines[name]

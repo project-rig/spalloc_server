@@ -7,9 +7,10 @@ import threading
 from collections import namedtuple, deque
 
 from spalloc_server.links import Links
-from rig.machine_control import BMPController
+from spinnman.transceiver import create_transceiver_from_hostname
 
 import logging
+from spinnman.model.bmp_connection_data import BMPConnectionData
 
 
 class AsyncBMPController(object):
@@ -18,8 +19,8 @@ class AsyncBMPController(object):
 
     Since BMP commands, particularly power-on commands, take some time to
     complete, it is desirable for them to be executed asynchronously. This
-    object uses a Rig :py:class:`~rig.machine_control.BMPController` object to
-    communicate with a BMP controlling a single frame of boards.
+    object uses a SpiNNMan :py:class:`~spinnman.transceiver.Transceiver` object
+    to communicate with a BMP controlling a single frame of boards.
 
     Power and link configuration commands are queued and executed in a
     background thread. When a command completes, a user-supplied callback is
@@ -47,7 +48,9 @@ class AsyncBMPController(object):
         """
         self._on_thread_start = on_thread_start
 
-        self._bc = BMPController(hostname)
+        self._transceiver = create_transceiver_from_hostname(
+            None, 5,
+            bmp_connection_data=[BMPConnectionData(0, 0, hostname, [0], None)])
 
         self._stop = False
 
@@ -91,6 +94,10 @@ class AsyncBMPController(object):
             another thread. Success is a bool which is True if the command
             completed successfully and False if it did not (or was cancelled).
         """
+        # Verify that our arguments are sane
+        board = int(board)
+        state = bool(state)
+        on_done.__call__
         with self._lock:
             assert not self._stop
 
@@ -115,7 +122,7 @@ class AsyncBMPController(object):
         ----------
         board : int
             The board on which the link resides.
-        link : :py:class:`rig.links.Links`
+        link : :py:class:`spalloc_server.links.Links`
             The link to configure.
         enable : bool
             True = link enabled, False = link disabled.
@@ -124,6 +131,10 @@ class AsyncBMPController(object):
             another thread. Success is a bool which is True if the command
             completed successfully and False if it did not (or was cancelled).
         """
+        # Verify that our arguments are sane
+        board = int(board)
+        enable = bool(enable)
+        on_done.__call__
         with self._lock:
             assert not self._stop
 
@@ -144,6 +155,48 @@ class AsyncBMPController(object):
         """Wait for the thread to actually stop."""
         self._thread.join()
 
+    def _set_board_state(self, state, board):
+        """Set the power state of a board.
+
+        :param state: What to set the state to. True for on, False for off
+        :type state: bool
+        :param board: Which board or boards to set the state of
+        :type board: int or iterable
+        """
+        try:
+            if state:
+                self._transceiver.power_on(boards=board, frame=0, cabinet=0)
+            else:
+                self._transceiver.power_off(boards=board, frame=0, cabinet=0)
+            return True
+        except IOError:
+            # Communication issue with the machine, log it but not
+            # much we can do for the end-user.
+            logging.exception("Failed to set board power.")
+            return False
+
+    def _set_link_state(self, link, enable, board):
+        """Set the power state of a link.
+
+        :param link: The link (direction) to set the enable-state of.
+        :type link: value in Links enum
+        :param state: What to set the state to. True for on, False for off.
+        :type state: bool
+        :param board: Which board or boards to set the link enable-state of.
+        :type board: int or iterable
+        """
+        try:
+            fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
+            self._transceiver.write_fpga_register(fpga, addr, int(not enable),
+                                                  board=board, frame=0,
+                                                  cabinet=0)
+            return True
+        except IOError:
+            # Communication issue with the machine, log it but not
+            # much we can do for the end-user.
+            logging.exception("Failed to set link state.")
+            return False
+
     def _run(self):
         """The background thread for interacting with the BMP.
         """
@@ -158,15 +211,8 @@ class AsyncBMPController(object):
                 power_request = self._get_atomic_power_request()
                 if power_request:
                     # Send the power command
-                    try:
-                        self._bc.set_power(state=power_request.state,
-                                           board=power_request.board)
-                        success = True
-                    except IOError:
-                        # Communication issue with the machine, log it but not
-                        # much we can do for the end-user.
-                        logging.exception("Failed to set board power.")
-                        success = False
+                    success = self._set_board_state(
+                        power_request.state, power_request.board)
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
@@ -178,18 +224,9 @@ class AsyncBMPController(object):
                 link_request = self._get_atomic_link_request()
                 if link_request:
                     # Set the link state, as required
-                    try:
-                        fpga, addr \
-                            = FPGA_LINK_STOP_REGISTERS[link_request.link]
-                        self._bc.write_fpga_reg(fpga, addr,
-                                                not link_request.enable,
-                                                board=link_request.board)
-                        success = True
-                    except IOError:
-                        # Communication issue with the machine, log it but not
-                        # much we can do for the end-user.
-                        logging.exception("Failed to set link state.")
-                        success = False
+                    success = self._set_link_state(
+                        link_request.link, link_request.enable,
+                        link_request.board)
 
                     # Alert waiting thread
                     link_request.on_done(success)
@@ -210,7 +247,7 @@ class AsyncBMPController(object):
         except:  # pragma: no cover
             # If the thread crashes something has gone wrong with this program
             # (not the machine), setting _stop will cause set_power and
-            # set_link_enable to fail, hopefully propogating news of this
+            # set_link_enable to fail, hopefully propagating news of this
             # crash..
             with self._lock:
                 self._stop = True
@@ -232,12 +269,12 @@ class AsyncBMPController(object):
 
             # Otherwise, accumulate as many boards as possible
             state = self._power_requests[0].state
-            boards = set()
+            boards = list()
             on_done = []
             while (self._power_requests and
                    self._power_requests[0].state == state):
                 request = self._power_requests.popleft()
-                boards.add(request.board)
+                boards.append(request.board)
                 on_done.append(request.on_done)
             return _PowerRequest(state, boards, on_done)
 
@@ -251,12 +288,11 @@ class AsyncBMPController(object):
         with self._lock:
             if not self._link_requests:
                 return None
-            else:
-                return self._link_requests.popleft()
+            return self._link_requests.popleft()
 
 
 class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
-    """Reuqests that a specific board should have its power state set to a
+    """Requests that a specific board should have its power state set to a
     particular value.
 
     Parameters
@@ -274,14 +310,14 @@ class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
 
 
 class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
-    """Reuqests that a specific board should have its power state set to a
+    """Requests that a specific board should have its power state set to a
     particular value.
 
     Parameters
     ----------
     board : int
         Board whose link should be blocked/unblocked
-    link : :py:class:`rig.links.Link`
+    link : :py:class:`spalloc_server.links.Link`
         The link whose state should be changed
     enable : bool
         State of the link: Enabled (True), disabled (False).

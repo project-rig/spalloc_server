@@ -1,6 +1,6 @@
 import pytest
 
-from rig.links import Links
+from spalloc_server.links import Links
 
 from spalloc_server.coordinates import board_down_link, WrapAround
 from spalloc_server.allocator import \

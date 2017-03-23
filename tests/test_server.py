@@ -15,8 +15,7 @@ import json
 
 from six import itervalues
 
-from rig.links import Links
-
+from spalloc_server.links import Links
 from spalloc_server.controller import JobState
 from spalloc_server.server import Server, main
 from spalloc_server.configuration import Configuration
