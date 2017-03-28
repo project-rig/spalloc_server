@@ -769,7 +769,7 @@ def test_machine_notifications(double_config, s):
     # Make sure machine changes get announced
     with open(double_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
-    os.kill(os.getpid(), signal.SIGHUP)
+    os.kill(os.getpid(), signal.SIGINT)
 
     assert c0.get_notification() == {"machines_changed": ["m0"]}
     assert c1.get_notification() in ({"machines_changed": ["m0", "m1"]},
