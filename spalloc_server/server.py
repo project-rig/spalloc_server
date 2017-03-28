@@ -15,6 +15,7 @@ import threading
 import json
 import argparse
 import time
+import errno
 
 from collections import OrderedDict
 
@@ -45,29 +46,52 @@ class PollingServerCore(object):
     """
     def __init__(self):
         # The poll object used for listening for connections
-        self._poll = select.poll()  # @UndefinedVariable
-        if self._poll is None:  # pragma: no cover
-            raise Exception("total failure to make a poller")
+        self._poll = None
+        if hasattr(select, "poll"):
+            self._poll = select.poll()  # @UndefinedVariable
+
         # Used to map file descriptors to channels
         self._fdmap = {}
+
         # This socket pair is used by background threads to interrupt the main
         # event loop.
-        self._notify_send, self._notify_recv = socket.socketpair()
+        self._notify_send, self._notify_recv = None, None
+        if hasattr(socket, "socketpair"):
+            self._notify_send, self._notify_recv = socket.socketpair()
+        else:
+
+            # Create your own socket pair
+            temp_sock = socket.socket()
+            temp_sock.setblocking(False)
+            temp_sock.bind(('', 0))
+            port = temp_sock.getsockname()[1]
+            temp_sock.listen(1)
+            self._notify_send = socket.socket()
+            self._notify_send.setblocking(False)
+            try:
+                self._notify_send.connect(('localhost', port))
+            except socket.error as err:
+                # EWOULDBLOCK is not an error, as the socket is non-blocking
+                if err.errno != errno.EWOULDBLOCK:
+                    raise
+            self._notify_recv, _ = temp_sock.accept()
         self.register_channel(self._notify_recv)
 
     def register_channel(self, channel):
         """Register a channel (file, socket, etc.) for being reported via the
         :py:meth:`.ready_channels` method.
         """
-        self._poll.register(channel.fileno(),
-                            select.POLLIN)  # @UndefinedVariable
+        if self._poll is not None:
+            self._poll.register(
+                channel.fileno(), select.POLLIN)  # @UndefinedVariable
         self._fdmap[channel.fileno()] = channel
 
     def unregister_channel(self, channel):
         """Unregister a channel (file, socket, etc.) for being reported via
         the :py:meth:`.ready_channels` method.
         """
-        self._poll.unregister(channel)
+        if self._poll is not None:
+            self._poll.unregister(channel)
         if channel.fileno() in self._fdmap:
             del self._fdmap[channel.fileno()]
 
@@ -79,12 +103,21 @@ class PollingServerCore(object):
                  readable. Can be empty if the poller is woken via the
                  :py:meth:`.wake` call.
         """
-        events = self._poll.poll(timeout_check_interval)
-        for fd, _ in events:
-            if fd == self._notify_recv.fileno():
-                self._notify_recv.recv(BUFFER_SIZE)
-            else:
-                yield self._fdmap[fd]
+        if self._poll is not None:
+            events = self._poll.poll(timeout_check_interval)
+            for fd, _ in events:
+                if fd == self._notify_recv.fileno():
+                    self._notify_recv.recv(BUFFER_SIZE)
+                else:
+                    yield self._fdmap[fd]
+        else:
+            channels = self._fdmap.values()
+            readable, _, _ = select.select(channels, [], [])
+            for channel in readable:
+                if channel == self._notify_recv:
+                    self._notify_recv.recv(BUFFER_SIZE)
+                else:
+                    yield channel
 
     def wake(self):
         """Notify the waiting thread that something has happened.
@@ -203,8 +236,8 @@ class Server(PollingServerCore):
         if not self._read_config_file():
             raise Exception("Config file could not be loaded.")
 
-        # Set up SIGHUP signal handler for config file reloading
-        signal.signal(signal.SIGHUP, self._sighup_handler)
+        # Set up SIGINT signal handler for config file reloading
+        signal.signal(signal.SIGINT, self._sigint_handler)
 
         # Start the server
         self._server_thread.start()
@@ -225,8 +258,8 @@ class Server(PollingServerCore):
         filename = ".{}.state.{}".format(basename, __version__)
         return path.join(dirname, filename)
 
-    def _sighup_handler(self, signum, frame):
-        """Handler for SIGHUP. If such a signal is delivered, will trigger a
+    def _sigint_handler(self, signum, frame):
+        """Handler for SIGINT. If such a signal is delivered, will trigger a
         reread of the configuration file.
 
         Parameters
@@ -234,7 +267,7 @@ class Server(PollingServerCore):
         signum : int
         frame :
         """
-        if signum == signal.SIGHUP:
+        if signum == signal.SIGINT:
             self._reload_config = True
             self.wake()
 

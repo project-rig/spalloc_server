@@ -425,7 +425,7 @@ def test_reread_config_file(simple_config, s):
     # Modify config file
     with open(simple_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
-    os.kill(os.getpid(), signal.SIGHUP)
+    os.kill(os.getpid(), signal.SIGINT)
     time.sleep(0.2)
 
     # Configuration should have changed accordingly
