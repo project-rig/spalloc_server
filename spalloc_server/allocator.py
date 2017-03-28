@@ -47,7 +47,8 @@ class Allocator(object):
             Dimensions of the machine in triads.
         dead_boards : set([(x, y, z), ...])
             The set of boards which are dead and which must not be allocated.
-        dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        dead_links :set([(x, y, z,\
+                         :py:class:`spalloc_server.links.Links`), ...])
             The set of links leaving boards which are known not to be working.
             Connections to boards in the set dead_boards are assumed to be
             dead and need not be included in this list. Note that both link
@@ -815,7 +816,7 @@ class _CandidateFilter(object):
     boards : set([(x, y, z), ...])
         The working boards present in the accepted candidate. None if no
         candidate has been accepted.
-    periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+    periphery : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
         The links around the periphery of the selection of boards which should
         be disabled to isolate the system. None if no candidate has been
         accepted.
@@ -835,7 +836,8 @@ class _CandidateFilter(object):
             being chosen.
         dead_boards : set([(x, y, z), ...])
             The set of boards which are dead and which must not be allocated.
-        dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+        dead_links : set([(x, y, z,\
+                           :py:class:`spalloc_server.links.Links`), ...])
             The set of links leaving boards which are known not to be working.
             Connections to boards in the set dead_boards are assumed to be
             dead and need not be included in this list. Note that both link

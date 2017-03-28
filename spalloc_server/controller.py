@@ -18,12 +18,11 @@ from datetime import datetime
 
 from pytz import utc
 
-from rig.geometry import spinn5_chip_coord
-
 from spalloc_server.coordinates import \
     board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
 from spalloc_server.job_queue import JobQueue
 from spalloc_server.async_bmp_controller import AsyncBMPController
+from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
 
 
 class Controller(object):
@@ -623,12 +622,6 @@ class Controller(object):
                 # No board found
                 return None
 
-    # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-    # numpy integer types which are not JSON serialiseable.
-    def _chip_coord(self, chip_x, chip_y):
-        board_x, board_y = spinn5_chip_coord(chip_x, chip_y)
-        return (int(board_x), int(board_y))
-
     def _job_for_location(self, machine, x, y, z):
         """"Determine what job is running on the given board."""
         for job_id, job in iteritems(self._jobs):
@@ -655,7 +648,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -703,7 +697,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -744,7 +739,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -795,7 +791,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -1267,7 +1264,7 @@ class MachineTuple(namedtuple("MachineTuple",
         The dimensions of the machine in triads.
     dead_boards : set([(x, y, z), ...])
         The coordinates of known-dead boards.
-    dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+    dead_links : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
         The locations of known-dead links from the perspective of the sender.
         Links to dead boards may or may not be included in this list.
     """
@@ -1310,7 +1307,8 @@ class _Job(object):
         allocated yet).
     boards : set([(x, y, z), ...]) or None
         The boards allocated to the job or None if not allocated.
-    periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...]) or None
+    periphery : set([(x, y, z,\
+                     :py:class:`spalloc_server.links.Links`), ...]) or None
         The links around the periphery of the job or None if not allocated.
     torus : :py:class:`spalloc_server.coordinates.WrapAround` or None
         Does the allocated set of boards have wrap-around links? None if

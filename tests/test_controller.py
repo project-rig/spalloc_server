@@ -12,8 +12,6 @@ from pytz import utc
 
 from collections import OrderedDict
 
-from rig.links import Links
-
 import pickle
 
 from six import iteritems
@@ -21,6 +19,7 @@ from six import iteritems
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.configuration import Machine
 from spalloc_server.controller import Controller, JobState
+from spalloc_server.links import Links
 
 from common import simple_machine
 
