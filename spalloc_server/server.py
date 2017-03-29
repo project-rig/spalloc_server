@@ -236,8 +236,9 @@ class Server(PollingServerCore):
         if not self._read_config_file():
             raise Exception("Config file could not be loaded.")
 
-        # Set up SIGINT signal handler for config file reloading
-        signal.signal(signal.SIGINT, self._sigint_handler)
+        # Set up SIGHUP signal handler for config file reloading
+        if hasattr(signal, "SIGHUP"):
+            signal.signal(signal.SIGHUP, self._sighup_handler)
 
         # Start the server
         self._server_thread.start()
@@ -258,7 +259,7 @@ class Server(PollingServerCore):
         filename = ".{}.state.{}".format(basename, __version__)
         return path.join(dirname, filename)
 
-    def _sigint_handler(self, signum, frame):
+    def _sighup_handler(self, signum, frame):
         """Handler for SIGINT. If such a signal is delivered, will trigger a
         reread of the configuration file.
 
@@ -1185,7 +1186,10 @@ def main(args=None):
         # however in Python 2, such blocking calls are not interruptible so we
         # use this rather ugly workaround instead.
         while server.is_alive():  # pragma: no cover
-            time.sleep(0.1)
+            try:
+                time.sleep(0.1)
+            except IOError:
+                pass
     except KeyboardInterrupt:
         server.stop_and_join()
 
