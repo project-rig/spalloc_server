@@ -637,7 +637,7 @@ def test_keepalive_expiration(fast_keepalive_config, s, c):
     assert s._controller.get_job_state(job_id).state != JobState.destroyed
 
     # Should get killed
-    time.sleep(0.25)
+    time.sleep(0.35)
     assert s._controller.get_job_state(job_id).state == JobState.destroyed
 
 

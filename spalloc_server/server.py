@@ -62,7 +62,7 @@ class PollingServerCore(object):
 
             # Create your own socket pair
             temp_sock = socket.socket()
-            temp_sock.setblocking(False)
+            temp_sock.setblocking(True)
             temp_sock.bind(('', 0))
             port = temp_sock.getsockname()[1]
             temp_sock.listen(1)
@@ -112,7 +112,8 @@ class PollingServerCore(object):
                     yield self._fdmap[fd]
         else:
             channels = self._fdmap.values()
-            readable, _, _ = select.select(channels, [], [])
+            readable, _, _ = select.select(
+                channels, [], [], timeout_check_interval)
             for channel in readable:
                 if channel == self._notify_recv:
                     self._notify_recv.recv(BUFFER_SIZE)
