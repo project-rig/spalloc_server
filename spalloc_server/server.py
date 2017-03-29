@@ -260,7 +260,7 @@ class Server(PollingServerCore):
         return path.join(dirname, filename)
 
     def _sighup_handler(self, signum, frame):
-        """Handler for SIGINT. If such a signal is delivered, will trigger a
+        """Handler for SIGHUP. If such a signal is delivered, will trigger a
         reread of the configuration file.
 
         Parameters
@@ -268,7 +268,7 @@ class Server(PollingServerCore):
         signum : int
         frame :
         """
-        if signum == signal.SIGINT:
+        if signum == signal.SIGHUP:  # @UndefinedVariable
             self._reload_config = True
             self.wake()
 
