@@ -419,13 +419,16 @@ def test_read_config_file(simple_config, s):
 
 @pytest.mark.timeout(1.0)
 def test_reread_config_file(simple_config, s):
+    if not hasattr(signal, "SIGHUP"):
+        return
+
     # Make sure config re-reading works
     assert list(s._controller.machines) == ["m"]
 
     # Modify config file
     with open(simple_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
-    os.kill(os.getpid(), signal.SIGINT)
+    os.kill(os.getpid(), signal.SIGHUP)
     time.sleep(0.2)
 
     # Configuration should have changed accordingly
@@ -767,9 +770,11 @@ def test_machine_notifications(double_config, s):
     assert c1.get_notification() == {"machines_changed": ["m1"]}
 
     # Make sure machine changes get announced
+    if not hasattr(signal, "SIGHUP"):
+        return
     with open(double_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
-    os.kill(os.getpid(), signal.SIGINT)
+    os.kill(os.getpid(), signal.SIGHUP)
 
     assert c0.get_notification() == {"machines_changed": ["m0"]}
     assert c1.get_notification() in ({"machines_changed": ["m0", "m1"]},
