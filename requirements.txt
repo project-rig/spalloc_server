@@ -1,4 +1,3 @@
-rig
 six
 enum-compat
 inotify_simple
