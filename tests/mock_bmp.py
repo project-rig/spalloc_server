@@ -105,7 +105,7 @@ class MockBMP(Thread):
                         self._receiver.send_to(
                             struct.pack("<2x") + response.bytestring, address)
             except Exception as e:
-                if self._running:
+                if self._running:  # pragma: no cover
                     traceback.print_exc()
                     self._error = e
 
