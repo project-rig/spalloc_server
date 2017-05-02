@@ -121,7 +121,8 @@ from enum import IntEnum
 from six import iteritems
 
 from spalloc_server.links import Links
-from spinn_machine.geometry import Spinn5_geometry
+from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
+
 
 link_to_vector = {
     (0, Links.north): (0, 0, 2),
@@ -136,8 +137,10 @@ link_to_vector = {
     (2, Links.north_east): (1, 1, -2),
     (2, Links.east): (0, 0, -1),
 }
-"""A lookup from (z, :py:class:`rig.links.Links`) to (dx, dy, dz)."""
 
+"""
+A lookup from (z, :py:class:`spalloc_server.links.Links`) to (dx, dy, dz).
+"""
 link_to_vector.update({
     (z + dz, link.opposite): (-dx, -dy, -dz)
     for (z, link), (dx, dy, dz) in iteritems(link_to_vector)
@@ -151,7 +154,7 @@ def board_down_link(x1, y1, z1, link, width, height):
     ----------
     x1, y1, z1 : int
         The board coordinates from which a link will be traversed.
-    link : :py:class:`rig.links.Link`
+    link : :py:class:`spalloc_server.links.Link`
         The link to follow.
     width, height : int
         The dimensions of the system in triads.
@@ -226,9 +229,10 @@ def chip_to_board(x, y, w, h):
         Board coordinates.
     """
     # Convert to coordinate of chip at the bottom-left-corner of the board
-    # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-    # numpy integer types which are not JSON serialiseable.
-    x, y = map(int, Spinn5_geometry.local_eth_coord(x, y, w, h))
+    x, y = map(
+        int,
+        SpiNNakerTriadGeometry.get_spinn5_geometry()
+        .get_ethernet_chip_coordinates(x, y, w, h))
 
     # The coordinates of the chip within its triad
     tx = x % 12

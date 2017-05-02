@@ -18,7 +18,7 @@ for mod_name in MOCK_MODULES:
     except ImportError:
         sys.modules.update({mod_name: Mock()})
 
-AUTHORS = u'Project Rig'
+AUTHORS = u'Human Brain Project'
 
 
 #
@@ -77,7 +77,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'SpiNNaker Partitioning Server'
-copyright = u'2016, the Rig Project'
+copyright = u'2016-2017, the University of Manchester'
 
 # Autodoc should list members in the same order as the source code.
 autodoc_member_order = "bysource"

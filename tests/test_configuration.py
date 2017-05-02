@@ -5,8 +5,7 @@ import os
 
 from spalloc_server.configuration import \
     Configuration, Machine, board_locations_from_spinner
-
-from rig.links import Links
+from spalloc_server.links import Links
 
 
 @pytest.yield_fixture
@@ -24,6 +23,7 @@ def spinner_ethernet_chips_csv():
                 "0,0,3,16,8\n"
                 "0,0,1,20,4\n")
 
+    os.close(fd)
     yield filename
 
     os.remove(filename)

@@ -15,8 +15,7 @@ import json
 
 from six import itervalues
 
-from rig.links import Links
-
+from spalloc_server.links import Links
 from spalloc_server.controller import JobState
 from spalloc_server.server import Server, main
 from spalloc_server.configuration import Configuration
@@ -29,6 +28,10 @@ from common import simple_machine
 pytestmark = pytest.mark.usefixtures("MockABC")
 
 logging.basicConfig(level=logging.INFO)
+
+
+class DisconnectedException(Exception):
+    pass
 
 
 class SimpleClient(object):  # pragma: no cover
@@ -45,7 +48,7 @@ class SimpleClient(object):  # pragma: no cover
         while b"\n" not in self.buf:
             data = self.sock.recv(length)
             if not data:
-                raise Exception("Socket disconnected!")
+                raise DisconnectedException("Socket disconnected!")
             self.buf += data
         line, _, self.buf = self.buf.partition(b"\n")
         return line
@@ -82,6 +85,58 @@ class SimpleClient(object):  # pragma: no cover
         else:
             line = self.recv_line()
             return json.loads(line.decode("utf-8"))
+
+
+class EvilClient(object):  # pragma: no cover
+    """An evil line receiving and sending client."""
+
+    def __init__(self, host="127.0.0.1", port=22244):
+        self._host = host
+        self._port = port
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_INET,
+                                  socket.SOCK_STREAM)
+        self.sock.connect((self._host, self._port))
+        self.buf = b""
+        self.notifications = []
+
+    def _recv_line(self, length=1024):
+        while b"\n" not in self.buf:
+            data = self.sock.recv(length)
+            if not data:
+                raise DisconnectedException("Socket disconnected!")
+            self.buf += data
+        line, _, self.buf = self.buf.partition(b"\n")
+        return line
+
+    def close(self):
+        try:
+            self.sock.close()
+        except:
+            pass
+
+    def get_return(self):
+        while True:
+            line = self._recv_line()
+            try:
+                resp = json.loads(line.decode("utf-8"))
+            except:
+                print("Bad line: {}".format(repr(line)))
+                raise
+            if "return" in resp:
+                return resp["return"]
+            self.notifications.append(resp)
+
+    def call(self, call):
+        self.sock.send(call.replace("'", "\"").encode("utf-8") + b"\n")
+        return self.get_return()
+
+    def get_notification(self):
+        if self.notifications:
+            return self.notifications.pop(0)
+        line = self._recv_line()
+        return json.loads(line.decode("utf-8"))
 
 
 @pytest.yield_fixture
@@ -217,6 +272,13 @@ def c():
     c = SimpleClient()
     yield c
     c.close()
+
+
+@pytest.yield_fixture
+def evil():
+    evil = EvilClient()
+    yield evil
+    evil.close()
 
 
 @pytest.mark.timeout(1.0)
@@ -357,6 +419,9 @@ def test_read_config_file(simple_config, s):
 
 @pytest.mark.timeout(1.0)
 def test_reread_config_file(simple_config, s):
+    if not hasattr(signal, "SIGHUP"):
+        return
+
     # Make sure config re-reading works
     assert list(s._controller.machines) == ["m"]
 
@@ -393,7 +458,7 @@ def test_bad_disconnect(simple_config, s, monkeypatch):
     client = Mock()
     client.fileno.return_value = 1
     client.getpeername.side_effect = OSError()
-    monkeypatch.setattr(s, "_client_sockets", {1: client})
+    monkeypatch.setattr(s, "_fdmap", {1: client})
     monkeypatch.setattr(s, "_client_buffers", {client: b""})
     monkeypatch.setattr(s, "_poll", Mock())
 
@@ -434,6 +499,29 @@ def test_bad_send_change_notifications(monkeypatch, simple_config, s):
 def test_version_command(simple_config, s, c):
     # First basic test of calling a remote method
     assert c.call("version") == __version__
+
+
+@pytest.mark.timeout(2.0)
+@pytest.mark.parametrize("badreq",
+                         ["{", "{}", "{'command':123}",
+                          "{'command':'no such command'}",
+                          "{'command':'version','args':'hoho'}",
+                          "{'command':'version','kwargs':'hoho'}",
+                          # create_job without owner should fail
+                          "{'command':'create_job'}"])
+def test_evil_calls(simple_config, s, evil, badreq):
+    evil.connect()
+    assert evil.call("{'command':'version'}") == __version__
+    with pytest.raises(DisconnectedException):
+        evil.call(badreq)
+
+
+@pytest.mark.timeout(3.0)
+def test_evil_calls2(simple_config, s, evil):
+    evil.connect()
+    assert evil.call("{'command':'version'}") == __version__
+    assert evil.call("{'command':'version','kwargs':{'client':'hoho'}}") \
+        == __version__
 
 
 @pytest.mark.timeout(2.0)
@@ -555,7 +643,7 @@ def test_keepalive_expiration(fast_keepalive_config, s, c):
     assert s._controller.get_job_state(job_id).state != JobState.destroyed
 
     # Should get killed
-    time.sleep(0.25)
+    time.sleep(0.35)
     assert s._controller.get_job_state(job_id).state == JobState.destroyed
 
 
@@ -688,6 +776,8 @@ def test_machine_notifications(double_config, s):
     assert c1.get_notification() == {"machines_changed": ["m1"]}
 
     # Make sure machine changes get announced
+    if not hasattr(signal, "SIGHUP"):
+        return
     with open(double_config, "w") as f:
         f.write("configuration = {}".format(repr(Configuration())))
     os.kill(os.getpid(), signal.SIGHUP)
@@ -710,9 +800,17 @@ def test_job_notify_register_unregister(simple_config, s):
     assert c1.call("version") == __version__
 
     # Get the sockets connected to the clients
-    s0, s1 = itervalues(s._client_sockets)
-    if s0.getpeername() != c0.sock.getsockname():  # pragma: no cover
-        s0, s1 = s1, s0
+    s0 = s1 = None
+    for sock in itervalues(s._fdmap):
+        try:
+            peer = sock.getpeername()
+        except:
+            continue
+        if peer == c0.sock.getsockname():
+            s0 = sock
+        elif peer == c1.sock.getsockname():
+            s1 = sock
+    assert s0 is not None and s1 is not None
 
     # Initially no matches should be present
     assert s._client_job_watches == {}
@@ -778,9 +876,17 @@ def test_machine_notify_register_unregister(simple_config, s):
     assert c1.call("version") == __version__
 
     # Get the sockets connected to the clients
-    s0, s1 = itervalues(s._client_sockets)
-    if s0.getpeername() != c0.sock.getsockname():  # pragma: no cover
-        s0, s1 = s1, s0
+    s0 = s1 = None
+    for sock in itervalues(s._fdmap):
+        try:
+            peer = sock.getpeername()
+        except:
+            continue
+        if peer == c0.sock.getsockname():
+            s0 = sock
+        elif peer == c1.sock.getsockname():
+            s1 = sock
+    assert s0 is not None and s1 is not None
 
     # Initially no matches should be present
     assert s._client_machine_watches == {}

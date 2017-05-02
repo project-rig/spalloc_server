@@ -12,8 +12,6 @@ from pytz import utc
 
 from collections import OrderedDict
 
-from rig.links import Links
-
 import pickle
 
 from six import iteritems
@@ -21,6 +19,7 @@ from six import iteritems
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.configuration import Machine
 from spalloc_server.controller import Controller, JobState
+from spalloc_server.links import Links
 
 from common import simple_machine
 
@@ -339,14 +338,14 @@ def test_set_machines_sequencing(conn):
     conn.machines = {"m0": m0}
     controller_m0 = conn._bmp_controllers["m0"][(0, 0)]
     with controller_m0.handler_lock:
-        conn.create_job(owner="me")
+        conn.create_job(owner="me", keepalive=60.0)
 
         # ... and we swap the machine out for another ...
         conn.machines = {"m1": m1}
 
         # Our newly created job should be blocked in power-on until the
         # previous machine finishes shutting down.
-        job_id = conn.create_job(owner="me")
+        job_id = conn.create_job(owner="me", keepalive=60.0)
         time.sleep(0.1)
         assert conn.get_job_state(job_id).state is JobState.power
 
@@ -365,14 +364,10 @@ def test_get_machines(conn, m):
 def test_create_job(conn, m):
     controller = conn._bmp_controllers[m][(0, 0)]
 
-    # Should fail with missing owner
-    with pytest.raises(TypeError):
-        conn.create_job()
-
     with controller.handler_lock:
         # Make sure newly added jobs can start straight away and have the BMP
         # block
-        job_id1 = conn.create_job(1, 1, owner="me")
+        job_id1 = conn.create_job(1, 1, owner="me", keepalive=60.0)
 
         # Sane default keepalive should be selected
         assert conn._jobs[job_id1].keepalive == 60.0
@@ -407,7 +402,7 @@ def test_create_job(conn, m):
     assert conn.get_job_state(job_id2).state is JobState.queued
 
     # Adding a job which cannot fit should come out immediately cancelled
-    job_id3 = conn.create_job(2, 2, owner="me")
+    job_id3 = conn.create_job(2, 2, owner="me", keepalive=60.0)
     assert job_id1 != job_id3 and job_id2 != job_id3
     assert conn.get_job_state(job_id3).state is JobState.destroyed
     assert conn.get_job_state(job_id3).reason \
@@ -493,7 +488,7 @@ def test_get_job_state(conn, m):
 
 @pytest.mark.timeout(1.0)
 def test_get_job_machine_info(conn, m):
-    job_id = conn.create_job(1, 1, owner="me")
+    job_id = conn.create_job(1, 1, owner="me", keepalive=60.0)
     w, h, connections, machine_name, boards = \
         conn.get_job_machine_info(job_id)
     assert w == 12
@@ -519,7 +514,7 @@ def test_get_job_machine_info(conn, m):
 def test_get_job_machine_info_width_height(conn, args, width, height):
     conn.machines = {"m": simple_machine("m", 2, 3)}
 
-    job_id = conn.create_job(*args, owner="me")
+    job_id = conn.create_job(*args, owner="me", keepalive=60.0)
     w, h, connections, machine_name, boards = \
         conn.get_job_machine_info(job_id)
 
@@ -528,7 +523,7 @@ def test_get_job_machine_info_width_height(conn, args, width, height):
 
 
 def test_power_on_job_boards(conn, m):
-    job_id = conn.create_job(owner="me")
+    job_id = conn.create_job(owner="me", keepalive=60.0)
 
     # Allow the boards time to power on
     time.sleep(0.05)
@@ -556,12 +551,12 @@ def test_power_on_job_boards(conn, m):
     conn.power_on_job_boards(1234)
 
     # Should not do anything for pending job
-    job_id_pending = conn.create_job(1, 2, owner="me")
+    job_id_pending = conn.create_job(1, 2, owner="me", keepalive=60.0)
     conn.power_on_job_boards(job_id_pending)
 
 
 def test_power_off_job_boards(conn, m):
-    job_id = conn.create_job(owner="me")
+    job_id = conn.create_job(owner="me", keepalive=60.0)
 
     # Allow the boards time to power on
     time.sleep(0.05)
@@ -584,7 +579,7 @@ def test_power_off_job_boards(conn, m):
     conn.power_off_job_boards(1234)
 
     # Should not do anything for pending job
-    job_id_pending = conn.create_job(1, 2, owner="me")
+    job_id_pending = conn.create_job(1, 2, owner="me", keepalive=60.0)
     conn.power_off_job_boards(job_id_pending)
 
 
@@ -592,8 +587,8 @@ def test_destroy_job(conn, m):
     controller0 = conn._bmp_controllers[m][(0, 0)]
     controller1 = conn._bmp_controllers[m][(0, 1)]
 
-    job_id1 = conn.create_job(1, 2, owner="me")
-    job_id2 = conn.create_job(1, 2, owner="me")
+    job_id1 = conn.create_job(1, 2, owner="me", keepalive=60.0)
+    job_id2 = conn.create_job(1, 2, owner="me", keepalive=60.0)
 
     controller0.set_power_calls = []
     controller1.set_power_calls = []
@@ -632,7 +627,7 @@ def test_destroy_job(conn, m):
 
 
 def test_list_jobs(conn, m):
-    job_id1 = conn.create_job(owner="me")
+    job_id1 = conn.create_job(owner="me", keepalive=60.0)
     job_id2 = conn.create_job(1, 2, require_torus=True, owner="you",
                               keepalive=None)
     time.sleep(0.05)
@@ -736,8 +731,14 @@ class TestWhereIs(object):
         with pytest.raises(TypeError):
             conn.where_is(machine="m", x=0, y=0)  # z missing
 
-    def test_unknown_machine(self, conn):
-        assert conn.where_is(machine="bad", chip_x=0, chip_y=0) is None
+    def test_failed_search(self, conn, big_m):
+        # Searches that don't find anything useful should return None
+        bad = "bad"
+        assert conn.where_is(machine=bad, chip_x=0, chip_y=0) is None
+        assert conn.where_is(machine=bad, cabinet=0, frame=0, board=0) is None
+        assert conn.where_is(machine=bad, x=0, y=0, z=0) is None
+        assert conn.where_is(machine=big_m, cabinet=9001, frame=9001,
+                             board=9001) is None
 
     @pytest.mark.parametrize("chip_xy,logical",
                              [((0, 0), (0, 0, 0)),
@@ -823,8 +824,8 @@ class TestWhereIs(object):
                               ((-1, 4), None)])
     def test_return_job_id(self, conn, big_m, chip_xy, job_id):
         x, y = chip_xy
-        assert conn.create_job(2, 2, owner="me") == 1
-        assert conn.create_job(3, 1, 2, owner="me") == 2
+        assert conn.create_job(2, 2, owner="me", keepalive=60.0) == 1
+        assert conn.create_job(3, 1, 2, owner="me", keepalive=60.0) == 2
         assert conn.where_is(machine=big_m,
                              chip_x=x, chip_y=y)["job_id"] == job_id
 
@@ -845,8 +846,8 @@ class TestWhereIs(object):
                               ((41, 0), (1, 4))])
     def test_return_job_chip(self, conn, big_m, chip_xy, job_chip):
         x, y = chip_xy
-        conn.create_job(2, 2, owner="me")
-        conn.create_job(3, 1, 2, owner="me")
+        conn.create_job(2, 2, owner="me", keepalive=60.0)
+        conn.create_job(3, 1, 2, owner="me", keepalive=60.0)
         assert conn.where_is(machine=big_m,
                              chip_x=x, chip_y=y)["job_chip"] == job_chip
 
@@ -883,8 +884,8 @@ class TestWhereIs(object):
                               (1, (0, 4))])  # Neighbouring board
     def test_input_bad_job_chip(self, conn, big_m_with_hole,
                                 job_id, job_chip_xy):
-        assert conn.create_job(2, 2, owner="me") == 1
-        assert conn.create_job(2, 1, owner="me") == 2
+        assert conn.create_job(2, 2, owner="me", keepalive=60.0) == 1
+        assert conn.create_job(2, 1, owner="me", keepalive=60.0) == 2
 
         x, y = job_chip_xy
         assert conn.where_is(job_id=job_id, chip_x=x, chip_y=y) is None
@@ -897,8 +898,8 @@ class TestWhereIs(object):
                               (2, (11, 15), (35, 15))])
     def test_input_job_chip(self, conn, big_m_with_hole,
                             job_id, job_chip_xy, chip_xy):
-        assert conn.create_job(2, 2, owner="me") == 1
-        assert conn.create_job(2, 1, owner="me") == 2
+        assert conn.create_job(2, 2, owner="me", keepalive=60.0) == 1
+        assert conn.create_job(2, 1, owner="me", keepalive=60.0) == 2
 
         x, y = job_chip_xy
         loc = conn.where_is(job_id=job_id, chip_x=x, chip_y=y)
@@ -911,7 +912,7 @@ class TestWhereIs(object):
                           (False, JobState.destroyed, JobState.destroyed)])
 def test_bmp_on_request_complete(MockABC, conn, m,
                                  success, mid_state, end_state):
-    job_id = conn.create_job(owner="me")
+    job_id = conn.create_job(owner="me", keepalive=60.0)
     job = conn._jobs[job_id]
 
     # Give the BMPs time to run (which use the bmp_requests_until_ready...)
@@ -942,7 +943,7 @@ def test_bmp_on_request_complete(MockABC, conn, m,
 @pytest.mark.parametrize("power", [True, False])
 @pytest.mark.parametrize("link_enable", [True, False, None])
 def test_set_job_power_and_links(MockABC, conn, m, power, link_enable):
-    job_id = conn.create_job(owner="me")
+    job_id = conn.create_job(owner="me", keepalive=60.0)
     job = conn._jobs[job_id]
 
     # Allow BMPs time to power on the board...
@@ -990,7 +991,7 @@ def test_pickle(MockABC):
     conn = Controller()
     try:
         conn.machines = {"m": simple_machine("m", 1, 2)}
-        job_id = conn.create_job(owner="me")
+        job_id = conn.create_job(owner="me", keepalive=60.0)
         time.sleep(0.05)
         assert conn.get_job_state(job_id).state == JobState.ready
 
@@ -1027,10 +1028,10 @@ def test_max_retired_jobs(conn):
 
     # Should have an effect. Create a number of impossible jobs which will be
     # immediately retired.
-    job_id0 = conn.create_job(owner="me")
-    job_id1 = conn.create_job(owner="me")
-    job_id2 = conn.create_job(owner="me")
-    job_id3 = conn.create_job(owner="me")
+    job_id0 = conn.create_job(owner="me", keepalive=60.0)
+    job_id1 = conn.create_job(owner="me", keepalive=60.0)
+    job_id2 = conn.create_job(owner="me", keepalive=60.0)
+    job_id3 = conn.create_job(owner="me", keepalive=60.0)
 
     assert conn.get_job_state(job_id0).state == JobState.unknown
     assert conn.get_job_state(job_id1).state == JobState.destroyed
@@ -1052,7 +1053,7 @@ def test_max_retired_jobs(conn):
     assert conn.get_job_state(job_id2).state == JobState.unknown
     assert conn.get_job_state(job_id3).state == JobState.unknown
 
-    conn.create_job(owner="me")
+    conn.create_job(owner="me", keepalive=60.0)
     assert conn.get_job_state(job_id3).state == JobState.unknown
 
 
@@ -1064,7 +1065,7 @@ def test_changed_jobs(conn, m):
 
     with controller.handler_lock:
         # Job allocation (pre-power on)
-        job_id0 = conn.create_job(1, 2, owner="me")
+        job_id0 = conn.create_job(1, 2, owner="me", keepalive=60.0)
         assert conn.changed_jobs == set([job_id0])
         assert conn.changed_jobs == set()
 
@@ -1075,7 +1076,7 @@ def test_changed_jobs(conn, m):
     assert conn.changed_jobs == set()
 
     # Job queued
-    job_id1 = conn.create_job(owner="me")
+    job_id1 = conn.create_job(owner="me", keepalive=60.0)
     assert conn.changed_jobs == set([job_id1])
     assert conn.changed_jobs == set()
 
@@ -1104,7 +1105,7 @@ def test_changed_jobs(conn, m):
     assert conn.changed_jobs == set()
 
     # Impossible job should just fail
-    job_id2 = conn.create_job(2, 3, owner="me")
+    job_id2 = conn.create_job(2, 3, owner="me", keepalive=60.0)
     assert conn.changed_jobs == set([job_id2])
     assert conn.changed_jobs == set()
 
@@ -1137,7 +1138,7 @@ def test_changed_machines(conn):
     assert conn.changed_machines == set()
 
     # Allocating jobs
-    job_id = conn.create_job(owner="me")
+    job_id = conn.create_job(owner="me", keepalive=60.0)
     assert conn.changed_machines == set(["m1"])
     assert conn.changed_machines == set()
 
@@ -1159,7 +1160,7 @@ def test_on_background_state_change(conn, m, on_background_state_change):
 
     with controller0.handler_lock:
         with controller1.handler_lock:
-            job_id = conn.create_job(1, 2, owner="me")
+            job_id = conn.create_job(1, 2, owner="me", keepalive=60.0)
 
             # Should not get called because not powered on yet
             time.sleep(0.05)

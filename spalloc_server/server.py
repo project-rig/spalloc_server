@@ -5,7 +5,7 @@ SpiNNaker Partitioning Server, containing the :py:func:`function <.main>` which
 is mapped to the ``spalloc-server`` command-line tool.
 """
 
-import os.path
+from os import path
 import logging
 import pickle
 import socket
@@ -15,10 +15,11 @@ import threading
 import json
 import argparse
 import time
+import errno
 
 from collections import OrderedDict
 
-from six import itervalues, iteritems, string_types
+from six import iteritems, string_types
 
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
@@ -26,7 +27,7 @@ from spalloc_server.controller import Controller
 
 BUFFER_SIZE = 1024
 
-_COMMANDS = OrderedDict()
+_COMMANDS = {}
 """A dictionary from command names to (unbound) methods of the
 :py:class:`.Server` class.
 """
@@ -40,7 +41,96 @@ def spalloc_command(f):
     return f
 
 
-class Server(object):
+class PollingServerCore(object):
+    """Wrapper around the operating system's poll() call.
+    """
+    def __init__(self):
+        # The poll object used for listening for connections
+        self._poll = None
+        if hasattr(select, "poll"):
+            self._poll = select.poll()  # @UndefinedVariable
+
+        # Used to map file descriptors to channels
+        self._fdmap = {}
+
+        # This socket pair is used by background threads to interrupt the main
+        # event loop.
+        self._notify_send, self._notify_recv = None, None
+        if hasattr(socket, "socketpair"):
+            self._notify_send, self._notify_recv = socket.socketpair()
+        else:
+
+            # Create your own socket pair
+            temp_sock = socket.socket()
+            temp_sock.setblocking(True)
+            temp_sock.bind(('', 0))
+            port = temp_sock.getsockname()[1]
+            temp_sock.listen(1)
+            self._notify_send = socket.socket()
+            self._notify_send.setblocking(False)
+            try:
+                self._notify_send.connect(('localhost', port))
+            except socket.error as err:
+                # EWOULDBLOCK is not an error, as the socket is non-blocking
+                if err.errno != errno.EWOULDBLOCK:
+                    raise
+            self._notify_recv, _ = temp_sock.accept()
+        self.register_channel(self._notify_recv)
+
+    def register_channel(self, channel):
+        """Register a channel (file, socket, etc.) for being reported via the
+        :py:meth:`.ready_channels` method.
+        """
+        if self._poll is not None:
+            self._poll.register(
+                channel.fileno(), select.POLLIN)  # @UndefinedVariable
+        self._fdmap[channel.fileno()] = channel
+
+    def unregister_channel(self, channel):
+        """Unregister a channel (file, socket, etc.) for being reported via
+        the :py:meth:`.ready_channels` method.
+        """
+        if self._poll is not None:
+            self._poll.unregister(channel)
+        if channel.fileno() in self._fdmap:
+            del self._fdmap[channel.fileno()]
+
+    def ready_channels(self, timeout_check_interval):
+        """Waits up to timeout_check_interval milliseconds for a channel to
+        become readable. Multiple channels may become readable at once.
+
+        :return: An iterable listing the channels that are currently
+                 readable. Can be empty if the poller is woken via the
+                 :py:meth:`.wake` call.
+        """
+        if self._poll is not None:
+            events = self._poll.poll(timeout_check_interval)
+            for fd, _ in events:
+                if fd == self._notify_recv.fileno():
+                    self._notify_recv.recv(BUFFER_SIZE)
+                else:
+                    yield self._fdmap[fd]
+        else:
+            channels = self._fdmap.values()
+            readable, _, _ = select.select(
+                channels, [], [], timeout_check_interval)
+            for channel in readable:
+                if channel == self._notify_recv:
+                    self._notify_recv.recv(BUFFER_SIZE)
+                else:
+                    yield channel
+
+    def wake(self):
+        """Notify the waiting thread that something has happened.
+
+        Calling this method simply wakes up the waiting thread (which will be
+        waiting in :py:meth:`.ready_channels`) causing it to perform all its
+        usual checks and processing steps.
+        """
+        self._notify_send.send(b"x")
+
+
+class Server(PollingServerCore):
     """A TCP server which manages, power, partitioning and scheduling of jobs
     on SpiNNaker machines.
 
@@ -84,6 +174,8 @@ class Server(object):
         port : int, optional
             Which port to listen on. Defaults to 22244.
         """
+        PollingServerCore.__init__(self)
+
         self._config_filename = config_filename
         self._cold_start = cold_start
         self._port = port
@@ -95,19 +187,9 @@ class Server(object):
         self._server_thread = threading.Thread(target=self._run,
                                                name="Server Thread")
 
-        # The poll object used for listening for connections
-        self._poll = select.poll()  # @UndefinedVariable
-
-        # This socket pair is used by background threads to interrupt the main
-        # event loop.
-        self._notify_send, self._notify_recv = socket.socketpair()
-        self._register(self._notify_recv)
-
         # Currently open sockets to clients. Once server started, should only
         # be accessed from the server thread.
         self._server_socket = None
-        # {fd: socket, ...}
-        self._client_sockets = {}
 
         # Buffered data received from each socket
         # {fd: buf, ...}
@@ -125,14 +207,11 @@ class Server(object):
         self._configuration = Configuration()
 
         # Infer the saved-state location
-        self._state_filename = os.path.join(
-            os.path.dirname(self._config_filename),
-            ".{}.state.{}".format(os.path.basename(self._config_filename),
-                                  __version__))
+        self._state_filename = self._get_state_filename(self._config_filename)
 
         # Attempt to restore saved state if required
         self._controller = None
-        if not self._cold_start and os.path.isfile(self._state_filename):
+        if not self._cold_start and path.isfile(self._state_filename):
             try:
                 with open(self._state_filename, "rb") as f:
                     self._controller = pickle.load(f)
@@ -151,7 +230,7 @@ class Server(object):
 
         # Notify the background thread when something changes in the background
         # of the controller (e.g. power state changes).
-        self._controller.on_background_state_change = self._notify
+        self._controller.on_background_state_change = self.wake
 
         # Read configuration file. This must succeed when the server is first
         # being started.
@@ -159,7 +238,8 @@ class Server(object):
             raise Exception("Config file could not be loaded.")
 
         # Set up SIGHUP signal handler for config file reloading
-        signal.signal(signal.SIGHUP, self._sighup_handler)
+        if hasattr(signal, "SIGHUP"):
+            signal.signal(signal.SIGHUP, self._sighup_handler)
 
         # Start the server
         self._server_thread.start()
@@ -167,26 +247,18 @@ class Server(object):
         # Flag for checking if the server is still alive
         self._running = True
 
-    def _register(self, fd):
-        """Stabilised version to prevent intermittent failures in testing."""
-        if self._poll is not None and fd is not None:
-            self._poll.register(fd, select.POLLIN)  # @UndefinedVariable
+    def _get_state_filename(self, cfg):
+        """How to get the name of the state file from the name of another file
+        (expected to be the config file). Assumes that the config file is in a
+        directory that can be written to.
 
-    def _unregister(self, fd):
-        """Stabilised version to prevent intermittent failures in testing."""
-        if self._poll is not None and fd is not None:
-            try:
-                self._poll.unregister(fd)
-            except:
-                pass
-
-    def _notify(self):
-        """Notify the background thread that something has happened.
-
-        Calling this method simply wakes up the server thread causing it to
-        perform all its usual checks and processing steps.
+        :param str cfg: The name of the file to use as a base.
         """
-        self._notify_send.send(b"x")
+        # Factored out for ease of reading.
+        dirname = path.dirname(cfg)
+        basename = path.basename(cfg)
+        filename = ".{}.state.{}".format(basename, __version__)
+        return path.join(dirname, filename)
 
     def _sighup_handler(self, signum, frame):
         """Handler for SIGHUP. If such a signal is delivered, will trigger a
@@ -197,9 +269,9 @@ class Server(object):
         signum : int
         frame :
         """
-        if signum == signal.SIGHUP:
+        if signum == signal.SIGHUP:  # @UndefinedVariable
             self._reload_config = True
-            self._notify()
+            self.wake()
 
     def _read_config_file(self):
         """(Re-)read the server configuration.
@@ -215,8 +287,8 @@ class Server(object):
         self._reload_config = False
         try:
             with open(self._config_filename, "r") as f:
-                config_script = f.read()  # pragma: no branch
-        except (IOError, OSError):
+                config_script = f.read()
+        except (IOError, OSError):  # pragma: no cover
             logging.exception("Could not read config file %s",
                               self._config_filename)
             return False
@@ -250,17 +322,11 @@ class Server(object):
         if (new.ip != old.ip or
                 self._server_socket is None):
             # Close all open connections
-            if self._close():
+            if self._close():  # pragma: no cover
                 time.sleep(0.25)  # Ugly hack; fully release socket now
 
             # Create a new server socket
-            self._server_socket = socket.socket(socket.AF_INET,
-                                                socket.SOCK_STREAM)
-            self._server_socket.setsockopt(socket.SOL_SOCKET,
-                                           socket.SO_REUSEADDR, 1)
-            self._server_socket.bind((new.ip, self._port))
-            self._server_socket.listen(5)
-            self._register(self._server_socket)
+            self._open(new.ip)
 
         # Update the controller
         self._controller.max_retired_jobs = new.max_retired_jobs
@@ -271,15 +337,27 @@ class Server(object):
                      self._config_filename)
         return True
 
+    def _open(self, ipaddress):
+        """Create a new server socket.
+
+        :param str ipaddress: The local address of the socket.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((ipaddress, self._port))
+        sock.listen(5)
+        self.register_channel(sock)
+        self._server_socket = sock
+
     def _close(self):
         """Close all server sockets and disconnect all client connections."""
         result = False
         if self._server_socket is not None:
-            self._unregister(self._server_socket)
+            self.unregister_channel(self._server_socket)
             self._server_socket.close()
             result = True
             self._server_socket = None
-        for client_socket in list(itervalues(self._client_sockets)):
+        for client_socket in list(self._client_buffers.keys()):
             self._disconnect_client(client_socket)
         return result
 
@@ -295,9 +373,6 @@ class Server(object):
         except:
             logging.info("Client %s disconnected.", client)
 
-        # Remove from the client list
-        del self._client_sockets[client.fileno()]
-
         # Clear input buffer
         del self._client_buffers[client]
 
@@ -306,7 +381,7 @@ class Server(object):
         self._client_machine_watches.pop(client, None)
 
         # Stop watching the client's socket for data
-        self._unregister(client)
+        self.unregister_channel(client)
 
         # Disconnect the client
         client.close()
@@ -315,16 +390,13 @@ class Server(object):
         """Accept a new client."""
         try:
             client, addr = self._server_socket.accept()
-        except IOError as e:
+        except IOError as e:  # pragma: no cover
             logging.warn("problem when accepting connection", exc_info=e)
             return
         logging.info("New client connected from %s", addr)
 
         # Watch the client's socket for data
-        self._register(client)
-
-        # Keep a reference to the socket
-        self._client_sockets[client.fileno()] = client
+        self.register_channel(client)
 
         # Create a buffer for data sent by the client
         self._client_buffers[client] = b""
@@ -367,7 +439,7 @@ class Server(object):
             logging.info("lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
         command = _COMMANDS[commandName]
-        if command is None:
+        if command is None:  # pragma: no cover
             # Should be unreachable
             logging.critical("unexpected lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
@@ -452,45 +524,38 @@ class Server(object):
         """The main server thread.
 
         This 'infinite' loop runs in a background thread and waits for and
-        processes events such as the :py:meth:`._notify` method being called,
-        the config file changing, clients sending commands or new clients
-        connecting. It also periodically calls destroy_timed_out_jobs on the
+        processes events such as the :py:meth:`.PollingServerCore.wake` method
+        being called, the config file changing, clients sending commands or
+        new clients connecting. It also periodically calls
+        :py:meth:`.controller.Controller.destroy_timed_out_jobs` on the
         controller.
         """
         logging.info("Server running.")
         while not self._stop:
             # Wait for a connection to get opened/closed, a command to arrive,
             # the config file to change or the timeout to elapse.
-            events = self._poll.poll(
+            channels = self.ready_channels(
                 self._configuration.timeout_check_interval)
 
             # Cull any jobs which have timed out
             self._controller.destroy_timed_out_jobs()
 
-            for fd, event in events:
-                if fd == self._notify_recv.fileno():
-                    # _notify was called
-                    self._notify_recv.recv(BUFFER_SIZE)
-                elif self._server_socket is not None and \
-                        fd == self._server_socket.fileno():
+            for channel in channels:
+                if channel is None:  # pragma: no cover
+                    continue
+                if channel == self._server_socket:
                     # New client connected
                     self._accept_client()
-                elif fd in self._client_sockets:
+                else:
                     # Incoming data from client
-                    self._handle_commands(self._client_sockets[fd])
-                else:  # pragma: no cover
-                    # Should not get here...
-                    logging.critical("unexpected failure: " +
-                                     "unrecognised fd %s event %d", fd, event)
-                    # Got here, so try to unregister so we won't come back
-                    self._unregister(fd)
+                    self._handle_commands(channel)
 
             # Send any job/machine change notifications out
             self._send_change_notifications()
 
             # Config file changed, re-read it
             if self._reload_config:
-                if not self._read_config_file():
+                if not self._read_config_file():  # pragma: no cover
                     logging.warning("failed to reread configuration file")
 
     def is_alive(self):
@@ -508,7 +573,7 @@ class Server(object):
 
         # Shut down server thread
         self._stop = True
-        self._notify()
+        self.wake()
         self._server_thread.join()
 
         # Close all connections
@@ -631,6 +696,12 @@ class Server(object):
         """
         if kwargs.get("tags", None) is not None:
             kwargs["tags"] = set(kwargs["tags"])
+        owner = kwargs.get("owner", None)
+        if owner is None:
+            raise TypeError("owner must be specified for all jobs")
+        kwargs["owner"] = str(owner)
+        keepalive = kwargs.get("keepalive", 60.0)
+        kwargs["keepalive"] = (None if keepalive is None else float(keepalive))
         return self._controller.create_job(*args, **kwargs)
 
     @spalloc_command
@@ -796,12 +867,12 @@ class Server(object):
             return
         if id is None:
             del watchset[client]
-        else:
-            watches = watchset[client]
-            if watches is not None:
-                watches.discard(id)
-                if len(watches) == 0:
-                    del watchset[client]
+            return
+        watches = watchset[client]
+        if watches is not None:
+            watches.discard(id)
+            if len(watches) == 0:
+                del watchset[client]
 
     @spalloc_command
     def notify_job(self, client, job_id=None):
@@ -1083,7 +1154,7 @@ def main(args=None):
     """Command-line launcher for the server.
 
     The server may be cleanly terminated using a keyboard interrupt (e.g.,
-    ctrl+c).
+    ctrl+c), and may be told to reload its configuration via SIGHUP.
 
     Parameters
     ----------
@@ -1116,7 +1187,10 @@ def main(args=None):
         # however in Python 2, such blocking calls are not interruptible so we
         # use this rather ugly workaround instead.
         while server.is_alive():  # pragma: no cover
-            time.sleep(0.1)
+            try:
+                time.sleep(0.1)
+            except IOError:
+                pass
     except KeyboardInterrupt:
         server.stop_and_join()
 

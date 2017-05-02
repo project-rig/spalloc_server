@@ -18,12 +18,11 @@ from datetime import datetime
 
 from pytz import utc
 
-from spinn_machine.geometry import Spinn5_geometry
-
 from spalloc_server.coordinates import \
     board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
 from spalloc_server.job_queue import JobQueue
 from spalloc_server.async_bmp_controller import AsyncBMPController
+from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
 
 
 class Controller(object):
@@ -396,13 +395,11 @@ class Controller(object):
         job_id : int
             The Job ID assigned to the job.
         """
-        with self._lock:
-            # Extract non-allocator arguments
-            owner = kwargs.pop("owner", None)
-            if owner is None:
-                raise TypeError("owner must be specified for all jobs.")
-            keepalive = kwargs.pop("keepalive", 60.0)
+        # Extract non-allocator arguments
+        owner = kwargs.pop("owner")
+        keepalive = kwargs.pop("keepalive")
 
+        with self._lock:
             # Generate a job ID
             job_id = self._next_id
             self._next_id += 1
@@ -625,10 +622,14 @@ class Controller(object):
                 # No board found
                 return None
 
-    # Workaround: spinn5_chip_coord (until at least Rig 0.13.2) returns
-    # numpy integer types which are not JSON serialiseable.
-    def _chip_coord(self, chip_x, chip_y):
-        return Spinn5_geometry.chip_coord(chip_x, chip_y)
+    def _job_for_location(self, machine, x, y, z):
+        """"Determine what job is running on the given board."""
+        for job_id, job in iteritems(self._jobs):
+            # NB: If machine is defined, boards must also be defined.
+            if (job.allocated_machine == machine and (x, y, z) in job.boards):
+                return job_id, job
+        # No job is allocated to the board
+        return None, None
 
     def _where_is_by_logical_triple(self, machine_name, x, y, z):
         """Helper for :py:meth:`.where_is()`"""
@@ -647,7 +648,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -656,20 +658,12 @@ class Controller(object):
             # Determine the board's physical location (fail if board does not
             # exist)
             cfb = machine.board_locations.get((x, y, z), None)
-            if cfb is None:
+            if cfb is None:  # pragma: no cover
                 return None
             cabinet, frame, board = cfb
 
             # Determine what job is running on that board
-            for job_id, job in iteritems(self._jobs):
-                # NB: If machine is defined, boards must also be defined.
-                if (job.allocated_machine == machine and
-                        (x, y, z) in job.boards):
-                    break
-            else:
-                # No job is allocated to the board
-                job_id = None
-                job = None
+            job_id, job = self._job_for_location(machine, x, y, z)
 
             return {
                 "machine": machine_name,
@@ -703,7 +697,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -712,20 +707,12 @@ class Controller(object):
             # Determine the board's physical location (fail if board does not
             # exist)
             cfb = machine.board_locations.get((x, y, z), None)
-            if cfb is None:
+            if cfb is None:  # pragma: no cover
                 return None
             cabinet, frame, board = cfb
 
             # Determine what job is running on that board
-            for job_id, job in iteritems(self._jobs):
-                # NB: If machine is defined, boards must also be defined.
-                if (job.allocated_machine == machine and
-                        (x, y, z) in job.boards):
-                    break
-            else:
-                # No job is allocated to the board
-                job_id = None
-                job = None
+            job_id, job = self._job_for_location(machine, x, y, z)
 
             return {
                 "machine": machine_name,
@@ -752,7 +739,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -766,15 +754,7 @@ class Controller(object):
             cabinet, frame, board = cfb
 
             # Determine what job is running on that board
-            for job_id, job in iteritems(self._jobs):
-                # NB: If machine is defined, boards must also be defined.
-                if (job.allocated_machine == machine and
-                        (x, y, z) in job.boards):
-                    break
-            else:
-                # No job is allocated to the board
-                job_id = None
-                job = None
+            job_id, job = self._job_for_location(machine, x, y, z)
 
             return {
                 "machine": machine_name,
@@ -801,7 +781,7 @@ class Controller(object):
 
             # Get the actual Machine
             machine = self._machines.get(machine_name, None)
-            if machine is None:
+            if machine is None:  # pragma: no cover
                 return None
 
             # Compensate chip coordinates for wrap-around
@@ -811,7 +791,8 @@ class Controller(object):
             chip_y %= chip_h
 
             # Determine the chip within the board
-            board_chip = self._chip_coord(chip_x, chip_y)
+            board_chip = SpiNNakerTriadGeometry.get_spinn5_geometry()\
+                .get_local_chip_coordinate(chip_x, chip_y)
 
             # Determine the logical board coordinates (and compensate for
             # wrap-around)
@@ -825,16 +806,7 @@ class Controller(object):
             cabinet, frame, board = cfb
 
             # Determine what job is running on that board
-            for found_job_id, job in iteritems(self._jobs):
-                # NB: If machine is defined, boards must also be defined.
-                if (job.allocated_machine == machine and
-                        (x, y, z) in job.boards):
-                    # Found the job
-                    break
-            else:
-                # No job is allocated to the board
-                found_job_id = None
-                job = None
+            found_job_id, job = self._job_for_location(machine, x, y, z)
 
             # Make sure the board found is actually running that job (this
             # won't be the case, e.g. if a user specifies a board within their
@@ -1292,7 +1264,7 @@ class MachineTuple(namedtuple("MachineTuple",
         The dimensions of the machine in triads.
     dead_boards : set([(x, y, z), ...])
         The coordinates of known-dead boards.
-    dead_links : set([(x, y, z, :py:class:`rig.links.Links`), ...])
+    dead_links : set([(x, y, z, :py:class:`spalloc_server.links.Links`), ...])
         The locations of known-dead links from the perspective of the sender.
         Links to dead boards may or may not be included in this list.
     """
@@ -1335,7 +1307,8 @@ class _Job(object):
         allocated yet).
     boards : set([(x, y, z), ...]) or None
         The boards allocated to the job or None if not allocated.
-    periphery : set([(x, y, z, :py:class:`rig.links.Links`), ...]) or None
+    periphery : set([(x, y, z,\
+                     :py:class:`spalloc_server.links.Links`), ...]) or None
         The links around the periphery of the job or None if not allocated.
     torus : :py:class:`spalloc_server.coordinates.WrapAround` or None
         Does the allocated set of boards have wrap-around links? None if

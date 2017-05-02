@@ -2,10 +2,12 @@ sudo: false
 language: python
 python:
         - 2.7
-        - 3.5
+        # Remove 3.5 because SpiNNMan isn't Py3-compatible yet
+        # - 3.5
 install:
-        # Workaround for code not yet hitting master
-        - pip install git+git://github.com/SpiNNakerManchester/SpiNNMachine.git@rigged-geometry
+        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNUtils.git@master
+        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMachine.git@master
+        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMan.git@master
         - python setup.py develop
         - pip install -r requirements-test.txt
         - pip install python-coveralls

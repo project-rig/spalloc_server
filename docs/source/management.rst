@@ -9,7 +9,7 @@ The server and its dependencies can be installed from PyPI like so::
     $ pip install spalloc_server
 
 The server is currently only compatible with Linux due to its use of the
-:py:func:`~select.poll` system call and inotify subsystem.
+:py:func:`~select.poll` system call.
 
 
 Operation
@@ -21,11 +21,28 @@ The SpiNNaker partitioning server is started like so::
 
 The server is configured by a configuration file whose name is supplied as the
 first command-line argument. See the :py:mod:`section below
-<spalloc_server.configuration>` for an overview of the config file
-format. If the config file is modified while the server is running the new
-configuration will be loaded on-the-fly and, when possible, running jobs will
-continue to execute without interruption and queued jobs will automatically be
-enqueued on any newly added machines.
+<spalloc_server.configuration>` for an overview of the config file format.
+You can trigger the server to reread its config file by sending a ``SIGHUP``
+signal to the server process. When you do this (and where it is possible),
+running jobs will continue to execute without interruption and queued jobs will
+automatically be enqueued on any newly added machines.
+
+Command-line usage
+------------------
+
+There is one mandatory argument, the name of the file holding the configuration
+definitions, and a number of options that may be specified. 
+
+    spalloc_server [OPTIONS] CONFIG_FILE [OPTIONS]
+
+The options that may be given are:
+
+  --version     Print the version of ``spalloc_server`` and quit.
+  --quiet       Hide non-error output.
+  --cold-start  Force a cold start, discarding any existing saved state.
+  --port PORT   The network port that the service should listen on. Defaults
+                to 22244. (The older style of setting the port through the
+                configuration file is deprecated.)
 
 Stopping the server
 -------------------
