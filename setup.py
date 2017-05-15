@@ -37,7 +37,7 @@ setup(
     # Requirements
     install_requires=[
         "six", "enum-compat", "inotify_simple", "pytz",
-        "SpiNNMan >= 3.0.0, < 4.0.0"],
+        "SpiNNMan >=1!4.0.0a1, <1!5.0.0"],
 
     # Scripts
     entry_points={
