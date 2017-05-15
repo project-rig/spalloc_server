@@ -118,11 +118,9 @@ systems.
 """
 
 from enum import IntEnum
-
 from six import iteritems
 
 from spalloc_server.links import Links
-
 from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
 
 
