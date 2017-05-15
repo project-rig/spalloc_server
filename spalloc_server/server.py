@@ -282,7 +282,7 @@ class Server(PollingServerCore):
         Returns
         -------
         bool
-            True if reading succeded, False otherwise.
+            True if reading succeeded, False otherwise.
         """
         self._reload_config = False
         try:
