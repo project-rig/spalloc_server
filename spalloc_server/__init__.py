@@ -1,1 +1,1 @@
-from spalloc_server.version import __version__
+from spalloc_server.version import __version__  # noqa
