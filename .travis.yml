@@ -21,7 +21,7 @@ script:
                     --cov tests \
                     --durations=10
         # Code quality check
-        - flake8 spalloc_server tests
+        - flake8
 after_success:
         - coveralls
 notifications:
