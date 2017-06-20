@@ -3,14 +3,12 @@ a whole rack.
 """
 
 import threading
-
+import logging
 from collections import namedtuple, deque
 
 from spalloc_server.links import Links
 from spinnman.transceiver import create_transceiver_from_hostname
-
-import logging
-from spinnman.model.bmp_connection_data import BMPConnectionData
+from spinnman.model import BMPConnectionData
 
 
 class AsyncBMPController(object):
