@@ -22,7 +22,7 @@ from spalloc_server.coordinates import \
     board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
 from spalloc_server.job_queue import JobQueue
 from spalloc_server.async_bmp_controller import AsyncBMPController
-from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
+from spinn_machine import SpiNNakerTriadGeometry
 
 
 class Controller(object):

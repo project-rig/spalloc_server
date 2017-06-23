@@ -121,7 +121,7 @@ from enum import IntEnum
 from six import iteritems
 
 from spalloc_server.links import Links
-from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
+from spinn_machine import SpiNNakerTriadGeometry
 
 
 link_to_vector = {
