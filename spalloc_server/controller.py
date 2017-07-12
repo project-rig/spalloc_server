@@ -2,27 +2,21 @@
 managing hardware in a collection of SpiNNaker machines.
 """
 
-import threading
-
-from enum import IntEnum
-
 from collections import namedtuple, OrderedDict, defaultdict
-
-from functools import partial
-
-from six import itervalues, iteritems
-
-import time
-
 from datetime import datetime
-
+from enum import IntEnum
+from functools import partial
 from pytz import utc
+from six import itervalues, iteritems
+from threading import RLock
+from time import time as timestamp
 
-from spalloc_server.coordinates import \
-    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
-from spalloc_server.job_queue import JobQueue
-from spalloc_server.async_bmp_controller import AsyncBMPController
 from spinn_machine import SpiNNakerTriadGeometry
+
+from .coordinates import \
+    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
+from .job_queue import JobQueue
+from .async_bmp_controller import AsyncBMPController
 
 
 class Controller(object):
@@ -425,7 +419,7 @@ class Controller(object):
         with self._lock:
             job = self._jobs.get(job_id, None)
             if job is not None and job.keepalive is not None:
-                job.keepalive_until = time.time() + job.keepalive
+                job.keepalive_until = timestamp() + job.keepalive
 
     def get_job_state(self, job_id):
         """Poll the state of a running job.
@@ -928,7 +922,7 @@ class Controller(object):
     def destroy_timed_out_jobs(self):
         """Destroy any jobs which have timed out."""
         with self._lock:
-            now = time.time()
+            now = timestamp()
             for job in list(itervalues(self._jobs)):
                 if (job.keepalive is not None and
                         job.keepalive_until < now):
@@ -1116,7 +1110,7 @@ class Controller(object):
         """
         # Recreate the lock
         assert self._lock is None
-        self._lock = threading.RLock()
+        self._lock = RLock()
 
         with self._lock:
             # Create connections to BMPs
@@ -1355,7 +1349,7 @@ class _Job(object):
         # responsibility to update this periodically.
         self.keepalive = keepalive
         if self.keepalive is not None:
-            self.keepalive_until = time.time() + self.keepalive
+            self.keepalive_until = timestamp() + self.keepalive
         else:
             self.keepalive_until = None
 

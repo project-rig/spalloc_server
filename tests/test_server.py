@@ -5,7 +5,6 @@ from mock import Mock, call
 import threading
 import tempfile
 import shutil
-import os
 import os.path
 import logging
 import time
@@ -17,12 +16,12 @@ from six import itervalues
 
 from spalloc_server.links import Links
 from spalloc_server.controller import JobState
-from spalloc_server.server import Server, main
+from spalloc_server.server import SpallocServer, main
 from spalloc_server.configuration import Configuration
 
 from spalloc_server import __version__
 
-from common import simple_machine
+from .common import simple_machine
 
 
 pytestmark = pytest.mark.usefixtures("MockABC")
@@ -258,9 +257,9 @@ def double_config(config_file):
 
 
 @pytest.yield_fixture
-def s(MockABC, config_file):
+def s(config_file):
     # A server which is created and shut down with each use.
-    s = Server(config_file)
+    s = SpallocServer(config_file)
 
     yield s
 
@@ -287,9 +286,9 @@ def test_startup_shutdown(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
-def test_join(MockABC, simple_config):
+def test_join(simple_config):
     # Tests join, stop_and_join and is_alive
-    s = Server(simple_config)
+    s = SpallocServer(simple_config)
     assert s.is_alive() is True
 
     joining_thread = threading.Thread(target=s.join)
@@ -307,9 +306,9 @@ def test_join(MockABC, simple_config):
 
 
 @pytest.mark.timeout(1.0)
-def test_stop_and_join_disconnects(MockABC, simple_config):
+def test_stop_and_join_disconnects(simple_config):
     # Clients should be disconnected when doing stop and join
-    s = Server(simple_config)
+    s = SpallocServer(simple_config)
     c = SimpleClient()
     c.call("version")
 
@@ -322,12 +321,12 @@ def test_stop_and_join_disconnects(MockABC, simple_config):
 @pytest.mark.parametrize("cold_start", [True, False])
 @pytest.mark.parametrize("corrupt_state", [True, False])
 @pytest.mark.parametrize("delete_state", [True, False])
-def test_hot_start(MockABC, simple_config, state_file, cold_start,
+def test_hot_start(simple_config, state_file, cold_start,
                    corrupt_state, delete_state):
     # Initially start up the server without a state file. Should be cold
     # started.
     assert not os.path.lexists(state_file)
-    s = Server(simple_config, cold_start)
+    s = SpallocServer(simple_config, cold_start)
 
     try:
         job_id = s.create_job(None, owner="me")
@@ -350,7 +349,7 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
         os.remove(state_file)
 
     # Start a new server
-    s = Server(simple_config, cold_start)
+    s = SpallocServer(simple_config, cold_start)
     try:
         # Should have the same state as before, if doing a hot start
         if cold_start or corrupt_state or delete_state:
@@ -363,7 +362,7 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
 
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("missing", [True, False])
-def test_no_initial_config_file(MockABC, config_file, missing):
+def test_no_initial_config_file(config_file, missing):
     # Should fail if config file is not valid/missing first time
 
     if missing:
@@ -373,7 +372,7 @@ def test_no_initial_config_file(MockABC, config_file, missing):
             f.write("foo=123")
 
     with pytest.raises(Exception):
-        Server(config_file)
+        SpallocServer(config_file)
 
 
 @pytest.mark.timeout(2.0)
@@ -436,7 +435,7 @@ def test_reread_config_file(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
-def test_bad_command(simple_config, s, monkeypatch):
+def test_bad_command(simple_config, s):
     # If a bad command is sent, the server should just disconnect the client
     c = SimpleClient()
     c.send_call("does not exist")

@@ -93,15 +93,12 @@ Configuration File API Reference
 """
 
 from collections import namedtuple
-
 import re
 import csv
-
 from itertools import chain
-
 from six import iteritems, itervalues
 
-from spalloc_server.coordinates import chip_to_board
+from .coordinates import chip_to_board
 
 
 class Configuration(namedtuple("Configuration",

@@ -4,18 +4,14 @@ functionality of a machine.
 """
 
 from enum import Enum
-
 from collections import deque
-
 from math import ceil
-
 from six import next
 
-from spalloc_server.links import Links
-
-from spalloc_server.pack_tree import PackTree
-from spalloc_server.area_to_rect import area_to_rect
-from spalloc_server.coordinates import board_down_link, WrapAround
+from .links import Links
+from .pack_tree import PackTree
+from .area_to_rect import area_to_rect
+from .coordinates import board_down_link, WrapAround
 
 
 class Allocator(object):
@@ -94,7 +90,7 @@ class Allocator(object):
 
     def _alloc_triads_possible(self, width, height, max_dead_boards=None,
                                max_dead_links=None, require_torus=False,
-                               min_ratio=0.0):
+                               min_ratio=0.0):  # @UnusedVariable
         """Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
@@ -164,7 +160,7 @@ class Allocator(object):
 
     def _alloc_triads(self, width, height, max_dead_boards=None,
                       max_dead_links=None, require_torus=False,
-                      min_ratio=0.0):
+                      min_ratio=0.0):  # @UnusedVariable
         """Allocate a rectangular block of triads of interconnected boards.
 
         Parameters
@@ -398,9 +394,10 @@ class Allocator(object):
 
         return (allocation_id, cf.boards, cf.periphery, cf.torus)
 
-    def _alloc_board_possible(self, x=None, y=None, z=None,
-                              max_dead_boards=None, max_dead_links=None,
-                              require_torus=False, min_ratio=0.0):
+    def _alloc_board_possible(
+            self, x=None, y=None, z=None,
+            max_dead_boards=None, max_dead_links=None,  # @UnusedVariable
+            require_torus=False, min_ratio=0.0):  # @UnusedVariable
         """Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
@@ -450,9 +447,10 @@ class Allocator(object):
         # Should be possible!
         return True
 
-    def _alloc_board(self, x=None, y=None, z=None,
-                     max_dead_boards=None, max_dead_links=None,
-                     require_torus=False, min_ratio=0.0):
+    def _alloc_board(
+            self, x=None, y=None, z=None,
+            max_dead_boards=None, max_dead_links=None,  # @UnusedVariable
+            require_torus=False, min_ratio=0.0):  # @UnusedVariable
         """Allocate a single board, optionally specifying a specific board to
         allocate.
 
@@ -532,7 +530,8 @@ class Allocator(object):
         # The desired board was not available in an already-allocated triad.
         # Attempt to request that triad.
 
-        def has_at_least_one_working_board(x, y, width, height):
+        def has_at_least_one_working_board(
+                x, y, width, height):  # @UnusedVariable
             num_dead = 0
             for z in range(3):
                 if (x, y, z) in self.dead_boards:
@@ -559,9 +558,10 @@ class Allocator(object):
         # Recursing will return a board from the triad
         return self._alloc_board(x, y, z)
 
-    def _alloc_type(self, x_or_num_or_width=None, y_or_height=None, z=None,
-                    max_dead_boards=None, max_dead_links=None,
-                    require_torus=False, min_ratio=0.0):
+    def _alloc_type(
+            self, x_or_num_or_width=None, y_or_height=None, z=None,
+            max_dead_boards=None, max_dead_links=None,  # @UnusedVariable
+            require_torus=False, min_ratio=0.0):  # @UnusedVariable
         """Returns the type of allocation the user is attempting to make (and
         fails if it is invalid.
 
@@ -905,8 +905,8 @@ class _CandidateFilter(object):
                 if (x1, y1, z1, link) in self.dead_links:
                     continue
 
-                x2, y2, z2, _ = board_down_link(x1, y1, z1, link,
-                                                self.width, self.height)
+                x2, y2, z2, _ = board_down_link(
+                    x1, y1, z1, link, self.width, self.height)
 
                 # Only process links to boards in the specified range
                 if (x <= x2 < x + width and
@@ -956,8 +956,8 @@ class _CandidateFilter(object):
         for x1, y1, z1 in boards:
             for link in Links:
                 is_dead = (x1, y1, z1, link) in self.dead_links
-                x2, y2, z2, wrapped = board_down_link(x1, y1, z1, link,
-                                                      self.width, self.height)
+                x2, y2, z2, wrapped = board_down_link(
+                    x1, y1, z1, link, self.width, self.height)
                 in_set = (x2, y2, z2) in boards
 
                 if in_set:

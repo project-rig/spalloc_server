@@ -6,7 +6,7 @@ otherwise a relatively generic 2D packing algorithm.
 """
 
 
-from spalloc_server.area_to_rect import area_to_rect
+from .area_to_rect import area_to_rect
 
 
 class PackTree(object):
@@ -65,10 +65,9 @@ class PackTree(object):
         assert self.children is None
         assert not self.allocated
 
-        self.children = (PackTree(self.x, self.y,
-                                  self.width, (y - self.y)),
-                         PackTree(self.x, y,
-                                  self.width, self.height - (y - self.y)))
+        self.children = (
+            PackTree(self.x, self.y, self.width, (y - self.y)),
+            PackTree(self.x, y, self.width, self.height - (y - self.y)))
 
     def vsplit(self, x):
         """Split this node along the Y axis.
@@ -88,10 +87,9 @@ class PackTree(object):
         assert self.children is None
         assert not self.allocated
 
-        self.children = (PackTree(self.x, self.y,
-                                  (x - self.x), self.height),
-                         PackTree(x, self.y,
-                                  self.width - (x - self.x), self.height))
+        self.children = (
+            PackTree(self.x, self.y, (x - self.x), self.height),
+            PackTree(x, self.y, self.width - (x - self.x), self.height))
 
     def alloc(self, width, height, candidate_filter=None):
         """Attempt to allocate a rectangular region of a specified size.
