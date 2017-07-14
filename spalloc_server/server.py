@@ -181,24 +181,24 @@ class Server(PollingServerCore, ConfigurationReloader):
         return new
 
     @overrides(super_class_method=ConfigurationReloader._load_valid_config)
-    def _load_valid_config(self, new):
+    def _load_valid_config(self, validated_config):
         old = self._configuration
-        self._configuration = new
+        self._configuration = validated_config
 
         # Restart the server if the port or IP has changed (or if the server
         # has not yet been started...)
-        if new.ip != old.ip or self._server_socket is None:
+        if validated_config.ip != old.ip or self._server_socket is None:
             # Close all open connections
             if self._close():  # pragma: no cover
                 sleep(0.25)  # Ugly hack; fully release socket now
 
-            # Create a new server socket
-            self._open_server_socket(new.ip, self._port)
+            # Create a validated_config server socket
+            self._open_server_socket(validated_config.ip, self._port)
 
         # Update the controller
-        self._controller.max_retired_jobs = new.max_retired_jobs
+        self._controller.max_retired_jobs = validated_config.max_retired_jobs
         self._controller.machines = OrderedDict(
-            (m.name, m) for m in new.machines)
+            (m.name, m) for m in validated_config.machines)
 
     def _close(self):
         """Close all server sockets and disconnect all client connections."""
