@@ -8,7 +8,7 @@ is mapped to the ``spalloc-server`` command-line tool.
 from argparse import ArgumentParser
 from collections import OrderedDict
 from json import dumps as json, loads as dejson
-import logging as log 
+import logging as log
 from os import path
 from pickle import dump as pickle, load as unpickle
 from six import iteritems, string_types
@@ -103,13 +103,6 @@ class Server(PollingServerCore, ConfigurationReloader):
         # {fd: buf, ...}
         self._client_buffers = {}
 
-        # For each client, contains a set() of job IDs and machine names that
-        # the client is watching for changes or None if all changes are to be
-        # monitored.
-        # {socket: set or None, ...}
-        self._client_job_watches = {}
-        self._client_machine_watches = {}
-
         # The current server configuration options. Once server started, should
         # only be accessed from the server thread.
         self._configuration = Configuration()
@@ -193,7 +186,8 @@ class Server(PollingServerCore, ConfigurationReloader):
                 sleep(0.25)  # Ugly hack; fully release socket now
 
             # Create a validated_config server socket
-            self._open_server_socket(validated_config.ip, self._port)
+            self._server_socket = self._open_server_socket(
+                validated_config.ip, self._port)
 
         # Update the controller
         self._controller.max_retired_jobs = validated_config.max_retired_jobs
@@ -205,6 +199,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         result = False
         if self._server_socket is not None:
             self.unregister_channel(self._server_socket)
+            log.info("closing server socket")
             self._server_socket.close()
             result = True
             self._server_socket = None
@@ -355,22 +350,6 @@ class Server(PollingServerCore, ConfigurationReloader):
                     except (OSError, IOError):
                         log.exception("Could not send notification.")
 
-    def _send_change_notifications(self):
-        """Send any registered change notifications to clients.
-
-        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}``
-        and ``{"machines_changed": [machine_name, ...]}`` to clients who have
-        subscribed to be notified of changes to jobs or machines.
-        """
-        # Notify clients about jobs which have changed
-        self._send_notifications("jobs_changed",
-                                 self._controller.changed_jobs,
-                                 self._client_job_watches)
-        # Notify clients about machines which have changed
-        self._send_notifications("machines_changed",
-                                 self._controller.changed_machines,
-                                 self._client_machine_watches)
-
     def _run(self):
         """The main server thread.
 
@@ -422,14 +401,16 @@ class Server(PollingServerCore, ConfigurationReloader):
         """Stop the server and wait for it to shut down completely."""
         log.info("Server shutting down, please wait...")
 
-        # Shut down server thread
-        self._stop = True
-        self.wake()
-        self._server_thread.join()
-
-        # Close all connections
-        log.info("Closing connections...")
-        self._close()
+        try:
+            # Shut down server thread
+            self._stop = True
+            self.wake()
+            self._server_thread.join()
+        finally:
+            # Close all connections; this is the critical part as it closes
+            # the server socket itself.
+            log.info("Closing connections...")
+            self._close()
 
         # Shut down the controller and flush all BMP commands
         log.info("Waiting for all queued BMP commands...")
@@ -446,6 +427,40 @@ class Server(PollingServerCore, ConfigurationReloader):
 
 
 class SpallocServer(Server):
+    def __init__(self, config_filename, cold_start=False, port=22244):
+        # For each client, contains a set() of job IDs and machine names that
+        # the client is watching for changes or None if all changes are to be
+        # monitored.
+        # {socket: set or None, ...}
+        self._client_job_watches = {}
+        self._client_machine_watches = {}
+
+        Server.__init__(self, config_filename, cold_start, port)
+
+    def _send_change_notifications(self):
+        """Send any registered change notifications to clients.
+
+        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}``
+        and ``{"machines_changed": [machine_name, ...]}`` to clients who have
+        subscribed to be notified of changes to jobs or machines.
+        """
+        # Notify clients about jobs which have changed
+        self._send_notifications("jobs_changed",
+                                 self._controller.changed_jobs,
+                                 self._client_job_watches)
+        # Notify clients about machines which have changed
+        self._send_notifications("machines_changed",
+                                 self._controller.changed_machines,
+                                 self._client_machine_watches)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
+        if self._running:
+            self.stop_and_join()
+        return False
+
     @spalloc_command
     def version(self, client):  # @UnusedVariable
         """

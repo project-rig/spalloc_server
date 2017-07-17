@@ -5,6 +5,7 @@ from spinn_utilities.abstract_base import AbstractBase, abstractmethod
 
 _SIGHUP = signal.SIGHUP if hasattr(signal, "SIGHUP") else None
 
+
 @add_metaclass(AbstractBase)
 class ConfigurationReloader(object):
     """A class that provides the core knowledge about how to load and reload\
@@ -41,7 +42,7 @@ class ConfigurationReloader(object):
 
     @property
     def configuration_file(self):
-        """Describes where the configuration will be (re)loaded from.""" 
+        """Describes where the configuration will be (re)loaded from."""
         return self._config_filename
 
     def read_config_file(self):

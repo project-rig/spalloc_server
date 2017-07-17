@@ -1,8 +1,31 @@
 from errno import EWOULDBLOCK
+import logging as log
 import select
 import socket
 
 BUFFER_SIZE = 1024
+
+
+def _simulated_socketpair():  # pragma: no cover
+    """Create your own socket pair."""
+    temp_srv = socket.socket()
+    try:
+        temp_srv.setblocking(True)
+        temp_srv.bind(('localhost', 0))
+        port = temp_srv.getsockname()[1]
+        temp_srv.listen(1)
+        notify_send = socket.socket()
+        notify_send.setblocking(False)
+        try:
+            notify_send.connect(('localhost', port))
+        except socket.error as err:
+            # EWOULDBLOCK is not an error, as the socket is non-blocking
+            if err.errno != EWOULDBLOCK:
+                raise
+        notify_recv, _ = temp_srv.accept()
+        return (notify_send, notify_recv)
+    finally:
+        temp_srv.close()
 
 
 class PollingServerCore(object):
@@ -24,22 +47,8 @@ class PollingServerCore(object):
         if hasattr(socket, "socketpair"):
             self._notify_send, self._notify_recv = socket.socketpair()
         else:
-
             # Create your own socket pair
-            temp_sock = socket.socket()
-            temp_sock.setblocking(True)
-            temp_sock.bind(('', 0))
-            port = temp_sock.getsockname()[1]
-            temp_sock.listen(1)
-            self._notify_send = socket.socket()
-            self._notify_send.setblocking(False)
-            try:
-                self._notify_send.connect(('localhost', port))
-            except socket.error as err:
-                # EWOULDBLOCK is not an error, as the socket is non-blocking
-                if err.errno != EWOULDBLOCK:
-                    raise
-            self._notify_recv, _ = temp_sock.accept()
+            self._notify_send, self._notify_recv = _simulated_socketpair()
         self.register_channel(self._notify_recv)
 
     def register_channel(self, channel):
@@ -100,6 +109,7 @@ class PollingServerCore(object):
         :param str ipaddress: The local address of the socket.
         :param int port: The local port of the socket.
         """
+        log.info("opening server socket for %s" % (str((ipaddress, port))))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((ipaddress, port))
