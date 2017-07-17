@@ -83,8 +83,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         port : int, optional
             Which port to listen on. Defaults to 22244.
         """
-        PollingServerCore.__init__(self)
-        ConfigurationReloader.__init__(self, config_filename, self.wake)
+        # ============ STATE THAT NEEDS TO BE ALWAYS DEFINED ============
 
         self._cold_start = cold_start
         self._port = port
@@ -92,27 +91,39 @@ class Server(PollingServerCore, ConfigurationReloader):
         # Should the background thread terminate?
         self._stop = False
 
-        # The background thread in which the server will run
-        self._server_thread = Thread(target=self._run, name="Server Thread")
+        # Flag for checking if the server is still alive
+        self._running = False
 
         # Currently open sockets to clients. Once server started, should only
         # be accessed from the server thread.
         self._server_socket = None
 
+        # The server core object that the object that is persisted
+        self._controller = None
+
         # Buffered data received from each socket
         # {fd: buf, ...}
         self._client_buffers = {}
+
+        # ============ SUPERCLASS INITIALISATION ============
+
+        PollingServerCore.__init__(self)
+        ConfigurationReloader.__init__(self, config_filename, self.wake)
+
+        # ============ ACTIVE OBJECTS ============
+
+        # The background thread in which the server will run
+        self._server_thread = Thread(target=self._run, name="Server Thread")
 
         # The current server configuration options. Once server started, should
         # only be accessed from the server thread.
         self._configuration = Configuration()
 
         # Infer the saved-state location
-        self._state_filename = \
-            self._get_state_filename(self.configuration_file)
+        self._state_filename = self._get_state_filename(
+            self.configuration_file)
 
         # Attempt to restore saved state if required
-        self._controller = None
         if not self._cold_start and path.isfile(self._state_filename):
             try:
                 with open(self._state_filename, "rb") as f:
@@ -141,8 +152,6 @@ class Server(PollingServerCore, ConfigurationReloader):
 
         # Start the server
         self._server_thread.start()
-
-        # Flag for checking if the server is still alive
         self._running = True
 
     def _get_state_filename(self, cfg):

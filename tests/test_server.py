@@ -1,6 +1,6 @@
 import json
 import logging
-from mock import Mock, call
+from mock import Mock, call, PropertyMock
 import os.path
 import pytest
 import shutil
@@ -29,12 +29,34 @@ class DisconnectedException(Exception):
     pass
 
 
-class SimpleClient(object):  # pragma: no cover
+class SimpleClientSocket(object):
+    def __init__(self, host, port):
+        self._addr = (host, port)
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect(self._addr)
+
+    def close(self):
+        try:
+            self.sock.close()
+        except:  # pragma: no cover
+            pass
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
+        self.close()
+        return False
+
+
+class SimpleClient(SimpleClientSocket):
     """A simple line receiving and sending client."""
 
-    def __init__(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect(("127.0.0.1", 22244))
+    def __init__(self, host="127.0.0.1", port=22244):
+        SimpleClientSocket.__init__(self, host, port)
         self.buf = b""
         self.notifications = []
 
@@ -47,9 +69,6 @@ class SimpleClient(object):  # pragma: no cover
         line, _, self.buf = self.buf.partition(b"\n")
         return line
 
-    def close(self):
-        self.sock.close()
-
     def send_call(self, cmd, *args, **kwargs):
         call = json.dumps({"command": cmd,
                            "args": args,
@@ -61,7 +80,7 @@ class SimpleClient(object):  # pragma: no cover
             line = self.recv_line()
             try:
                 resp = json.loads(line.decode("utf-8"))
-            except:
+            except:  # pragma: no cover
                 print("Bad line: {}".format(repr(line)))
                 raise
             if "return" in resp:
@@ -80,24 +99,12 @@ class SimpleClient(object):  # pragma: no cover
             line = self.recv_line()
             return json.loads(line.decode("utf-8"))
 
-    def __enter__(self):
-        return self
 
-    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
-        self.close()
-        return False
-
-
-class EvilClient(object):  # pragma: no cover
+class EvilClient(SimpleClientSocket):
     """An evil line receiving and sending client."""
 
     def __init__(self, host="127.0.0.1", port=22244):
-        self._host = host
-        self._port = port
-
-    def connect(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((self._host, self._port))
+        SimpleClientSocket.__init__(self, host, port)
         self.buf = b""
         self.notifications = []
 
@@ -110,18 +117,12 @@ class EvilClient(object):  # pragma: no cover
         line, _, self.buf = self.buf.partition(b"\n")
         return line
 
-    def close(self):
-        try:
-            self.sock.close()
-        except:
-            pass
-
     def get_return(self):
         while True:
             line = self._recv_line()
             try:
                 resp = json.loads(line.decode("utf-8"))
-            except:
+            except:  # pragma: no cover
                 print("Bad line: {}".format(repr(line)))
                 raise
             if "return" in resp:
@@ -368,29 +369,29 @@ def test_no_initial_config_file(config_file, missing):
 def test_read_config_file(simple_config, s):
     # Should fail if config file is missing
     os.remove(simple_config)
-    assert s._read_config_file() is False
+    assert s.read_config_file() is False
 
     # Should fail if config file is syntactically invalid
     with open(simple_config, "w") as f:
         f.write("1_2_3")
-    assert s._read_config_file() is False
+    assert s.read_config_file() is False
 
     # Should fail if no configuration variable is set
     with open(simple_config, "w") as f:
         f.write("config = 123")
-    assert s._read_config_file() is False
+    assert s.read_config_file() is False
 
     # Should succeed otherwise!
     with open(simple_config, "w") as f:
         # Make a simple config file
         f.write("configuration = {}".format(repr(Configuration())))
-    assert s._read_config_file() is True
+    assert s.read_config_file() is True
 
     # Should pass on parameters to controller
     with open(simple_config, "w") as f:
         f.write("configuration = {}".format(repr(
             Configuration(max_retired_jobs=123))))
-    assert s._read_config_file() is True
+    assert s.read_config_file() is True
     assert s._controller.max_retired_jobs == 123
 
     # Should pass on machines to controller in right order
@@ -401,7 +402,7 @@ def test_read_config_file(simple_config, s):
                                     simple_machine("m2", ip_prefix="2"),
                                     simple_machine("m3", ip_prefix="3"),
                                     simple_machine("m4", ip_prefix="4")]))))
-    assert s._read_config_file() is True
+    assert s.read_config_file() is True
     assert list(s._controller.machines) == "m0 m1 m2 m3 m4".split()
 
 
@@ -933,51 +934,56 @@ def test_machine_notify_register_unregister(simple_config, s):
             assert s._client_machine_watches == {}
 
 
+@pytest.fixture
+def mock_server():
+    server = Mock()
+    serverFactory = Mock(return_value=server)
+    type(server)._running = PropertyMock(return_value=False)
+    return (server, serverFactory)
+
+
 @pytest.mark.timeout(2.0)
 @pytest.mark.parametrize("args,cold_start",
                          [("{}", False),
                           ("{} -q", False),
                           ("{} --cold-start", True),
                           ("{} -q --cold-start", True)])
-def test_commandline(monkeypatch, config_file, args, cold_start):
-    server = Mock()
-    Server = Mock(return_value=server)
-    server.is_alive.return_value = False
+def test_commandline(monkeypatch, config_file, args, cold_start, mock_server):
+    s, SpallocServer = mock_server
+    s.is_alive.return_value = False
     import spalloc_server.server
-    monkeypatch.setattr(spalloc_server.server, "Server", Server)
+    monkeypatch.setattr(spalloc_server.server, "SpallocServer", SpallocServer)
 
     main(args.format(config_file).split())
 
-    Server.assert_called_once_with(config_filename=config_file,
-                                   cold_start=cold_start, port=22244)
+    SpallocServer.assert_called_once_with(config_filename=config_file,
+                                          cold_start=cold_start, port=22244)
 
 
 @pytest.mark.timeout(2.0)
-def test_keyboard_interrupt(monkeypatch, config_file):
-    s = Mock()
-    Server = Mock(return_value=s)
+def test_keyboard_interrupt(monkeypatch, config_file, mock_server):
+    s, SpallocServer = mock_server
     import spalloc_server.server
-    monkeypatch.setattr(spalloc_server.server, "Server", Server)
+    monkeypatch.setattr(spalloc_server.server, "SpallocServer", SpallocServer)
 
     s.is_alive.side_effect = KeyboardInterrupt
     main([config_file])
 
-    Server.assert_called_once_with(config_filename=config_file,
-                                   cold_start=False, port=22244)
+    SpallocServer.assert_called_once_with(config_filename=config_file,
+                                          cold_start=False, port=22244)
     s.is_alive.assert_called_once_with()
     s.stop_and_join.assert_called_once_with()
 
 
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("args", ["", "--cold-start" "-c"])
-def test_bad_args(monkeypatch, args):
-    server = Mock()
-    Server = Mock(return_value=server)
-    server.is_alive.return_value = False
+def test_bad_args(monkeypatch, args, mock_server):
+    s, SpallocServer = mock_server
+    s.is_alive.return_value = False
     import spalloc_server.server
-    monkeypatch.setattr(spalloc_server.server, "Server", Server)
+    monkeypatch.setattr(spalloc_server.server, "SpallocServer", SpallocServer)
 
     with pytest.raises(SystemExit):
         main(args.split())
 
-    assert len(Server.mock_calls) == 0
+    assert len(SpallocServer.mock_calls) == 0
