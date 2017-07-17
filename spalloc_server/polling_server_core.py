@@ -46,7 +46,7 @@ class PollingServerCore(object):
         self._notify_send, self._notify_recv = None, None
         if hasattr(socket, "socketpair"):
             self._notify_send, self._notify_recv = socket.socketpair()
-        else:
+        else:  # pragma: no cover
             # Create your own socket pair
             self._notify_send, self._notify_recv = _simulated_socketpair()
         self.register_channel(self._notify_recv)
@@ -84,7 +84,7 @@ class PollingServerCore(object):
                     self._notify_recv.recv(BUFFER_SIZE)
                 else:
                     yield self._fdmap[fd]
-        else:
+        else:  # pragma: no cover
             channels = self._fdmap.values()
             readable, _, _ = select.select(
                 channels, [], [], timeout_check_interval)

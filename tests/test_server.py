@@ -63,7 +63,7 @@ class SimpleClient(SimpleClientSocket):
     def recv_line(self, length=1024):
         while b"\n" not in self.buf:
             data = self.sock.recv(length)
-            if not data:
+            if not data:  # pragma: no cover
                 raise DisconnectedException("Socket disconnected!")
             self.buf += data
         line, _, self.buf = self.buf.partition(b"\n")
@@ -85,7 +85,7 @@ class SimpleClient(SimpleClientSocket):
                 raise
             if "return" in resp:
                 return resp["return"]
-            else:
+            else:  # pragma: no cover
                 self.notifications.append(resp)
 
     def call(self, cmd, *args, **kwargs):
@@ -93,7 +93,7 @@ class SimpleClient(SimpleClientSocket):
         return self.get_return()
 
     def get_notification(self):
-        if self.notifications:
+        if self.notifications:  # pragma: no cover
             return self.notifications.pop(0)
         else:
             line = self.recv_line()
@@ -127,13 +127,14 @@ class EvilClient(SimpleClientSocket):
                 raise
             if "return" in resp:
                 return resp["return"]
-            self.notifications.append(resp)
+            else:  # pragma: no cover
+                self.notifications.append(resp)
 
     def call(self, call):
         self.sock.send(call.replace("'", "\"").encode("utf-8") + b"\n")
         return self.get_return()
 
-    def get_notification(self):
+    def get_notification(self):  # pragma: no cover
         if self.notifications:
             return self.notifications.pop(0)
         line = self._recv_line()
@@ -408,7 +409,7 @@ def test_read_config_file(simple_config, s):
 
 @pytest.mark.timeout(1.0)
 def test_reread_config_file(simple_config, s):
-    if not hasattr(signal, "SIGHUP"):
+    if not hasattr(signal, "SIGHUP"):  # pragma: no cover
         return
 
     # Make sure config re-reading works
@@ -767,7 +768,7 @@ def test_machine_notifications(double_config, s):
             assert c1.get_notification() == {"machines_changed": ["m1"]}
 
             # Make sure machine changes get announced
-            if not hasattr(signal, "SIGHUP"):
+            if not hasattr(signal, "SIGHUP"):  # pragma: no cover
                 return
             with open(double_config, "w") as f:
                 f.write("configuration = {}".format(repr(Configuration())))

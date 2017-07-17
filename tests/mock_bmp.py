@@ -12,7 +12,7 @@ import traceback
 
 class SCPOKMessage(SDPMessage):
 
-    def __init__(self, x, y, sequence=0):
+    def __init__(self, x, y, sequence=0):  # pragma: no cover
         scp_header = SCPRequestHeader(
             command=SCPResult.RC_OK, sequence=sequence)
         sdp_header = SDPHeader(
@@ -73,11 +73,11 @@ class MockBMP(Thread):
             self._responses.extend(responses)
 
     @property
-    def error(self):
+    def error(self):  # pragma: no cover
         return self._error
 
     @property
-    def local_port(self):
+    def local_port(self):  # pragma: no cover
         return self._receiver.local_port
 
     def run(self):
@@ -91,7 +91,7 @@ class MockBMP(Thread):
                     response = None
                     if len(self._responses) > 0:
                         response = self._responses.popleft()
-                    else:
+                    else:  # pragma: no cover
                         response = SCPOKMessage(
                             sdp_header.source_chip_x, sdp_header.source_chip_y,
                             sequence)
