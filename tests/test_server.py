@@ -537,8 +537,9 @@ def test_evil_calls3(simple_config, s, evil, badreq, msg):
     evil.connect()
     # Verify that we can use the connection
     assert evil.call("{'command':'version'}") == __version__
-    with pytest.raises(ServerException, message=msg):
+    with pytest.raises(ServerException) as excinfo:
         evil.call(badreq)
+    assert msg in str(excinfo.value)
     # Verify that we can still use the connection
     assert evil.call("{'command':'version'}") == __version__
 
