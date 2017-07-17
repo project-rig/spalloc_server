@@ -3,7 +3,7 @@ from spinnman.messages.scp.scp_request_header import SCPRequestHeader
 from spinnman.messages.scp.enums.scp_result import SCPResult
 from spinnman.messages.sdp.sdp_header import SDPHeader
 from spinnman.messages.sdp.sdp_flag import SDPFlag
-from spinnman.connections.udp_packet_connections import udp_utils
+from spinnman.connections.udp_packet_connections import utils
 from spinnman.connections.udp_packet_connections.udp_connection \
     import UDPConnection
 from spinnman import constants
@@ -22,7 +22,7 @@ class SCPOKMessage(SDPMessage):
         sdp_header = SDPHeader(
             flags=SDPFlag.REPLY_NOT_EXPECTED, destination_port=0,
             destination_cpu=0, destination_chip_x=x, destination_chip_y=y)
-        udp_utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
+        utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
         SDPMessage.__init__(self, sdp_header, data=scp_header.bytestring)
 
 
@@ -37,7 +37,7 @@ class SCPVerMessage(SDPMessage):
         sdp_header = SDPHeader(
             flags=SDPFlag.REPLY_NOT_EXPECTED, destination_port=0,
             destination_cpu=0, destination_chip_x=x, destination_chip_y=y)
-        udp_utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
+        utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
         SDPMessage.__init__(self, sdp_header)
 
     def set_sequence(self, sequence):
@@ -49,8 +49,7 @@ class SCPVerMessage(SDPMessage):
         data += struct.pack("<BBBBHHI", 0, 0, self._y, self._x, 0, 0xFFFF, 0)
         data += "BC&MP/Test\0"
         data += self._version + "\0"
-        response = SDPMessage.bytestring.fget(self) + data
-        return response
+        return SDPMessage.bytestring.fget(self) + data  # @UndefinedVariable
 
 
 class MockBMP(Thread):
