@@ -8,6 +8,7 @@ from datetime import datetime
 from enum import IntEnum
 from functools import partial
 import logging
+from logging.handlers import TimedRotatingFileHandler
 from pytz import utc
 import threading
 import time
@@ -21,7 +22,7 @@ from spinn_machine.spinnaker_triad_geometry import SpiNNakerTriadGeometry
 
 job_log = logging.Logger("jobs")
 job_log.propagate = False
-job_log.addHandler(logging.handlers.TimedRotatingFileHandler(
+job_log.addHandler(TimedRotatingFileHandler(
     "spalloc_jobs.log", when="D"))
 
 
