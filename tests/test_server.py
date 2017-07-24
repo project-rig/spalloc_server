@@ -445,7 +445,7 @@ def test_bad_command(simple_config, s):
 def test_error_command(simple_config, s):
     # If a bad command is sent, the server should just disconnect the client
     with SimpleClient() as c:
-        c.send_call("{'command':'create_job'}")
+        c.send_call("create_job")
         with pytest.raises(ServerException):
             c.get_return()
 
