@@ -2,10 +2,9 @@
 """
 
 from collections import deque, OrderedDict
-
 from six import itervalues
 
-from spalloc_server.allocator import Allocator
+from .allocator import Allocator
 
 
 class JobQueue(object):
@@ -119,7 +118,8 @@ class JobQueue(object):
         """
         self._postpone_queue_management += 1
 
-    def __exit__(self, Type=None, value=None, traceback=None):
+    def __exit__(self,
+                 Type=None, value=None, traceback=None):  # @UnusedVariable
         self._postpone_queue_management -= 1
         self._regenerate_queues()
 

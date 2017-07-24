@@ -3,14 +3,13 @@ a whole rack.
 """
 
 import threading
-
+import logging
 from collections import namedtuple, deque
 
-from spalloc_server.links import Links
 from spinnman.transceiver import create_transceiver_from_hostname
+from spinnman.model import BMPConnectionData
 
-import logging
-from spinnman.model.bmp_connection_data import BMPConnectionData
+from .links import Links
 
 
 class AsyncBMPController(object):
@@ -49,8 +48,8 @@ class AsyncBMPController(object):
         self._on_thread_start = on_thread_start
 
         self._transceiver = create_transceiver_from_hostname(
-            None, 5,
-            bmp_connection_data=[BMPConnectionData(0, 0, hostname, [0], None)])
+            None, 5, bmp_connection_data=[
+                BMPConnectionData(0, 0, hostname, [0], None)])
 
         self._stop = False
 
@@ -76,8 +75,8 @@ class AsyncBMPController(object):
         """When used as a context manager, make requests 'atomic'."""
         self._lock.acquire()
 
-    def __exit__(self, type=None, value=None,  # @ReservedAssignment
-                 traceback=None):
+    def __exit__(self, type=None,  # @ReservedAssignment
+                 value=None, traceback=None):  # @UnusedVariable
         self._lock.release()
 
     def set_power(self, board, state, on_done):
@@ -187,9 +186,8 @@ class AsyncBMPController(object):
         """
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
-            self._transceiver.write_fpga_register(fpga, addr, int(not enable),
-                                                  board=board, frame=0,
-                                                  cabinet=0)
+            self._transceiver.write_fpga_register(
+                fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
             return True
         except IOError:
             # Communication issue with the machine, log it but not

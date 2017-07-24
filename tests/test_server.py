@@ -1,28 +1,23 @@
-import pytest
-
-from mock import Mock, call
-
-import threading
-import tempfile
-import shutil
-import os
-import os.path
-import logging
-import time
-import socket
-import signal
 import json
-
+import logging
+from mock import Mock, call, PropertyMock
+import os.path
+import pytest
+import shutil
+import signal
 from six import itervalues
+import socket
+import tempfile
+import threading
+import time
 
 from spalloc_server.links import Links
 from spalloc_server.controller import JobState
-from spalloc_server.server import Server, main
+from spalloc_server.server import SpallocServer, main
 from spalloc_server.configuration import Configuration
-
 from spalloc_server import __version__
 
-from common import simple_machine
+from .common import simple_machine
 
 
 pytestmark = pytest.mark.usefixtures("MockABC")
@@ -34,27 +29,49 @@ class DisconnectedException(Exception):
     pass
 
 
-class SimpleClient(object):  # pragma: no cover
+class ServerException(Exception):
+    pass
+
+
+class SimpleClientSocket(object):
+    def __init__(self, host, port):
+        self._addr = (host, port)
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect(self._addr)
+
+    def close(self):
+        try:
+            self.sock.close()
+        except:  # pragma: no cover
+            pass
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
+        self.close()
+        return False
+
+
+class SimpleClient(SimpleClientSocket):
     """A simple line receiving and sending client."""
 
-    def __init__(self):
-        self.sock = socket.socket(socket.AF_INET,
-                                  socket.SOCK_STREAM)
-        self.sock.connect(("127.0.0.1", 22244))
+    def __init__(self, host="127.0.0.1", port=22244):
+        SimpleClientSocket.__init__(self, host, port)
         self.buf = b""
         self.notifications = []
 
     def recv_line(self, length=1024):
         while b"\n" not in self.buf:
             data = self.sock.recv(length)
-            if not data:
+            if not data:  # pragma: no cover
                 raise DisconnectedException("Socket disconnected!")
             self.buf += data
         line, _, self.buf = self.buf.partition(b"\n")
         return line
-
-    def close(self):
-        self.sock.close()
 
     def send_call(self, cmd, *args, **kwargs):
         call = json.dumps({"command": cmd,
@@ -67,12 +84,14 @@ class SimpleClient(object):  # pragma: no cover
             line = self.recv_line()
             try:
                 resp = json.loads(line.decode("utf-8"))
-            except:
+            except:  # pragma: no cover
                 print("Bad line: {}".format(repr(line)))
                 raise
             if "return" in resp:
                 return resp["return"]
-            else:
+            if "exception" in resp:
+                raise ServerException(resp["exception"])
+            else:  # pragma: no cover
                 self.notifications.append(resp)
 
     def call(self, cmd, *args, **kwargs):
@@ -80,24 +99,18 @@ class SimpleClient(object):  # pragma: no cover
         return self.get_return()
 
     def get_notification(self):
-        if self.notifications:
+        if self.notifications:  # pragma: no cover
             return self.notifications.pop(0)
         else:
             line = self.recv_line()
             return json.loads(line.decode("utf-8"))
 
 
-class EvilClient(object):  # pragma: no cover
+class EvilClient(SimpleClientSocket):
     """An evil line receiving and sending client."""
 
     def __init__(self, host="127.0.0.1", port=22244):
-        self._host = host
-        self._port = port
-
-    def connect(self):
-        self.sock = socket.socket(socket.AF_INET,
-                                  socket.SOCK_STREAM)
-        self.sock.connect((self._host, self._port))
+        SimpleClientSocket.__init__(self, host, port)
         self.buf = b""
         self.notifications = []
 
@@ -110,29 +123,26 @@ class EvilClient(object):  # pragma: no cover
         line, _, self.buf = self.buf.partition(b"\n")
         return line
 
-    def close(self):
-        try:
-            self.sock.close()
-        except:
-            pass
-
     def get_return(self):
         while True:
             line = self._recv_line()
             try:
                 resp = json.loads(line.decode("utf-8"))
-            except:
+            except:  # pragma: no cover
                 print("Bad line: {}".format(repr(line)))
                 raise
             if "return" in resp:
                 return resp["return"]
-            self.notifications.append(resp)
+            if "exception" in resp:
+                raise ServerException(resp["exception"])
+            else:  # pragma: no cover
+                self.notifications.append(resp)
 
     def call(self, call):
         self.sock.send(call.replace("'", "\"").encode("utf-8") + b"\n")
         return self.get_return()
 
-    def get_notification(self):
+    def get_notification(self):  # pragma: no cover
         if self.notifications:
             return self.notifications.pop(0)
         line = self._recv_line()
@@ -258,27 +268,22 @@ def double_config(config_file):
 
 
 @pytest.yield_fixture
-def s(MockABC, config_file):
+def s(config_file):
     # A server which is created and shut down with each use.
-    s = Server(config_file)
-
-    yield s
-
-    s.stop_and_join()
+    with SpallocServer(config_file) as s:
+        yield s
 
 
 @pytest.yield_fixture
 def c():
-    c = SimpleClient()
-    yield c
-    c.close()
+    with SimpleClient() as c:
+        yield c
 
 
 @pytest.yield_fixture
 def evil():
-    evil = EvilClient()
-    yield evil
-    evil.close()
+    with EvilClient() as evil:
+        yield evil
 
 
 @pytest.mark.timeout(1.0)
@@ -287,54 +292,50 @@ def test_startup_shutdown(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
-def test_join(MockABC, simple_config):
+def test_join(simple_config):
     # Tests join, stop_and_join and is_alive
-    s = Server(simple_config)
-    assert s.is_alive() is True
+    with SpallocServer(simple_config) as s:
+        assert s.is_alive() is True
 
-    joining_thread = threading.Thread(target=s.join)
-    joining_thread.start()
+        joining_thread = threading.Thread(target=s.join)
+        joining_thread.start()
 
-    # The server should still be running...
-    time.sleep(0.05)
-    assert joining_thread.is_alive()
-    assert s.is_alive() is True
+        # The server should still be running...
+        time.sleep(0.05)
+        assert joining_thread.is_alive()
+        assert s.is_alive() is True
 
-    # When server is stopped, the joining thread should be complete
-    s.stop_and_join()
-    assert s.is_alive() is False
-    joining_thread.join()
+        # When server is stopped, the joining thread should be complete
+        s.stop_and_join()
+        assert s.is_alive() is False
+        joining_thread.join()
 
 
 @pytest.mark.timeout(1.0)
-def test_stop_and_join_disconnects(MockABC, simple_config):
+def test_stop_and_join_disconnects(simple_config):
     # Clients should be disconnected when doing stop and join
-    s = Server(simple_config)
-    c = SimpleClient()
-    c.call("version")
+    with SpallocServer(simple_config) as s:
+        with SimpleClient() as c:
+            c.call("version")
 
-    s.stop_and_join()
-    time.sleep(0.05)
-    assert c.sock.recv(1024) == b""
+            s.stop_and_join()
+            time.sleep(0.05)
+            assert c.sock.recv(1024) == b""
 
 
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("cold_start", [True, False])
 @pytest.mark.parametrize("corrupt_state", [True, False])
 @pytest.mark.parametrize("delete_state", [True, False])
-def test_hot_start(MockABC, simple_config, state_file, cold_start,
+def test_hot_start(simple_config, state_file, cold_start,
                    corrupt_state, delete_state):
     # Initially start up the server without a state file. Should be cold
     # started.
     assert not os.path.lexists(state_file)
-    s = Server(simple_config, cold_start)
-
-    try:
+    with SpallocServer(simple_config, cold_start) as s:
         job_id = s.create_job(None, owner="me")
         time.sleep(0.05)
         assert s.get_job_state(None, job_id)["state"] == JobState.ready
-    finally:
-        s.stop_and_join()
 
     # State should be dumped
     assert os.path.lexists(state_file)
@@ -350,20 +351,17 @@ def test_hot_start(MockABC, simple_config, state_file, cold_start,
         os.remove(state_file)
 
     # Start a new server
-    s = Server(simple_config, cold_start)
-    try:
+    with SpallocServer(simple_config, cold_start) as s:
         # Should have the same state as before, if doing a hot start
         if cold_start or corrupt_state or delete_state:
             assert s.get_job_state(None, job_id)["state"] == JobState.unknown
         else:
             assert s.get_job_state(None, job_id)["state"] == JobState.ready
-    finally:
-        s.stop_and_join()
 
 
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("missing", [True, False])
-def test_no_initial_config_file(MockABC, config_file, missing):
+def test_no_initial_config_file(config_file, missing):
     # Should fail if config file is not valid/missing first time
 
     if missing:
@@ -373,36 +371,36 @@ def test_no_initial_config_file(MockABC, config_file, missing):
             f.write("foo=123")
 
     with pytest.raises(Exception):
-        Server(config_file)
+        SpallocServer(config_file)
 
 
 @pytest.mark.timeout(2.0)
 def test_read_config_file(simple_config, s):
     # Should fail if config file is missing
     os.remove(simple_config)
-    assert s._read_config_file() is False
+    assert s.read_config_file() is False
 
     # Should fail if config file is syntactically invalid
     with open(simple_config, "w") as f:
         f.write("1_2_3")
-    assert s._read_config_file() is False
+    assert s.read_config_file() is False
 
     # Should fail if no configuration variable is set
     with open(simple_config, "w") as f:
         f.write("config = 123")
-    assert s._read_config_file() is False
+    assert s.read_config_file() is False
 
     # Should succeed otherwise!
     with open(simple_config, "w") as f:
         # Make a simple config file
         f.write("configuration = {}".format(repr(Configuration())))
-    assert s._read_config_file() is True
+    assert s.read_config_file() is True
 
     # Should pass on parameters to controller
     with open(simple_config, "w") as f:
         f.write("configuration = {}".format(repr(
             Configuration(max_retired_jobs=123))))
-    assert s._read_config_file() is True
+    assert s.read_config_file() is True
     assert s._controller.max_retired_jobs == 123
 
     # Should pass on machines to controller in right order
@@ -413,13 +411,13 @@ def test_read_config_file(simple_config, s):
                                     simple_machine("m2", ip_prefix="2"),
                                     simple_machine("m3", ip_prefix="3"),
                                     simple_machine("m4", ip_prefix="4")]))))
-    assert s._read_config_file() is True
+    assert s.read_config_file() is True
     assert list(s._controller.machines) == "m0 m1 m2 m3 m4".split()
 
 
 @pytest.mark.timeout(1.0)
 def test_reread_config_file(simple_config, s):
-    if not hasattr(signal, "SIGHUP"):
+    if not hasattr(signal, "SIGHUP"):  # pragma: no cover
         return
 
     # Make sure config re-reading works
@@ -436,11 +434,20 @@ def test_reread_config_file(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
-def test_bad_command(simple_config, s, monkeypatch):
+def test_bad_command(simple_config, s):
     # If a bad command is sent, the server should just disconnect the client
-    c = SimpleClient()
-    c.send_call("does not exist")
-    assert c.sock.recv(1024) == b""
+    with SimpleClient() as c:
+        c.send_call("does not exist")
+        assert c.sock.recv(1024) == b""
+
+
+@pytest.mark.timeout(1.0)
+def test_error_command(simple_config, s):
+    # If a bad command is sent, the server should just disconnect the client
+    with SimpleClient() as c:
+        c.send_call("create_job")
+        with pytest.raises(ServerException):
+            c.get_return()
 
 
 @pytest.mark.timeout(1.0)
@@ -502,13 +509,11 @@ def test_version_command(simple_config, s, c):
 
 
 @pytest.mark.timeout(2.0)
-@pytest.mark.parametrize("badreq",
-                         ["{", "{}", "{'command':123}",
-                          "{'command':'no such command'}",
-                          "{'command':'version','args':'hoho'}",
-                          "{'command':'version','kwargs':'hoho'}",
-                          # create_job without owner should fail
-                          "{'command':'create_job'}"])
+@pytest.mark.parametrize("badreq", [
+    "{", "{}", "{'command':123}",
+    "{'command':'no such command'}",
+    "{'command':'version','args':'hoho'}",
+    "{'command':'version','kwargs':'hoho'}"])
 def test_evil_calls(simple_config, s, evil, badreq):
     evil.connect()
     assert evil.call("{'command':'version'}") == __version__
@@ -522,6 +527,20 @@ def test_evil_calls2(simple_config, s, evil):
     assert evil.call("{'command':'version'}") == __version__
     assert evil.call("{'command':'version','kwargs':{'client':'hoho'}}") \
         == __version__
+
+
+@pytest.mark.parametrize("badreq,msg", [
+    # create_job without owner should fail
+    ("{'command':'create_job'}", "owner must be specified for all jobs")])
+def test_evil_calls3(simple_config, s, evil, badreq, msg):
+    evil.connect()
+    # Verify that we can use the connection
+    assert evil.call("{'command':'version'}") == __version__
+    with pytest.raises(ServerException) as excinfo:
+        evil.call(badreq)
+    assert msg in str(excinfo.value)
+    # Verify that we can still use the connection
+    assert evil.call("{'command':'version'}") == __version__
 
 
 @pytest.mark.timeout(2.0)
@@ -715,76 +734,79 @@ def test_get_board_at_position(simple_config, s, c):
 
 @pytest.mark.timeout(1.0)
 def test_job_notifications(simple_config, s):
-    c0 = SimpleClient()
-    c1 = SimpleClient()
+    with SimpleClient() as c0:
+        with SimpleClient() as c1:
 
-    # Listen for *all* job changes
-    c1.call("notify_job")
+            # Listen for *all* job changes
+            c1.call("notify_job")
 
-    # Should be notified new jobs being created and powered on
-    with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
-        job_id0 = c0.call("create_job", owner="me")
-        assert c1.get_notification() == {"jobs_changed": [job_id0]}
-    assert c1.get_notification() == {"jobs_changed": [job_id0]}
+            # Should be notified new jobs being created and powered on
+            with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
+                job_id0 = c0.call("create_job", owner="me")
+                assert c1.get_notification() == {"jobs_changed": [job_id0]}
+            assert c1.get_notification() == {"jobs_changed": [job_id0]}
 
-    # c0 should subscribe to its own job
-    c0.call("notify_job", job_id0)
+            # c0 should subscribe to its own job
+            c0.call("notify_job", job_id0)
 
-    # New job being created should not go to clients not listening to a
-    # specific job
-    job_id1 = c0.call("create_job", 1, 2, owner="me")
-    assert c1.get_notification() == {"jobs_changed": [job_id1]}
+            # New job being created should not go to clients not listening to a
+            # specific job
+            job_id1 = c0.call("create_job", 1, 2, owner="me")
+            assert c1.get_notification() == {"jobs_changed": [job_id1]}
 
-    # Job being dequeued should result in an event on that job and the other
-    # job being queued and powered on. c0 should only see dequed job.
-    with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
-        c0.call("destroy_job", job_id0)
-        assert c0.get_notification() == {"jobs_changed": [job_id0]}
-        assert c1.get_notification() in ({"jobs_changed": [job_id0, job_id1]},
-                                         {"jobs_changed": [job_id1, job_id0]})
-    assert c1.get_notification() == {"jobs_changed": [job_id1]}
+            # Job being dequeued should result in an event on that job and the
+            # other job being queued and powered on. c0 should only see
+            # dequeued job.
+            with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
+                c0.call("destroy_job", job_id0)
+                assert c0.get_notification() == {"jobs_changed": [job_id0]}
+                assert c1.get_notification() in (
+                    {"jobs_changed": [job_id0, job_id1]},
+                    {"jobs_changed": [job_id1, job_id0]})
+            assert c1.get_notification() == {"jobs_changed": [job_id1]}
 
 
 @pytest.mark.timeout(1.0)
 def test_machine_notifications(double_config, s):
-    c0 = SimpleClient()
-    c1 = SimpleClient()
+    with SimpleClient() as c0:
+        with SimpleClient() as c1:
 
-    c0.call("notify_machine", "m0")
-    c1.call("notify_machine")
+            c0.call("notify_machine", "m0")
+            c1.call("notify_machine")
 
-    job_id0 = c0.call("create_job", 1, 2, owner="me")
-    time.sleep(0.05)
+            job_id0 = c0.call("create_job", 1, 2, owner="me")
+            time.sleep(0.05)
 
-    # Should be notified new jobs being scheduled
-    assert c0.get_notification() == {"machines_changed": ["m0"]}
-    assert c1.get_notification() == {"machines_changed": ["m0"]}
+            # Should be notified new jobs being scheduled
+            assert c0.get_notification() == {"machines_changed": ["m0"]}
+            assert c1.get_notification() == {"machines_changed": ["m0"]}
 
-    job_id1 = c0.call("create_job", owner="me")
-    time.sleep(0.05)
+            job_id1 = c0.call("create_job", owner="me")
+            time.sleep(0.05)
 
-    # Make sure filtering works
-    assert c1.get_notification() == {"machines_changed": ["m1"]}
+            # Make sure filtering works
+            assert c1.get_notification() == {"machines_changed": ["m1"]}
 
-    # Should be notified on job completion
-    c0.call("destroy_job", job_id0)
-    assert c0.get_notification() == {"machines_changed": ["m0"]}
-    assert c1.get_notification() == {"machines_changed": ["m0"]}
+            # Should be notified on job completion
+            c0.call("destroy_job", job_id0)
+            assert c0.get_notification() == {"machines_changed": ["m0"]}
+            assert c1.get_notification() == {"machines_changed": ["m0"]}
 
-    # Should be notified on job completion
-    c1.call("destroy_job", job_id1)
-    assert c1.get_notification() == {"machines_changed": ["m1"]}
+            # Should be notified on job completion
+            c1.call("destroy_job", job_id1)
+            assert c1.get_notification() == {"machines_changed": ["m1"]}
 
-    # Make sure machine changes get announced
-    if not hasattr(signal, "SIGHUP"):
-        return
-    with open(double_config, "w") as f:
-        f.write("configuration = {}".format(repr(Configuration())))
-    os.kill(os.getpid(), signal.SIGHUP)
+            # Make sure machine changes get announced
+            if not hasattr(signal, "SIGHUP"):  # pragma: no cover
+                return
+            with open(double_config, "w") as f:
+                f.write("configuration = {}".format(repr(Configuration())))
+            os.kill(os.getpid(), signal.SIGHUP)
 
-    assert c0.get_notification() == {"machines_changed": ["m0"]}
-    assert c1.get_notification() in ({"machines_changed": ["m0", "m1"]},
-                                     {"machines_changed": ["m1", "m0"]})
+            assert c0.get_notification() == {"machines_changed": ["m0"]}
+            assert c1.get_notification() in (
+                {"machines_changed": ["m0", "m1"]},
+                {"machines_changed": ["m1", "m0"]})
 
 
 @pytest.mark.timeout(1.0)
@@ -792,75 +814,75 @@ def test_job_notify_register_unregister(simple_config, s):
     # Make sure the registration/unregistration commands for job notifications
     # work correctly
 
-    c0 = SimpleClient()
-    c1 = SimpleClient()
+    with SimpleClient() as c0:
+        with SimpleClient() as c1:
 
-    # Make sure the clients are connected
-    assert c0.call("version") == __version__
-    assert c1.call("version") == __version__
+            # Make sure the clients are connected
+            assert c0.call("version") == __version__
+            assert c1.call("version") == __version__
 
-    # Get the sockets connected to the clients
-    s0 = s1 = None
-    for sock in itervalues(s._fdmap):
-        try:
-            peer = sock.getpeername()
-        except:
-            continue
-        if peer == c0.sock.getsockname():
-            s0 = sock
-        elif peer == c1.sock.getsockname():
-            s1 = sock
-    assert s0 is not None and s1 is not None
+            # Get the sockets connected to the clients
+            s0 = s1 = None
+            for sock in itervalues(s._fdmap):
+                try:
+                    peer = sock.getpeername()
+                except:
+                    continue
+                if peer == c0.sock.getsockname():
+                    s0 = sock
+                elif peer == c1.sock.getsockname():
+                    s1 = sock
+            assert s0 is not None and s1 is not None
 
-    # Initially no matches should be present
-    assert s._client_job_watches == {}
+            # Initially no matches should be present
+            assert s._client_job_watches == {}
 
-    # Notification on all
-    c0.call("notify_job")
-    assert s._client_job_watches == {s0: None}
+            # Notification on all
+            c0.call("notify_job")
+            assert s._client_job_watches == {s0: None}
 
-    # Notification on just a specific job ID
-    c1.call("notify_job", 123)
-    assert s._client_job_watches == {s0: None, s1: set([123])}
+            # Notification on just a specific job ID
+            c1.call("notify_job", 123)
+            assert s._client_job_watches == {s0: None, s1: set([123])}
 
-    # Adding more jobs to a notify-all should result in no change
-    c0.call("notify_job", 321)
-    assert s._client_job_watches == {s0: None, s1: set([123])}
+            # Adding more jobs to a notify-all should result in no change
+            c0.call("notify_job", 321)
+            assert s._client_job_watches == {s0: None, s1: set([123])}
 
-    # Adding more jobs otherwise should add to the set
-    c1.call("notify_job", 321)
-    assert s._client_job_watches == {s0: None, s1: set([123, 321])}
+            # Adding more jobs otherwise should add to the set
+            c1.call("notify_job", 321)
+            assert s._client_job_watches == {s0: None, s1: set([123, 321])}
 
-    # Removing jobs from a notify-all should do nothing
-    c0.call("no_notify_job", 321)
-    assert s._client_job_watches == {s0: None, s1: set([123, 321])}
+            # Removing jobs from a notify-all should do nothing
+            c0.call("no_notify_job", 321)
+            assert s._client_job_watches == {s0: None, s1: set([123, 321])}
 
-    # Removing jobs which aren't matched should do nothing
-    c1.call("no_notify_job", 0)
-    assert s._client_job_watches == {s0: None, s1: set([123, 321])}
+            # Removing jobs which aren't matched should do nothing
+            c1.call("no_notify_job", 0)
+            assert s._client_job_watches == {s0: None, s1: set([123, 321])}
 
-    # Removing jobs which are watched should remove them
-    c1.call("no_notify_job", 123)
-    assert s._client_job_watches == {s0: None, s1: set([321])}
+            # Removing jobs which are watched should remove them
+            c1.call("no_notify_job", 123)
+            assert s._client_job_watches == {s0: None, s1: set([321])}
 
-    # Removing the last job should remove the watch entirely
-    c1.call("no_notify_job", 321)
-    assert s._client_job_watches == {s0: None}
+            # Removing the last job should remove the watch entirely
+            c1.call("no_notify_job", 321)
+            assert s._client_job_watches == {s0: None}
 
-    c1.call("notify_job", 123)
-    assert s._client_job_watches == {s0: None, s1: set([123])}
+            c1.call("notify_job", 123)
+            assert s._client_job_watches == {s0: None, s1: set([123])}
 
-    # Removing all should work on notify-all
-    c0.call("no_notify_job")
-    assert s._client_job_watches == {s1: set([123])}
+            # Removing all should work on notify-all
+            c0.call("no_notify_job")
+            assert s._client_job_watches == {s1: set([123])}
 
-    # Removing all should work on individual jobs
-    c1.call("no_notify_job")
-    assert s._client_job_watches == {}
+            # Removing all should work on individual jobs
+            c1.call("no_notify_job")
+            assert s._client_job_watches == {}
 
-    # Removing when never watching should not fail
-    c1.call("no_notify_job")
-    assert s._client_job_watches == {}
+            # Removing when never watching should not fail
+            c1.call("no_notify_job")
+            assert s._client_job_watches == {}
 
 
 @pytest.mark.timeout(1.0)
@@ -868,75 +890,86 @@ def test_machine_notify_register_unregister(simple_config, s):
     # Make sure the registration/unregistration commands for machine
     # notifications work correctly
 
-    c0 = SimpleClient()
-    c1 = SimpleClient()
+    with SimpleClient() as c0:
+        with SimpleClient() as c1:
 
-    # Make sure the clients are connected
-    assert c0.call("version") == __version__
-    assert c1.call("version") == __version__
+            # Make sure the clients are connected
+            assert c0.call("version") == __version__
+            assert c1.call("version") == __version__
 
-    # Get the sockets connected to the clients
-    s0 = s1 = None
-    for sock in itervalues(s._fdmap):
-        try:
-            peer = sock.getpeername()
-        except:
-            continue
-        if peer == c0.sock.getsockname():
-            s0 = sock
-        elif peer == c1.sock.getsockname():
-            s1 = sock
-    assert s0 is not None and s1 is not None
+            # Get the sockets connected to the clients
+            s0 = s1 = None
+            for sock in itervalues(s._fdmap):
+                try:
+                    peer = sock.getpeername()
+                except:
+                    continue
+                if peer == c0.sock.getsockname():
+                    s0 = sock
+                elif peer == c1.sock.getsockname():
+                    s1 = sock
+            assert s0 is not None and s1 is not None
 
-    # Initially no matches should be present
-    assert s._client_machine_watches == {}
+            # Initially no matches should be present
+            assert s._client_machine_watches == {}
 
-    # Notification on all
-    c0.call("notify_machine")
-    assert s._client_machine_watches == {s0: None}
+            # Notification on all
+            c0.call("notify_machine")
+            assert s._client_machine_watches == {s0: None}
 
-    # Notification on just a specific machine
-    c1.call("notify_machine", "m0")
-    assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
+            # Notification on just a specific machine
+            c1.call("notify_machine", "m0")
+            assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
 
-    # Adding more machines to a notify-all should result in no change
-    c0.call("notify_machine", "m1")
-    assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
+            # Adding more machines to a notify-all should result in no change
+            c0.call("notify_machine", "m1")
+            assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
 
-    # Adding more machines otherwise should add to the set
-    c1.call("notify_machine", "m1")
-    assert s._client_machine_watches == {s0: None, s1: set(["m0", "m1"])}
+            # Adding more machines otherwise should add to the set
+            c1.call("notify_machine", "m1")
+            assert s._client_machine_watches == {
+                s0: None, s1: set(["m0", "m1"])}
 
-    # Removing machines from a notify-all should do nothing
-    c0.call("no_notify_machine", "m1")
-    assert s._client_machine_watches == {s0: None, s1: set(["m0", "m1"])}
+            # Removing machines from a notify-all should do nothing
+            c0.call("no_notify_machine", "m1")
+            assert s._client_machine_watches == {
+                s0: None, s1: set(["m0", "m1"])}
 
-    # Removing machines which aren't matched should do nothing
-    c1.call("no_notify_machine", "m")
-    assert s._client_machine_watches == {s0: None, s1: set(["m0", "m1"])}
+            # Removing machines which aren't matched should do nothing
+            c1.call("no_notify_machine", "m")
+            assert s._client_machine_watches == {
+                s0: None, s1: set(["m0", "m1"])}
 
-    # Removing machines which are watched should remove them
-    c1.call("no_notify_machine", "m0")
-    assert s._client_machine_watches == {s0: None, s1: set(["m1"])}
+            # Removing machines which are watched should remove them
+            c1.call("no_notify_machine", "m0")
+            assert s._client_machine_watches == {s0: None, s1: set(["m1"])}
 
-    # Removing the last machines should remove the watch entirely
-    c1.call("no_notify_machine", "m1")
-    assert s._client_machine_watches == {s0: None}
+            # Removing the last machines should remove the watch entirely
+            c1.call("no_notify_machine", "m1")
+            assert s._client_machine_watches == {s0: None}
 
-    c1.call("notify_machine", "m0")
-    assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
+            c1.call("notify_machine", "m0")
+            assert s._client_machine_watches == {s0: None, s1: set(["m0"])}
 
-    # Removing all should work on notify-all
-    c0.call("no_notify_machine")
-    assert s._client_machine_watches == {s1: set(["m0"])}
+            # Removing all should work on notify-all
+            c0.call("no_notify_machine")
+            assert s._client_machine_watches == {s1: set(["m0"])}
 
-    # Removing all should work on individual machines
-    c1.call("no_notify_machine")
-    assert s._client_machine_watches == {}
+            # Removing all should work on individual machines
+            c1.call("no_notify_machine")
+            assert s._client_machine_watches == {}
 
-    # Removing when never watching should not fail
-    c1.call("no_notify_machine")
-    assert s._client_machine_watches == {}
+            # Removing when never watching should not fail
+            c1.call("no_notify_machine")
+            assert s._client_machine_watches == {}
+
+
+@pytest.fixture
+def mock_server():
+    server = Mock()
+    serverFactory = Mock(return_value=server)
+    type(server)._running = PropertyMock(return_value=False)
+    return (server, serverFactory)
 
 
 @pytest.mark.timeout(2.0)
@@ -945,48 +978,42 @@ def test_machine_notify_register_unregister(simple_config, s):
                           ("{} -q", False),
                           ("{} --cold-start", True),
                           ("{} -q --cold-start", True)])
-def test_commandline(monkeypatch, config_file, args, cold_start):
-    server = Mock()
-    Server = Mock(return_value=server)
-    server.is_alive.return_value = False
+def test_commandline(monkeypatch, config_file, args, cold_start, mock_server):
+    s, SpallocServer = mock_server
+    s.is_alive.return_value = False
     import spalloc_server.server
-    monkeypatch.setattr(spalloc_server.server,
-                        "Server", Server)
+    monkeypatch.setattr(spalloc_server.server, "SpallocServer", SpallocServer)
 
     main(args.format(config_file).split())
 
-    Server.assert_called_once_with(config_filename=config_file,
-                                   cold_start=cold_start, port=22244)
+    SpallocServer.assert_called_once_with(config_filename=config_file,
+                                          cold_start=cold_start, port=22244)
 
 
 @pytest.mark.timeout(2.0)
-def test_keyboard_interrupt(monkeypatch, config_file):
-    s = Mock()
-    Server = Mock(return_value=s)
+def test_keyboard_interrupt(monkeypatch, config_file, mock_server):
+    s, SpallocServer = mock_server
     import spalloc_server.server
-    monkeypatch.setattr(spalloc_server.server,
-                        "Server", Server)
+    monkeypatch.setattr(spalloc_server.server, "SpallocServer", SpallocServer)
 
     s.is_alive.side_effect = KeyboardInterrupt
     main([config_file])
 
-    Server.assert_called_once_with(config_filename=config_file,
-                                   cold_start=False, port=22244)
+    SpallocServer.assert_called_once_with(config_filename=config_file,
+                                          cold_start=False, port=22244)
     s.is_alive.assert_called_once_with()
     s.stop_and_join.assert_called_once_with()
 
 
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("args", ["", "--cold-start" "-c"])
-def test_bad_args(monkeypatch, args):
-    server = Mock()
-    Server = Mock(return_value=server)
-    server.is_alive.return_value = False
+def test_bad_args(monkeypatch, args, mock_server):
+    s, SpallocServer = mock_server
+    s.is_alive.return_value = False
     import spalloc_server.server
-    monkeypatch.setattr(spalloc_server.server,
-                        "Server", Server)
+    monkeypatch.setattr(spalloc_server.server, "SpallocServer", SpallocServer)
 
     with pytest.raises(SystemExit):
         main(args.split())
 
-    assert len(Server.mock_calls) == 0
+    assert len(SpallocServer.mock_calls) == 0
