@@ -18,10 +18,10 @@ from time import sleep
 from spinn_utilities.overrides import overrides
 
 from spalloc_server import __version__, coordinates, configuration
-from .configuration import Configuration
-from .controller import Controller
-from .polling_server_core import PollingServerCore
-from .configuration_reloader import ConfigurationReloader
+from spalloc_server.configuration import Configuration
+from spalloc_server.controller import Controller
+from spalloc_server.polling_server_core import PollingServerCore
+from spalloc_server.configuration_reloader import ConfigurationReloader
 
 BUFFER_SIZE = 1024
 
