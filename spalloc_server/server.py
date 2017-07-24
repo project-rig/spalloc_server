@@ -307,7 +307,10 @@ class Server(PollingServerCore, ConfigurationReloader):
         elif "client" in kwargs:
             del kwargs["client"]
         # Execute the specified command
-        return command(self, client, *args, **kwargs)
+        try:
+            return {"return": command(self, client, *args, **kwargs)}
+        except Exception, e:
+            return {"exception": str(e)}
 
     def _handle_commands(self, client):
         """Handle incoming commands from a client.
@@ -336,9 +339,8 @@ class Server(PollingServerCore, ConfigurationReloader):
                     self._client_buffers[client].partition(b"\n")
                 # Note that we skip blank lines
                 if len(line) > 0:
-                    self._msg_client(client, {
-                        "return": self._handle_command(client, line)
-                    })
+                    self._msg_client(client,
+                                     self._handle_command(client, line))
         except:
             # If any of the above fails for any reason (e.g. invalid JSON,
             # unrecognised command, command crashes, etc.), just disconnect

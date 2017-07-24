@@ -924,8 +924,7 @@ class Controller(object):
         with self._lock:
             now = timestamp()
             for job in list(itervalues(self._jobs)):
-                if (job.keepalive is not None and
-                        job.keepalive_until < now):
+                if job.keepalive is not None and job.keepalive_until < now:
                     # Job timed out, destroy it
                     self.destroy_job(job.id, "Job timed out.")
 

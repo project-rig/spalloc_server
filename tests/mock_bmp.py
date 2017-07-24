@@ -45,8 +45,7 @@ class SCPVerMessage(SDPMessage):
         data += struct.pack("<BBBBHHI", 0, 0, self._y, self._x, 0, 0xFFFF, 0)
         data += "BC&MP/Test\0"
         data += self._version + "\0"
-        response = SDPMessage.bytestring.fget(self) + data
-        return response
+        return SDPMessage.bytestring.fget(self) + data  # @UndefinedVariable
 
 
 class MockBMP(Thread):

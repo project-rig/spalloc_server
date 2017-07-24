@@ -29,6 +29,10 @@ class DisconnectedException(Exception):
     pass
 
 
+class ServerException(Exception):
+    pass
+
+
 class SimpleClientSocket(object):
     def __init__(self, host, port):
         self._addr = (host, port)
@@ -85,6 +89,8 @@ class SimpleClient(SimpleClientSocket):
                 raise
             if "return" in resp:
                 return resp["return"]
+            if "exception" in resp:
+                raise ServerException(resp["exception"])
             else:  # pragma: no cover
                 self.notifications.append(resp)
 
@@ -127,6 +133,8 @@ class EvilClient(SimpleClientSocket):
                 raise
             if "return" in resp:
                 return resp["return"]
+            if "exception" in resp:
+                raise ServerException(resp["exception"])
             else:  # pragma: no cover
                 self.notifications.append(resp)
 
@@ -434,6 +442,15 @@ def test_bad_command(simple_config, s):
 
 
 @pytest.mark.timeout(1.0)
+def test_error_command(simple_config, s):
+    # If a bad command is sent, the server should just disconnect the client
+    with SimpleClient() as c:
+        c.send_call("create_job")
+        with pytest.raises(ServerException):
+            c.get_return()
+
+
+@pytest.mark.timeout(1.0)
 def test_handle_commands_bad_recv(simple_config, s, monkeypatch):
     monkeypatch.setattr(s, "_disconnect_client", Mock())
 
@@ -492,13 +509,11 @@ def test_version_command(simple_config, s, c):
 
 
 @pytest.mark.timeout(2.0)
-@pytest.mark.parametrize("badreq",
-                         ["{", "{}", "{'command':123}",
-                          "{'command':'no such command'}",
-                          "{'command':'version','args':'hoho'}",
-                          "{'command':'version','kwargs':'hoho'}",
-                          # create_job without owner should fail
-                          "{'command':'create_job'}"])
+@pytest.mark.parametrize("badreq", [
+    "{", "{}", "{'command':123}",
+    "{'command':'no such command'}",
+    "{'command':'version','args':'hoho'}",
+    "{'command':'version','kwargs':'hoho'}"])
 def test_evil_calls(simple_config, s, evil, badreq):
     evil.connect()
     assert evil.call("{'command':'version'}") == __version__
@@ -512,6 +527,20 @@ def test_evil_calls2(simple_config, s, evil):
     assert evil.call("{'command':'version'}") == __version__
     assert evil.call("{'command':'version','kwargs':{'client':'hoho'}}") \
         == __version__
+
+
+@pytest.mark.parametrize("badreq,msg", [
+    # create_job without owner should fail
+    ("{'command':'create_job'}", "owner must be specified for all jobs")])
+def test_evil_calls3(simple_config, s, evil, badreq, msg):
+    evil.connect()
+    # Verify that we can use the connection
+    assert evil.call("{'command':'version'}") == __version__
+    with pytest.raises(ServerException) as excinfo:
+        evil.call(badreq)
+    assert msg in str(excinfo.value)
+    # Verify that we can still use the connection
+    assert evil.call("{'command':'version'}") == __version__
 
 
 @pytest.mark.timeout(2.0)
