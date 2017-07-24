@@ -6,6 +6,8 @@ from collections import namedtuple, OrderedDict, defaultdict
 from datetime import datetime
 from enum import IntEnum
 from functools import partial
+import logging
+from logging.handlers import TimedRotatingFileHandler
 from pytz import utc
 from six import itervalues, iteritems
 from threading import RLock
@@ -17,6 +19,11 @@ from .coordinates import \
     board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
 from .job_queue import JobQueue
 from .async_bmp_controller import AsyncBMPController
+
+job_log = logging.Logger("jobs")
+job_log.propagate = False
+job_log.addHandler(TimedRotatingFileHandler(
+    "spalloc_jobs.log", when="D"))
 
 
 class Controller(object):
@@ -389,6 +396,7 @@ class Controller(object):
         job_id : int
             The Job ID assigned to the job.
         """
+        job_log.info("create_job(%s,%s)", args, kwargs)
         # Extract non-allocator arguments
         owner = kwargs.pop("owner")
         keepalive = kwargs.pop("keepalive")
@@ -479,6 +487,7 @@ class Controller(object):
 
     def power_on_job_boards(self, job_id):
         """Power on (or reset if already on) boards associated with a job."""
+        job_log.info("power_job(%s,On)", job_id)
         with self._lock:
             self.job_keepalive(job_id)
 
@@ -489,6 +498,7 @@ class Controller(object):
 
     def power_off_job_boards(self, job_id):
         """Power off boards associated with a job."""
+        job_log.info("power_job(%s,Off)", job_id)
         with self._lock:
             self.job_keepalive(job_id)
 
@@ -510,6 +520,10 @@ class Controller(object):
             A human-readable string describing the reason for the
             job's destruction.
         """
+        if reason is None:
+            job_log.info("destroy_job(%s)", job_id)
+        else:
+            job_log.info("destroy_job(%s,%s)", job_id, reason)
         with self._lock:
             job = self._jobs.get(job_id, None)
             if job is not None:
