@@ -5,25 +5,23 @@ SpiNNaker Partitioning Server, containing the :py:func:`function <.main>` which
 is mapped to the ``spalloc-server`` command-line tool.
 """
 
-from os import path
-import logging
-import pickle
-import socket
-import select
-import signal
-import threading
-import json
-import argparse
-import time
-import errno
-
+from argparse import ArgumentParser
 from collections import OrderedDict
-
+from json import dumps as json, loads as dejson
+import logging as log
+from os import path
+from pickle import dump as pickle, load as unpickle
 from six import iteritems, string_types
+from threading import Thread
+from time import sleep
+
+from spinn_utilities.overrides import overrides
 
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
 from spalloc_server.controller import Controller
+from spalloc_server.polling_server_core import PollingServerCore
+from spalloc_server.configuration_reloader import ConfigurationReloader
 
 BUFFER_SIZE = 1024
 
@@ -41,96 +39,7 @@ def spalloc_command(f):
     return f
 
 
-class PollingServerCore(object):
-    """Wrapper around the operating system's poll() call.
-    """
-    def __init__(self):
-        # The poll object used for listening for connections
-        self._poll = None
-        if hasattr(select, "poll"):
-            self._poll = select.poll()  # @UndefinedVariable
-
-        # Used to map file descriptors to channels
-        self._fdmap = {}
-
-        # This socket pair is used by background threads to interrupt the main
-        # event loop.
-        self._notify_send, self._notify_recv = None, None
-        if hasattr(socket, "socketpair"):
-            self._notify_send, self._notify_recv = socket.socketpair()
-        else:
-
-            # Create your own socket pair
-            temp_sock = socket.socket()
-            temp_sock.setblocking(True)
-            temp_sock.bind(('', 0))
-            port = temp_sock.getsockname()[1]
-            temp_sock.listen(1)
-            self._notify_send = socket.socket()
-            self._notify_send.setblocking(False)
-            try:
-                self._notify_send.connect(('localhost', port))
-            except socket.error as err:
-                # EWOULDBLOCK is not an error, as the socket is non-blocking
-                if err.errno != errno.EWOULDBLOCK:
-                    raise
-            self._notify_recv, _ = temp_sock.accept()
-        self.register_channel(self._notify_recv)
-
-    def register_channel(self, channel):
-        """Register a channel (file, socket, etc.) for being reported via the
-        :py:meth:`.ready_channels` method.
-        """
-        if self._poll is not None:
-            self._poll.register(
-                channel.fileno(), select.POLLIN)  # @UndefinedVariable
-        self._fdmap[channel.fileno()] = channel
-
-    def unregister_channel(self, channel):
-        """Unregister a channel (file, socket, etc.) for being reported via
-        the :py:meth:`.ready_channels` method.
-        """
-        if self._poll is not None:
-            self._poll.unregister(channel)
-        if channel.fileno() in self._fdmap:
-            del self._fdmap[channel.fileno()]
-
-    def ready_channels(self, timeout_check_interval):
-        """Waits up to timeout_check_interval milliseconds for a channel to
-        become readable. Multiple channels may become readable at once.
-
-        :return: An iterable listing the channels that are currently
-                 readable. Can be empty if the poller is woken via the
-                 :py:meth:`.wake` call.
-        """
-        if self._poll is not None:
-            events = self._poll.poll(timeout_check_interval)
-            for fd, _ in events:
-                if fd == self._notify_recv.fileno():
-                    self._notify_recv.recv(BUFFER_SIZE)
-                else:
-                    yield self._fdmap[fd]
-        else:
-            channels = self._fdmap.values()
-            readable, _, _ = select.select(
-                channels, [], [], timeout_check_interval)
-            for channel in readable:
-                if channel == self._notify_recv:
-                    self._notify_recv.recv(BUFFER_SIZE)
-                else:
-                    yield channel
-
-    def wake(self):
-        """Notify the waiting thread that something has happened.
-
-        Calling this method simply wakes up the waiting thread (which will be
-        waiting in :py:meth:`.ready_channels`) causing it to perform all its
-        usual checks and processing steps.
-        """
-        self._notify_send.send(b"x")
-
-
-class Server(PollingServerCore):
+class Server(PollingServerCore, ConfigurationReloader):
     """A TCP server which manages, power, partitioning and scheduling of jobs
     on SpiNNaker machines.
 
@@ -174,58 +83,62 @@ class Server(PollingServerCore):
         port : int, optional
             Which port to listen on. Defaults to 22244.
         """
-        PollingServerCore.__init__(self)
+        # ============ STATE THAT NEEDS TO BE ALWAYS DEFINED ============
 
-        self._config_filename = config_filename
         self._cold_start = cold_start
         self._port = port
 
         # Should the background thread terminate?
         self._stop = False
 
-        # The background thread in which the server will run
-        self._server_thread = threading.Thread(target=self._run,
-                                               name="Server Thread")
+        # Flag for checking if the server is still alive
+        self._running = False
 
         # Currently open sockets to clients. Once server started, should only
         # be accessed from the server thread.
         self._server_socket = None
 
+        # The server core object that the object that is persisted
+        self._controller = None
+
         # Buffered data received from each socket
         # {fd: buf, ...}
         self._client_buffers = {}
 
-        # For each client, contains a set() of job IDs and machine names that
-        # the client is watching for changes or None if all changes are to be
-        # monitored.
-        # {socket: set or None, ...}
-        self._client_job_watches = {}
-        self._client_machine_watches = {}
+        # ============ SUPERCLASS INITIALISATION ============
+
+        PollingServerCore.__init__(self)
+        ConfigurationReloader.__init__(self, config_filename, self.wake)
+
+        # ============ ACTIVE OBJECTS ============
+
+        # The background thread in which the server will run
+        self._server_thread = Thread(target=self._run, name="Server Thread")
 
         # The current server configuration options. Once server started, should
         # only be accessed from the server thread.
         self._configuration = Configuration()
 
         # Infer the saved-state location
-        self._state_filename = self._get_state_filename(self._config_filename)
+        self._state_filename = self._get_state_filename(
+            self.configuration_file)
 
         # Attempt to restore saved state if required
-        self._controller = None
         if not self._cold_start and path.isfile(self._state_filename):
             try:
                 with open(self._state_filename, "rb") as f:
-                    self._controller = pickle.load(f)
-                logging.info("Server warm-starting from %s.",
-                             self._state_filename)
+                    self._controller = unpickle(f)
+                log.info("Server warm-starting from %s.",
+                         self._state_filename)
             except:
                 # Some other error occurred during unpickling.
-                logging.exception(
+                log.exception(
                     "Server state could not be unpacked from %s.",
                     self._state_filename)
 
         # Perform cold-start if no saved state was loaded
         if self._controller is None:
-            logging.info("Server cold-starting.")
+            log.info("Server cold-starting.")
             self._controller = Controller()
 
         # Notify the background thread when something changes in the background
@@ -234,17 +147,11 @@ class Server(PollingServerCore):
 
         # Read configuration file. This must succeed when the server is first
         # being started.
-        if not self._read_config_file():
+        if not self.read_config_file():
             raise Exception("Config file could not be loaded.")
-
-        # Set up SIGHUP signal handler for config file reloading
-        if hasattr(signal, "SIGHUP"):
-            signal.signal(signal.SIGHUP, self._sighup_handler)
 
         # Start the server
         self._server_thread.start()
-
-        # Flag for checking if the server is still alive
         self._running = True
 
     def _get_state_filename(self, cfg):
@@ -260,100 +167,48 @@ class Server(PollingServerCore):
         filename = ".{}.state.{}".format(basename, __version__)
         return path.join(dirname, filename)
 
-    def _sighup_handler(self, signum, frame):
-        """Handler for SIGHUP. If such a signal is delivered, will trigger a
-        reread of the configuration file.
+    @overrides(super_class_method=ConfigurationReloader._parse_config)
+    def _parse_config(self, config_file_contents):
+        g = {}
+        g.update(configuration.__dict__)
+        g.update(coordinates.__dict__)
+        exec(config_file_contents, g)
+        return g
 
-        Parameters
-        ----------
-        signum : int
-        frame :
-        """
-        if signum == signal.SIGHUP:  # @UndefinedVariable
-            self._reload_config = True
-            self.wake()
+    @overrides(super_class_method=ConfigurationReloader._validate_config)
+    def _validate_config(self, parsed_config):
+        new = parsed_config.get("configuration", None)
+        if new is None or not isinstance(new, Configuration):
+            return None
+        return new
 
-    def _read_config_file(self):
-        """(Re-)read the server configuration.
-
-        If reading of the config file fails, the current configuration is
-        retained, unchanged.
-
-        Returns
-        -------
-        bool
-            True if reading succeeded, False otherwise.
-        """
-        self._reload_config = False
-        try:
-            with open(self._config_filename, "r") as f:
-                config_script = f.read()
-        except (IOError, OSError):  # pragma: no cover
-            logging.exception("Could not read config file %s",
-                              self._config_filename)
-            return False
-
-        # The environment in which the configuration script is executed (and
-        # where the script will store its options.)
-        try:
-            g = {}
-            g.update(configuration.__dict__)
-            g.update(coordinates.__dict__)
-            exec(config_script, g)
-        except:
-            # Executing the config file failed, don't update any settings
-            logging.exception("Error while evaluating config file %s",
-                              self._config_filename)
-            return False
-
-        # Make sure a configuration object is specified
-        new = g.get("configuration", None)
-        if not isinstance(new, Configuration):
-            logging.error("'configuration' must be a Configuration object " +
-                          "in config file %s", self._config_filename)
-            return False
-
-        # Update the configuration
+    @overrides(super_class_method=ConfigurationReloader._load_valid_config)
+    def _load_valid_config(self, validated_config):
         old = self._configuration
-        self._configuration = new
+        self._configuration = validated_config
 
         # Restart the server if the port or IP has changed (or if the server
         # has not yet been started...)
-        if (new.ip != old.ip or
-                self._server_socket is None):
+        if validated_config.ip != old.ip or self._server_socket is None:
             # Close all open connections
             if self._close():  # pragma: no cover
-                time.sleep(0.25)  # Ugly hack; fully release socket now
+                sleep(0.25)  # Ugly hack; fully release socket now
 
-            # Create a new server socket
-            self._open(new.ip)
+            # Create a validated_config server socket
+            self._server_socket = self._open_server_socket(
+                validated_config.ip, self._port)
 
         # Update the controller
-        self._controller.max_retired_jobs = new.max_retired_jobs
-        self._controller.machines = OrderedDict((m.name, m)
-                                                for m in new.machines)
-
-        logging.info("Config file %s read successfully.",
-                     self._config_filename)
-        return True
-
-    def _open(self, ipaddress):
-        """Create a new server socket.
-
-        :param str ipaddress: The local address of the socket.
-        """
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((ipaddress, self._port))
-        sock.listen(5)
-        self.register_channel(sock)
-        self._server_socket = sock
+        self._controller.max_retired_jobs = validated_config.max_retired_jobs
+        self._controller.machines = OrderedDict(
+            (m.name, m) for m in validated_config.machines)
 
     def _close(self):
         """Close all server sockets and disconnect all client connections."""
         result = False
         if self._server_socket is not None:
             self.unregister_channel(self._server_socket)
+            log.info("closing server socket")
             self._server_socket.close()
             result = True
             self._server_socket = None
@@ -369,9 +224,9 @@ class Server(PollingServerCore):
         client : :py:class:`socket.Socket`
         """
         try:
-            logging.info("Client %s disconnected.", client.getpeername())
+            log.info("Client %s disconnected.", client.getpeername())
         except:
-            logging.info("Client %s disconnected.", client)
+            log.info("Client %s disconnected.", client)
 
         # Clear input buffer
         del self._client_buffers[client]
@@ -391,9 +246,9 @@ class Server(PollingServerCore):
         try:
             client, addr = self._server_socket.accept()
         except IOError as e:  # pragma: no cover
-            logging.warn("problem when accepting connection", exc_info=e)
+            log.warn("problem when accepting connection", exc_info=e)
             return
-        logging.info("New client connected from %s", addr)
+        log.info("New client connected from %s", addr)
 
         # Watch the client's socket for data
         self.register_channel(client)
@@ -412,7 +267,7 @@ class Server(PollingServerCore):
             The object or array to send. Will be converted to JSON.
         """
         try:
-            client.send(json.dumps(message).encode("utf-8") + b"\n")
+            client.send(json(message).encode("utf-8") + b"\n")
         except:
             self._disconnect_client(client)
             raise
@@ -429,19 +284,19 @@ class Server(PollingServerCore):
             The line parsed from the socket. Should be a complete JSON object
             with at least a 'command' key.
         """
-        cmd_obj = json.loads(line.decode("utf-8"))
+        cmd_obj = dejson(line.decode("utf-8"))
         if "command" not in cmd_obj:
             raise IOError("no command name given")
         commandName = cmd_obj["command"]
         if not isinstance(commandName, string_types):
             raise IOError("parsed gibberish from user")
         if commandName not in _COMMANDS:
-            logging.info("lookup failure: %s", commandName)
+            log.info("lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
         command = _COMMANDS[commandName]
         if command is None:  # pragma: no cover
             # Should be unreachable
-            logging.critical("unexpected lookup failure: %s", commandName)
+            log.critical("unexpected lookup failure: %s", commandName)
             raise IOError("unrecognised command name")
         args = cmd_obj["args"] if "args" in cmd_obj else []
         if not isinstance(args, list):
@@ -487,11 +342,11 @@ class Server(PollingServerCore):
                     self._msg_client(client,
                                      self._handle_command(client, line))
         except:
-            # If any of the above fails for any unrecoverable reason, just
-            # disconnect the client.
-            logging.exception(
-                "Client %s sent problematic command %r, disconnecting",
-                peer, line)
+            # If any of the above fails for any reason (e.g. invalid JSON,
+            # unrecognised command, command crashes, etc.), just disconnect
+            # the client.
+            log.exception("Client %s sent bad command %r, disconnecting",
+                          peer, line)
             self._disconnect_client(client)
 
     def _send_notifications(self, label, changes, watches):
@@ -504,23 +359,7 @@ class Server(PollingServerCore):
                             label: list(changes) if items is None else
                             list(changes.intersection(items))})
                     except (OSError, IOError):
-                        logging.exception("Could not send notification.")
-
-    def _send_change_notifications(self):
-        """Send any registered change notifications to clients.
-
-        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}``
-        and ``{"machines_changed": [machine_name, ...]}`` to clients who have
-        subscribed to be notified of changes to jobs or machines.
-        """
-        # Notify clients about jobs which have changed
-        self._send_notifications("jobs_changed",
-                                 self._controller.changed_jobs,
-                                 self._client_job_watches)
-        # Notify clients about machines which have changed
-        self._send_notifications("machines_changed",
-                                 self._controller.changed_machines,
-                                 self._client_machine_watches)
+                        log.exception("Could not send notification.")
 
     def _run(self):
         """The main server thread.
@@ -532,7 +371,7 @@ class Server(PollingServerCore):
         :py:meth:`.controller.Controller.destroy_timed_out_jobs` on the
         controller.
         """
-        logging.info("Server running.")
+        log.info("Server running.")
         while not self._stop:
             # Wait for a connection to get opened/closed, a command to arrive,
             # the config file to change or the timeout to elapse.
@@ -556,9 +395,9 @@ class Server(PollingServerCore):
             self._send_change_notifications()
 
             # Config file changed, re-read it
-            if self._reload_config:
-                if not self._read_config_file():  # pragma: no cover
-                    logging.warning("failed to reread configuration file")
+            if self.config_needs_reloading:
+                if not self.read_config_file():  # pragma: no cover
+                    log.warning("failed to reread configuration file")
 
     def is_alive(self):
         """Is the server running?"""
@@ -571,32 +410,70 @@ class Server(PollingServerCore):
 
     def stop_and_join(self):
         """Stop the server and wait for it to shut down completely."""
-        logging.info("Server shutting down, please wait...")
+        log.info("Server shutting down, please wait...")
 
-        # Shut down server thread
-        self._stop = True
-        self.wake()
-        self._server_thread.join()
-
-        # Close all connections
-        logging.info("Closing connections...")
-        self._close()
+        try:
+            # Shut down server thread
+            self._stop = True
+            self.wake()
+            self._server_thread.join()
+        finally:
+            # Close all connections; this is the critical part as it closes
+            # the server socket itself.
+            log.info("Closing connections...")
+            self._close()
 
         # Shut down the controller and flush all BMP commands
-        logging.info("Waiting for all queued BMP commands...")
+        log.info("Waiting for all queued BMP commands...")
         self._controller.stop()
         self._controller.join()
 
         # Dump controller state to file
         with open(self._state_filename, "wb") as f:
-            pickle.dump(self._controller, f)
+            pickle(self._controller, f)
 
-        logging.info("Server shut down.")
+        log.info("Server shut down.")
 
         self._running = False
 
+
+class SpallocServer(Server):
+    def __init__(self, config_filename, cold_start=False, port=22244):
+        # For each client, contains a set() of job IDs and machine names that
+        # the client is watching for changes or None if all changes are to be
+        # monitored.
+        # {socket: set or None, ...}
+        self._client_job_watches = {}
+        self._client_machine_watches = {}
+
+        Server.__init__(self, config_filename, cold_start, port)
+
+    def _send_change_notifications(self):
+        """Send any registered change notifications to clients.
+
+        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}``
+        and ``{"machines_changed": [machine_name, ...]}`` to clients who have
+        subscribed to be notified of changes to jobs or machines.
+        """
+        # Notify clients about jobs which have changed
+        self._send_notifications("jobs_changed",
+                                 self._controller.changed_jobs,
+                                 self._client_job_watches)
+        # Notify clients about machines which have changed
+        self._send_notifications("machines_changed",
+                                 self._controller.changed_machines,
+                                 self._client_machine_watches)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
+        if self._running:
+            self.stop_and_join()
+        return False
+
     @spalloc_command
-    def version(self, client):
+    def version(self, client):  # @UnusedVariable
         """
         Returns
         -------
@@ -605,7 +482,7 @@ class Server(PollingServerCore):
         return __version__
 
     @spalloc_command
-    def create_job(self, client, *args, **kwargs):
+    def create_job(self, client, *args, **kwargs):  # @UnusedVariable
         """Create a new job (i.e. allocation of boards).
 
         This function should be called in one of the following styles::
@@ -707,7 +584,7 @@ class Server(PollingServerCore):
         return self._controller.create_job(*args, **kwargs)
 
     @spalloc_command
-    def job_keepalive(self, client, job_id):
+    def job_keepalive(self, client, job_id):  # @UnusedVariable
         """Reset the keepalive timer for the specified job.
 
         Note all other job-specific commands implicitly do this.
@@ -720,7 +597,7 @@ class Server(PollingServerCore):
         self._controller.job_keepalive(job_id)
 
     @spalloc_command
-    def get_job_state(self, client, job_id):
+    def get_job_state(self, client, job_id):  # @UnusedVariable
         """Poll the state of a running job.
 
         Parameters
@@ -757,7 +634,7 @@ class Server(PollingServerCore):
         return out
 
     @spalloc_command
-    def get_job_machine_info(self, client, job_id):
+    def get_job_machine_info(self, client, job_id):  # @UnusedVariable
         """Get the list of Ethernet connections to the allocated machine.
 
         Parameters
@@ -802,7 +679,7 @@ class Server(PollingServerCore):
                 "boards": boards}
 
     @spalloc_command
-    def power_on_job_boards(self, client, job_id):
+    def power_on_job_boards(self, client, job_id):  # @UnusedVariable
         """Power on (or reset if already on) boards associated with a job.
 
         Once called, the job will enter the 'power' state until the power state
@@ -816,7 +693,7 @@ class Server(PollingServerCore):
         self._controller.power_on_job_boards(job_id)
 
     @spalloc_command
-    def power_off_job_boards(self, client, job_id):
+    def power_off_job_boards(self, client, job_id):  # @UnusedVariable
         """Power off boards associated with a job.
 
         Once called, the job will enter the 'power' state until the power state
@@ -830,7 +707,7 @@ class Server(PollingServerCore):
         self._controller.power_off_job_boards(job_id)
 
     @spalloc_command
-    def destroy_job(self, client, job_id, reason=None):
+    def destroy_job(self, client, job_id, reason=None):  # @UnusedVariable
         """Destroy a job.
 
         Call when the job is finished, or to terminate it early, this function
@@ -972,7 +849,7 @@ class Server(PollingServerCore):
                                            machine_name)
 
     @spalloc_command
-    def list_jobs(self, client):
+    def list_jobs(self, client):  # @UnusedVariable
         """Enumerate all non-destroyed jobs.
 
         Returns
@@ -1021,7 +898,7 @@ class Server(PollingServerCore):
         return out
 
     @spalloc_command
-    def list_machines(self, client):
+    def list_machines(self, client):  # @UnusedVariable
         """Enumerates all machines known to the system.
 
         Returns
@@ -1057,7 +934,8 @@ class Server(PollingServerCore):
         return out
 
     @spalloc_command
-    def get_board_position(self, client, machine_name, x, y, z):
+    def get_board_position(self, client,  # @UnusedVariable
+                           machine_name, x, y, z):
         """Get the physical location of a specified board.
 
         Parameters
@@ -1076,7 +954,8 @@ class Server(PollingServerCore):
         return self._controller.get_board_position(machine_name, x, y, z)
 
     @spalloc_command
-    def get_board_at_position(self, client, machine_name, x, y, z):
+    def get_board_at_position(self, client,  # @UnusedVariable
+                              machine_name, x, y, z):
         """Get the logical location of a board at the specified physical
         location.
 
@@ -1096,7 +975,7 @@ class Server(PollingServerCore):
         return self._controller.get_board_at_position(machine_name, x, y, z)
 
     @spalloc_command
-    def where_is(self, client, **kwargs):
+    def where_is(self, client, **kwargs):  # @UnusedVariable
         """Find out where a SpiNNaker board or chip is located, logically and
         physically.
 
@@ -1163,7 +1042,7 @@ def main(args=None):
     args : [arg, ...], optional
         The command-line arguments passed to the program.
     """
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
         description="Start a SpiNNaker machine partitioning server.")
     parser.add_argument("--version", "-V", action="version",
                         version="%(prog)s {}".format(__version__))
@@ -1180,17 +1059,17 @@ def main(args=None):
     args = parser.parse_args(args)
 
     if not args.quiet:
-        logging.basicConfig(level=logging.INFO)
+        log.basicConfig(level=log.INFO)
 
-    server = Server(config_filename=args.config,
-                    cold_start=args.cold_start, port=args.port)
+    server = SpallocServer(config_filename=args.config,
+                           cold_start=args.cold_start, port=args.port)
     try:
         # NB: Originally this loop was replaced with a call to server.join
         # however in Python 2, such blocking calls are not interruptible so we
         # use this rather ugly workaround instead.
         while server.is_alive():  # pragma: no cover
             try:
-                time.sleep(0.1)
+                sleep(0.1)
             except IOError:
                 pass
     except KeyboardInterrupt:

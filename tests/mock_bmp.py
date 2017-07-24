@@ -1,12 +1,8 @@
-from spinnman.messages.sdp.sdp_message import SDPMessage
-from spinnman.messages.scp.scp_request_header import SCPRequestHeader
-from spinnman.messages.scp.enums.scp_result import SCPResult
-from spinnman.messages.sdp.sdp_header import SDPHeader
-from spinnman.messages.sdp.sdp_flag import SDPFlag
-from spinnman.connections.udp_packet_connections import utils
-from spinnman.connections.udp_packet_connections.udp_connection \
-    import UDPConnection
-from spinnman import constants
+from spinnman.messages.sdp import SDPMessage, SDPHeader, SDPFlag
+from spinnman.messages.scp import SCPRequestHeader
+from spinnman.messages.scp.enums import SCPResult
+from spinnman.connections.udp_packet_connections import utils, UDPConnection
+from spinnman.constants import SCP_SCAMP_PORT
 
 from collections import deque
 from threading import Thread
@@ -16,7 +12,7 @@ import traceback
 
 class SCPOKMessage(SDPMessage):
 
-    def __init__(self, x, y, sequence=0):
+    def __init__(self, x, y, sequence=0):  # pragma: no cover
         scp_header = SCPRequestHeader(
             command=SCPResult.RC_OK, sequence=sequence)
         sdp_header = SDPHeader(
@@ -68,7 +64,7 @@ class MockBMP(Thread):
         Thread.__init__(self, verbose=True)
 
         # Set up a connection to be the machine
-        self._receiver = UDPConnection(local_port=constants.SCP_SCAMP_PORT)
+        self._receiver = UDPConnection(local_port=SCP_SCAMP_PORT)
         self._running = False
         self._error = None
         self._responses = deque()
@@ -76,11 +72,11 @@ class MockBMP(Thread):
             self._responses.extend(responses)
 
     @property
-    def error(self):
+    def error(self):  # pragma: no cover
         return self._error
 
     @property
-    def local_port(self):
+    def local_port(self):  # pragma: no cover
         return self._receiver.local_port
 
     def run(self):
@@ -94,7 +90,7 @@ class MockBMP(Thread):
                     response = None
                     if len(self._responses) > 0:
                         response = self._responses.popleft()
-                    else:
+                    else:  # pragma: no cover
                         response = SCPOKMessage(
                             sdp_header.source_chip_x, sdp_header.source_chip_y,
                             sequence)
