@@ -373,7 +373,7 @@ class Controller(object):
             self._changed_machines = set()
             return changed_machines
 
-    def create_job(self, *args, **kwargs):
+    def create_job(self, ownerhost, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
 
         This function is a wrapper around
@@ -396,7 +396,7 @@ class Controller(object):
         job_id : int
             The Job ID assigned to the job.
         """
-        job_log.info("create_job(%s,%s)", args, kwargs)
+        job_log.info("create_job(%s,%s) from %s", args, kwargs, ownerhost)
         # Extract non-allocator arguments
         owner = kwargs.pop("owner")
         keepalive = kwargs.pop("keepalive")
@@ -411,6 +411,7 @@ class Controller(object):
             # Create job and begin attempting to allocate it
             job = _Job(id=job_id, owner=owner,
                        keepalive=keepalive,
+                       lasthost=ownerhost,
                        args=args, kwargs=kwargs)
             self._jobs[job_id] = job
             self._job_queue.create_job(*args, **kwargs)
@@ -419,17 +420,17 @@ class Controller(object):
 
             return job_id
 
-    def job_keepalive(self, job_id):
+    def job_keepalive(self, clienthost, job_id):
         """Reset the keepalive timer for the specified job.
 
         Note all other job-specific functions implicitly call this method.
         """
         with self._lock:
             job = self._jobs.get(job_id, None)
-            if job is not None and job.keepalive is not None:
-                job.keepalive_until = timestamp() + job.keepalive
+            if job is not None:
+                job.update_keepalive(clienthost)
 
-    def get_job_state(self, job_id):
+    def get_job_state(self, clienthost, job_id):
         """Poll the state of a running job.
 
         Returns
@@ -437,7 +438,7 @@ class Controller(object):
         :py:class:`.JobStateTuple`
         """
         with self._lock:
-            self.job_keepalive(job_id)
+            self.job_keepalive(clienthost, job_id)
 
             job = self._jobs.get(job_id)
             if job is not None:
@@ -464,7 +465,7 @@ class Controller(object):
 
             return JobStateTuple(state, power, keepalive, reason, start_time)
 
-    def get_job_machine_info(self, job_id):
+    def get_job_machine_info(self, clienthost, job_id):
         """Get information about the machine the job has been allocated.
 
         Returns
@@ -472,7 +473,7 @@ class Controller(object):
         :py:class:`.JobMachineInfoTuple`
         """
         with self._lock:
-            self.job_keepalive(job_id)
+            self.job_keepalive(clienthost, job_id)
 
             job = self._jobs.get(job_id, None)
             if job is not None and job.boards is not None:
@@ -485,29 +486,29 @@ class Controller(object):
                 # Job doesn't exist or no boards allocated yet
                 return JobMachineInfoTuple(None, None, None, None, None)
 
-    def power_on_job_boards(self, job_id):
+    def power_on_job_boards(self, clienthost, job_id):
         """Power on (or reset if already on) boards associated with a job."""
-        job_log.info("power_job(%s,On)", job_id)
+        job_log.info("power_job(%s,On) from %s", job_id, clienthost)
         with self._lock:
-            self.job_keepalive(job_id)
+            self.job_keepalive(clienthost, job_id)
 
             job = self._jobs.get(job_id)
             if job is not None and job.boards is not None:
                 self._set_job_power_and_links(
                     job, power=True, link_enable=False)
 
-    def power_off_job_boards(self, job_id):
+    def power_off_job_boards(self, clienthost, job_id):
         """Power off boards associated with a job."""
-        job_log.info("power_job(%s,Off)", job_id)
+        job_log.info("power_job(%s,Off) from %s", job_id, clienthost)
         with self._lock:
-            self.job_keepalive(job_id)
+            self.job_keepalive(clienthost, job_id)
 
             job = self._jobs.get(job_id)
             if job is not None and job.boards is not None:
                 self._set_job_power_and_links(
                     job, power=False, link_enable=None)
 
-    def destroy_job(self, job_id, reason=None):
+    def destroy_job(self, clienthost, job_id, reason=None):
         """Destroy a job.
 
         When the job is finished, or to terminate it early, this function
@@ -521,9 +522,10 @@ class Controller(object):
             job's destruction.
         """
         if reason is None:
-            job_log.info("destroy_job(%s)", job_id)
+            job_log.info("destroy_job(%s) from %s", job_id, clienthost)
         else:
-            job_log.info("destroy_job(%s,%s)", job_id, reason)
+            job_log.info("destroy_job(%s,%s) from %s",
+                         job_id, reason, clienthost)
         with self._lock:
             job = self._jobs.get(job_id, None)
             if job is not None:
@@ -556,7 +558,8 @@ class Controller(object):
                 job_list.append(JobTuple(
                     job.id, job.owner, job.start_time, job.keepalive,
                     job.state, job.power, job.args, kwargs,
-                    allocated_machine_name, job.boards))
+                    allocated_machine_name, job.boards,
+                    str(job.lasthost) if job.lasthost is not None else ""))
 
             return job_list
 
@@ -1072,7 +1075,7 @@ class Controller(object):
             }
 
             # Initialise the boards
-            self.power_on_job_boards(job_id)
+            self.power_on_job_boards(job.lasthost, job_id)
 
     def _job_queue_on_free(self, job_id, reason):
         """Called when a job is freed."""
@@ -1101,6 +1104,11 @@ class Controller(object):
             # Power-down any boards that were in use
             if job.boards is not None:
                 self._set_job_power_and_links(job, power=False)
+            if job.lasthost is None:
+                job_log.info("completed shutdown of job %s", job_id)
+            else:
+                job_log.info("completed shutdown of job %s (owner-host: %s)",
+                             job_id, job.lasthost)
 
     def _create_machine_bmp_controllers(self, machine, on_thread_start=None):
         """Create BMP controllers for a machine."""
@@ -1134,7 +1142,7 @@ class Controller(object):
 
             # Reset keepalives to allow remote clients time to reconnect
             for job_id in self._jobs:
-                self.job_keepalive(job_id)
+                self.job_keepalive(None, job_id)
 
 
 class JobState(IntEnum):
@@ -1215,7 +1223,8 @@ class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
 
 class JobTuple(namedtuple("JobTuple",
                           "job_id,owner,start_time,keepalive,state,power,"
-                          "args,kwargs,allocated_machine_name,boards")):
+                          "args,kwargs,allocated_machine_name,boards,"
+                          "keepalivehost")):
     """Tuple describing a job in the list of jobs returned by
     :py:meth:`.Controller.list_jobs`.
 
@@ -1249,6 +1258,10 @@ class JobTuple(namedtuple("JobTuple",
         if not allocated yet).
     boards : set([(x, y, z), ...])
         The boards allocated to the job.
+    keepalivehost : str
+        The name of the host that is reckoned to be keeping this job alive.
+        Will be the empty string if no known host is doing so (a possible
+        state after a service restart).
     """
 
     # Python 3.4 Workaround: https://bugs.python.org/issue24931
@@ -1336,6 +1349,7 @@ class _Job(object):
     def __init__(self, id, owner,  # @ReservedAssignment
                  start_time=None,
                  keepalive=60.0,
+                 lasthost=None,
                  state=JobState.queued,
                  power=None,
                  args=tuple(), kwargs={},
@@ -1365,6 +1379,7 @@ class _Job(object):
             self.keepalive_until = timestamp() + self.keepalive
         else:
             self.keepalive_until = None
+        self.lasthost = lasthost
 
         # The current life-cycle state of the job
         self.state = state
@@ -1390,3 +1405,8 @@ class _Job(object):
         # The number of BMP requests which must complete before this job may
         # return to the ready state.
         self.bmp_requests_until_ready = bmp_requests_until_ready
+
+    def update_keepalive(self, host):
+        self.lasthost = host
+        if self.keepalive is not None:
+            self.keepalive_until = timestamp() + self.keepalive
