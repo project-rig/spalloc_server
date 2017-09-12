@@ -441,6 +441,7 @@ class Controller(object):
             self.job_keepalive(clienthost, job_id)
 
             job = self._jobs.get(job_id)
+            host = None
             if job is not None:
                 # Job is live
                 state = job.state
@@ -448,6 +449,8 @@ class Controller(object):
                 keepalive = job.keepalive
                 reason = None
                 start_time = job.start_time
+                host = job.lasthost
+                # Note that we update the keepalive after the readout
             elif job_id in self._retired_jobs:
                 # Job has been destroyed at some point
                 state = JobState.destroyed
@@ -463,7 +466,7 @@ class Controller(object):
                 reason = None
                 start_time = None
 
-            return JobStateTuple(state, power, keepalive, reason, start_time)
+        return JobStateTuple(state, power, keepalive, reason, start_time, host)
 
     def get_job_machine_info(self, clienthost, job_id):
         """Get information about the machine the job has been allocated.
@@ -1169,7 +1172,8 @@ class JobState(IntEnum):
 
 
 class JobStateTuple(namedtuple("JobStateTuple",
-                               "state,power,keepalive,reason,start_time")):
+                               "state,power,keepalive,reason,start_time,"
+                               "keepalivehost")):
     """Tuple describing the state of a particular job, returned by
     :py:meth:`.Controller.get_job_state`.
 
@@ -1190,6 +1194,9 @@ class JobStateTuple(namedtuple("JobStateTuple",
         reason the job was terminated.
     start_time : float or None
         The Unix time (UTC) at which the job was created.
+    keepalivehost : str or None
+        The IP address of the last system to take an action that caused the
+        job to be kept alive.
     """
 
     # Python 3.4 Workaround: https://bugs.python.org/issue24931
@@ -1407,6 +1414,7 @@ class _Job(object):
         self.bmp_requests_until_ready = bmp_requests_until_ready
 
     def update_keepalive(self, host):
-        self.lasthost = host
+        if host is not None:
+            self.lasthost = host
         if self.keepalive is not None:
             self.keepalive_until = timestamp() + self.keepalive

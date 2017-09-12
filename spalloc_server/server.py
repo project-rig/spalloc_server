@@ -436,6 +436,16 @@ class Server(PollingServerCore, ConfigurationReloader):
 
         self._running = False
 
+    @staticmethod
+    def _name(client):
+        """Get the 'name' of the client. This is the string form of the IP
+        address, or None if the concept isn't well defined.
+        """
+        try:
+            return None if client is None else str(client.getpeername()[0])
+        except:
+            return None
+
 
 class SpallocServer(Server):
     def __init__(self, config_filename, cold_start=False, port=22244):
@@ -581,7 +591,7 @@ class SpallocServer(Server):
         kwargs["owner"] = str(owner)
         keepalive = kwargs.get("keepalive", 60.0)
         kwargs["keepalive"] = (None if keepalive is None else float(keepalive))
-        ownerhost, _ = client.getpeername()
+        ownerhost = self._name(client)
         return self._controller.create_job(ownerhost, *args, **kwargs)
 
     @spalloc_command
@@ -595,7 +605,7 @@ class SpallocServer(Server):
         job_id : int
             A job ID to be kept alive.
         """
-        alivehost, _ = client.getpeername()
+        alivehost = self._name(client)
         self._controller.job_keepalive(alivehost, job_id)
 
     @spalloc_command
@@ -631,7 +641,7 @@ class SpallocServer(Server):
                 For queued and allocated jobs, gives the Unix time (UTC) at
                 which the job was created (or None otherwise).
         """
-        alivehost, _ = client.getpeername()
+        alivehost = self._name(client)
         out = self._controller.get_job_state(alivehost, job_id)._asdict()
         out["state"] = int(out["state"])
         return out
@@ -668,7 +678,7 @@ class SpallocServer(Server):
                 All the boards allocated to the job or None if no boards
                 allocated.
         """
-        alivehost, _ = client.getpeername()
+        alivehost = self._name(client)
         width, height, connections, machine_name, boards = \
             self._controller.get_job_machine_info(alivehost, job_id)
 
@@ -694,7 +704,7 @@ class SpallocServer(Server):
         job_id : int
             A job ID to turn boards on for.
         """
-        alivehost, _ = client.getpeername()
+        alivehost = self._name(client)
         self._controller.power_on_job_boards(alivehost, job_id)
 
     @spalloc_command
@@ -709,7 +719,7 @@ class SpallocServer(Server):
         job_id : int
             A job ID to turn boards off for.
         """
-        alivehost, _ = client.getpeername()
+        alivehost = self._name(client)
         self._controller.power_off_job_boards(alivehost, job_id)
 
     @spalloc_command
@@ -728,7 +738,7 @@ class SpallocServer(Server):
             A human-readable string describing the reason for the job's
             destruction.
         """
-        killerhost, _ = client.getpeername()
+        killerhost = self._name(client)
         self._controller.destroy_job(killerhost, job_id, reason)
 
     def _register_for_notifications(self, client, watchset,
