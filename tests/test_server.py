@@ -641,6 +641,9 @@ def test_job_management(simple_config, s, c):
     assert jobs[0]["boards"] == [[0, 0, 0]]
     assert jobs[1]["boards"] is None
 
+    assert jobs[0]["keepalivehost"] == "127.0.0.1"
+    assert jobs[1]["keepalivehost"] == "127.0.0.1"
+
     # Destroying jobs should work
     c.call("destroy_job", job_id0, "Test reason...")
     time.sleep(0.05)
