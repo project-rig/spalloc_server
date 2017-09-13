@@ -574,15 +574,17 @@ def test_job_management(simple_config, s, c):
     # State should be visible
     assert c.call("get_job_state", job_id0) == {
         "state": JobState.ready, "power": True,
-        "keepalive": 60.0, "reason": None, "start_time": 1234.5}
+        "keepalive": 60.0, "reason": None, "start_time": 1234.5,
+        "keepalivehost": "127.0.0.1"}
     assert c.call("get_job_state", job_id1) == {
         "state": JobState.queued, "power": None,
-        "keepalive": 60.0, "reason": None, "start_time": 5432.0}
+        "keepalive": 60.0, "reason": None, "start_time": 5432.0,
+        "keepalivehost": "127.0.0.1"}
     assert c.call("get_job_state", job_id2) == {
         "state": JobState.destroyed,  "power": None,
         "keepalive": None,
         "reason": "Cancelled: No suitable machines available.",
-        "start_time": None}
+        "start_time": None, "keepalivehost": None}
 
     # Ethernet connections should be visible, where defined
     assert c.call("get_job_machine_info", job_id0) == {
@@ -639,6 +641,9 @@ def test_job_management(simple_config, s, c):
     assert jobs[0]["boards"] == [[0, 0, 0]]
     assert jobs[1]["boards"] is None
 
+    assert jobs[0]["keepalivehost"] == "127.0.0.1"
+    assert jobs[1]["keepalivehost"] == "127.0.0.1"
+
     # Destroying jobs should work
     c.call("destroy_job", job_id0, "Test reason...")
     time.sleep(0.05)
@@ -646,11 +651,13 @@ def test_job_management(simple_config, s, c):
         "state": JobState.destroyed, "power": None,
         "keepalive": None,
         "reason": "Test reason...",
-        "start_time": None}
+        "start_time": None,
+        "keepalivehost": None}
     assert c.call("get_job_state", job_id1) == {
         "state": JobState.ready, "power": True,
         "keepalive": 60.0, "reason": None,
-        "start_time": 5432.0}
+        "start_time": 5432.0,
+        "keepalivehost": "127.0.0.1"}
 
 
 @pytest.mark.timeout(2.0)
@@ -659,11 +666,13 @@ def test_keepalive_expiration(fast_keepalive_config, s, c):
 
     # Should be alive for a bit
     time.sleep(0.05)
-    assert s._controller.get_job_state(job_id).state != JobState.destroyed
+    assert s._controller.get_job_state(
+        None, job_id).state != JobState.destroyed
 
     # Should get killed
     time.sleep(0.35)
-    assert s._controller.get_job_state(job_id).state == JobState.destroyed
+    assert s._controller.get_job_state(
+        None, job_id).state == JobState.destroyed
 
 
 @pytest.mark.timeout(1.0)

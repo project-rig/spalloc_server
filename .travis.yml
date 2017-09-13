@@ -4,6 +4,10 @@ python:
         - 2.7
         # Remove 3.5 because SpiNNMan isn't Py3-compatible yet
         # - 3.5
+virtualenv:
+        system_site_packages: true
+cache: pip
+
 before_install:
         - pip install --upgrade pip setuptools wheel
         - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNUtils.git@${TRAVIS_BRANCH} || pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNUtils.git@master
@@ -15,17 +19,13 @@ install:
         - pip install -r requirements-test.txt
         - pip install python-coveralls
 script:
-        - >
-            py.test tests/ \
-                    --cov spalloc_server \
-                    --cov tests \
-                    --durations=10
+        - py.test tests/ --cov spalloc_server --cov tests --durations=10
         # Code quality check
         - flake8
 after_success:
         - coveralls
+
 notifications:
         email: false
-
 matrix:
-    fast_finish: true
+        fast_finish: true
