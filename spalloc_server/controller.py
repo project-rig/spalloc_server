@@ -524,6 +524,8 @@ class Controller(object):
             A human-readable string describing the reason for the
             job's destruction.
         """
+        if clienthost is None:
+            clienthost = "internal"
         if reason is None:
             job_log.info("destroy_job(%s) from %s", job_id, clienthost)
         else:
@@ -946,7 +948,7 @@ class Controller(object):
             for job in list(itervalues(self._jobs)):
                 if job.keepalive is not None and job.keepalive_until < now:
                     # Job timed out, destroy it
-                    self.destroy_job(job.id, "Job timed out.")
+                    self.destroy_job(None, job.id, "Job timed out.")
 
     def _bmp_on_request_complete(self, job, success):
         """Callback function called by an AsyncBMPController when it completes
@@ -969,7 +971,8 @@ class Controller(object):
         with self._lock:
             # If a BMP command failed, cancel the job
             if not success:
-                self.destroy_job(job.id, "Machine configuration failed, " +
+                self.destroy_job(None, job.id,
+                                 "Machine configuration failed, "
                                  "please try again later.")
 
             # Count down the number of outstanding requests before the job is
