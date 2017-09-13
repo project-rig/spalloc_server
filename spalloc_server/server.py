@@ -443,7 +443,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             return None if client is None else str(client.getpeername()[0])
-        except:
+        except:  # pragma: no cover
             return None
 
 
