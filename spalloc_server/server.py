@@ -591,8 +591,7 @@ class SpallocServer(Server):
         kwargs["owner"] = str(owner)
         keepalive = kwargs.get("keepalive", 60.0)
         kwargs["keepalive"] = (None if keepalive is None else float(keepalive))
-        ownerhost = self._name(client)
-        return self._controller.create_job(ownerhost, *args, **kwargs)
+        return self._controller.create_job(self._name(client), *args, **kwargs)
 
     @spalloc_command
     def job_keepalive(self, client, job_id):  # @UnusedVariable
@@ -605,8 +604,7 @@ class SpallocServer(Server):
         job_id : int
             A job ID to be kept alive.
         """
-        alivehost = self._name(client)
-        self._controller.job_keepalive(alivehost, job_id)
+        self._controller.job_keepalive(self._name(client), job_id)
 
     @spalloc_command
     def get_job_state(self, client, job_id):  # @UnusedVariable
@@ -641,8 +639,8 @@ class SpallocServer(Server):
                 For queued and allocated jobs, gives the Unix time (UTC) at
                 which the job was created (or None otherwise).
         """
-        alivehost = self._name(client)
-        out = self._controller.get_job_state(alivehost, job_id)._asdict()
+        out = self._controller.get_job_state(
+            self._name(client), job_id)._asdict()
         out["state"] = int(out["state"])
         return out
 
@@ -678,9 +676,8 @@ class SpallocServer(Server):
                 All the boards allocated to the job or None if no boards
                 allocated.
         """
-        alivehost = self._name(client)
         width, height, connections, machine_name, boards = \
-            self._controller.get_job_machine_info(alivehost, job_id)
+            self._controller.get_job_machine_info(self._name(client), job_id)
 
         if connections is not None:
             connections = list(iteritems(connections))
@@ -704,8 +701,7 @@ class SpallocServer(Server):
         job_id : int
             A job ID to turn boards on for.
         """
-        alivehost = self._name(client)
-        self._controller.power_on_job_boards(alivehost, job_id)
+        self._controller.power_on_job_boards(self._name(client), job_id)
 
     @spalloc_command
     def power_off_job_boards(self, client, job_id):  # @UnusedVariable
@@ -719,8 +715,7 @@ class SpallocServer(Server):
         job_id : int
             A job ID to turn boards off for.
         """
-        alivehost = self._name(client)
-        self._controller.power_off_job_boards(alivehost, job_id)
+        self._controller.power_off_job_boards(self._name(client), job_id)
 
     @spalloc_command
     def destroy_job(self, client, job_id, reason=None):  # @UnusedVariable
@@ -738,8 +733,7 @@ class SpallocServer(Server):
             A human-readable string describing the reason for the job's
             destruction.
         """
-        killerhost = self._name(client)
-        self._controller.destroy_job(killerhost, job_id, reason)
+        self._controller.destroy_job(self._name(client), job_id, reason)
 
     def _register_for_notifications(self, client, watchset,
                                     id):  # @ReservedAssignment
