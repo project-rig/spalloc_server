@@ -202,6 +202,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         self._controller.max_retired_jobs = validated_config.max_retired_jobs
         self._controller.machines = OrderedDict(
             (m.name, m) for m in validated_config.machines)
+        self.wake()
 
     def _close(self):
         """Close all server sockets and disconnect all client connections."""
