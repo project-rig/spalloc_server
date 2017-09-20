@@ -37,7 +37,7 @@ setup(
         "six",
         "enum-compat",
         "pytz",
-        "SpiNNMan >=1!4.0.0a1, <1!5.0.0"],
+        "SpiNNMan >=1!4.0.0, <1!5.0.0"],
 
     # Scripts
     entry_points={
