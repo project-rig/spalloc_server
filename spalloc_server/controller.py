@@ -950,7 +950,7 @@ class Controller(object):
                     # Job timed out, destroy it
                     self.destroy_job(None, job.id, "Job timed out.")
 
-    def _bmp_on_request_complete(self, job, success):
+    def _bmp_on_request_complete(self, job, what, success):
         """Callback function called by an AsyncBMPController when it completes
         a previously issued request.
 
@@ -965,15 +965,18 @@ class Controller(object):
         job : :py:class:`._Job`
             The job whose state should be set. (To be defined by wrapping this
             method in a partial).
+        what : str
+            The type of thing that was being configured.
         success : bool
             Command success indicator provided by the AsyncBMPController.
         """
         with self._lock:
             # If a BMP command failed, cancel the job
             if not success:
-                self.destroy_job(None, job.id,
-                                 "Machine configuration failed, "
-                                 "please try again later.")
+                self.destroy_job(
+                    None, job.id,
+                    "Machine configuration failed while handling " + what +
+                    ", please try again later.")
 
             # Count down the number of outstanding requests before the job is
             # ready
@@ -1005,7 +1008,8 @@ class Controller(object):
         with self._lock:
             machine = job.allocated_machine
 
-            on_done = partial(self._bmp_on_request_complete, job)
+            on_done_b = partial(self._bmp_on_request_complete, job, "board")
+            on_done_l = partial(self._bmp_on_request_complete, job, "link")
 
             # Group commands by the frame they interact with to allow all
             # commands within a frame to be sent atomically
@@ -1019,7 +1023,7 @@ class Controller(object):
                 c, f, b = machine.board_locations[xyz]
                 controller = controllers[(c, f)]
                 frame_commands[controller].append(
-                    partial(controller.set_power, b, power, on_done))
+                    partial(controller.set_power, b, power, on_done_b))
 
             # Link state commands
             if link_enable is not None:
@@ -1029,7 +1033,7 @@ class Controller(object):
                     controller = controllers[(c, f)]
                     frame_commands[controller].append(
                         partial(controller.set_link_enable,
-                                b, link, link_enable, on_done))
+                                b, link, link_enable, on_done_l))
 
             # Send power/link commands atomically for each frame
             for controller, commands in iteritems(frame_commands):

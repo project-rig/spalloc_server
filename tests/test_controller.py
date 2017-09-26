@@ -931,7 +931,7 @@ def test_bmp_on_request_complete(MockABC, conn, m,
                     None, job_id).state == JobState.unknown
             else:
                 assert conn.get_job_state(None, job_id).state == mid_state
-            conn._bmp_on_request_complete(job, success)
+            conn._bmp_on_request_complete(job, "mock", success)
 
         assert conn.get_job_state(None, job_id).state == end_state
 
