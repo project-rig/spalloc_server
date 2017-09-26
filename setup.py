@@ -37,8 +37,8 @@ setup(
         "six",
         "enum-compat",
         "pytz",
-        "SpiNNMachine >=1!4.0.0, <1!5.0.0",
-        "SpiNNMan >=1!4.0.0, <1!5.0.0",
+        "SpiNNMachine >= 1!4.0.1, <1!5.0.0",
+        "SpiNNMan >= 1!4.0.1, <1!5.0.0",
     ],
 
     # Scripts
