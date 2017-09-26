@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 __version__ = None
-exec(open("spalloc_server/version.py").read())
+exec(open("spalloc_server/_version.py").read())
 assert __version__
 
 setup(
