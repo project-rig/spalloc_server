@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 __version__ = None
-exec(open("spalloc_server/version.py").read())
+exec(open("spalloc_server/_version.py").read())
 assert __version__
 
 setup(
@@ -37,8 +37,8 @@ setup(
         "six",
         "enum-compat",
         "pytz",
-        "SpiNNMachine >=1!4.0.0, <1!5.0.0",
-        "SpiNNMan >=1!4.0.0, <1!5.0.0",
+        "SpiNNMachine >= 1!4.0.1, <1!5.0.0",
+        "SpiNNMan >= 1!4.0.1, <1!5.0.0",
     ],
 
     # Scripts
