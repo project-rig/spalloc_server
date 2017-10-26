@@ -130,7 +130,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                     self._controller = unpickle(f)
                 log.info("Server warm-starting from %s.",
                          self._state_filename)
-            except:
+            except Exception:
                 # Some other error occurred during unpickling.
                 log.exception(
                     "Server state could not be unpacked from %s.",
@@ -226,7 +226,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             log.info("Client %s disconnected.", client.getpeername())
-        except:
+        except Exception:
             log.info("Client %s disconnected.", client)
 
         # Clear input buffer
@@ -269,7 +269,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             client.send(json(message).encode("utf-8") + b"\n")
-        except:
+        except Exception:
             self._disconnect_client(client)
             raise
 
@@ -342,7 +342,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                 if len(line) > 0:
                     self._msg_client(client,
                                      self._handle_command(client, line))
-        except:
+        except Exception:
             # If any of the above fails for any reason (e.g. invalid JSON,
             # unrecognised command, command crashes, etc.), just disconnect
             # the client.
@@ -444,7 +444,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             return None if client is None else str(client.getpeername()[0])
-        except:  # pragma: no cover
+        except Exception:  # pragma: no cover
             return None
 
 
