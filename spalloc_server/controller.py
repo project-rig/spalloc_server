@@ -1124,10 +1124,10 @@ class Controller(object):
         """Create BMP controllers for a machine."""
         with self._lock:
             controllers = {}
+            self._bmp_controllers[machine.name] = controllers
             for (c, f), hostname in iteritems(machine.bmp_ips):
                 controllers[(c, f)] = AsyncBMPController(
                     hostname, on_thread_start)
-            self._bmp_controllers[machine.name] = controllers
 
     def _init_dynamic_state(self):
         """Initialise all dynamic (non-pickleable) state.
@@ -1147,12 +1147,16 @@ class Controller(object):
             # Create connections to BMPs
             assert self._bmp_controllers is None
             self._bmp_controllers = {}
-            for machine in itervalues(self._machines):
-                self._create_machine_bmp_controllers(machine)
+            try:
+                for machine in itervalues(self._machines):
+                    self._create_machine_bmp_controllers(machine)
 
-            # Reset keepalives to allow remote clients time to reconnect
-            for job_id in self._jobs:
-                self.job_keepalive(None, job_id)
+                # Reset keepalives to allow remote clients time to reconnect
+                for job_id in self._jobs:
+                    self.job_keepalive(None, job_id)
+            except Exception:
+                self.stop()
+                raise
 
 
 class JobState(IntEnum):
