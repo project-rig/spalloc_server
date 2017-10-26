@@ -44,7 +44,7 @@ class SimpleClientSocket(object):
     def close(self):
         try:
             self.sock.close()
-        except:  # pragma: no cover
+        except Exception:  # pragma: no cover
             pass
 
     def __enter__(self):
@@ -84,7 +84,7 @@ class SimpleClient(SimpleClientSocket):
             line = self.recv_line()
             try:
                 resp = json.loads(line.decode("utf-8"))
-            except:  # pragma: no cover
+            except Exception:  # pragma: no cover
                 print("Bad line: {}".format(repr(line)))
                 raise
             if "return" in resp:
@@ -128,7 +128,7 @@ class EvilClient(SimpleClientSocket):
             line = self._recv_line()
             try:
                 resp = json.loads(line.decode("utf-8"))
-            except:  # pragma: no cover
+            except Exception:  # pragma: no cover
                 print("Bad line: {}".format(repr(line)))
                 raise
             if "return" in resp:
@@ -835,7 +835,7 @@ def test_job_notify_register_unregister(simple_config, s):
             for sock in itervalues(s._fdmap):
                 try:
                     peer = sock.getpeername()
-                except:
+                except Exception:
                     continue
                 if peer == c0.sock.getsockname():
                     s0 = sock
@@ -911,7 +911,7 @@ def test_machine_notify_register_unregister(simple_config, s):
             for sock in itervalues(s._fdmap):
                 try:
                     peer = sock.getpeername()
-                except:
+                except Exception:
                     continue
                 if peer == c0.sock.getsockname():
                     s0 = sock

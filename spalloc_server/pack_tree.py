@@ -313,19 +313,19 @@ class PackTree(object):
         #
         #     +---------------+
         #     |         a     |
-        #     |<---l--->#<-r->|
+        #     |<--_l--->#<-r->|
         #     |         ^     |
         #     |         b     |
         #     |         v     |
         #     +---------------+
-        l = x - self.x
+        _l = x - self.x
         r = (self.x + self.width) - x - 1
         a = (self.y + self.height) - y - 1
         b = y - self.y
 
-        largest = max(l, r, a, b)
+        largest = max(_l, r, a, b)
 
-        if l == largest:
+        if _l == largest:
             self.vsplit(x=x)
             return self.request(x, y)
         elif r == largest:
