@@ -83,7 +83,7 @@ class ConfigurationReloader(object):
         # Update the configuration
         try:
             self._load_valid_config(validated)
-        except:
+        except Exception:
             # Config loading failed
             log.exception("Configuration loading file resulted in exception")
             return False
