@@ -168,7 +168,7 @@ class AsyncBMPController(object):
             else:
                 self._transceiver.power_off(boards=board, frame=0, cabinet=0)
             return True
-        except IOError:
+        except Exception:
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
             logging.exception("Failed to set board power.")
@@ -189,7 +189,7 @@ class AsyncBMPController(object):
             self._transceiver.write_fpga_register(
                 fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
             return True
-        except IOError:
+        except Exception:
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
             logging.exception("Failed to set link state.")

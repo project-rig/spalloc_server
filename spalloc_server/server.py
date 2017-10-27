@@ -135,6 +135,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                 log.exception(
                     "Server state could not be unpacked from %s.",
                     self._state_filename)
+                self._controller = None
 
         # Perform cold-start if no saved state was loaded
         if self._controller is None:
@@ -148,6 +149,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         # Read configuration file. This must succeed when the server is first
         # being started.
         if not self.read_config_file():
+            self._controller.stop()
             raise Exception("Config file could not be loaded.")
 
         # Start the server

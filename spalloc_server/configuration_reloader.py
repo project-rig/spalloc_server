@@ -81,7 +81,12 @@ class ConfigurationReloader(object):
             return False
 
         # Update the configuration
-        self._load_valid_config(validated)
+        try:
+            self._load_valid_config(validated)
+        except Exception:
+            # Config loading failed
+            log.exception("Configuration loading file resulted in exception")
+            return False
 
         log.info("Config file %s read successfully.", self._config_filename)
         return True
