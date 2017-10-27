@@ -11,15 +11,6 @@ from spinnman.model import BMPConnectionData
 
 from .links import Links
 
-from threading import Lock
-
-_print_lock = Lock()
-
-def _print(*args):
-    _print_lock.acquire()
-    print args
-    _print_lock.release()
-
 
 class AsyncBMPController(object):
     """An object which provides an asynchronous interface to a power and link
@@ -173,9 +164,7 @@ class AsyncBMPController(object):
         """
         try:
             if state:
-                _print("Attempting to power on using", self._transceiver._bmp_connections, board)
                 self._transceiver.power_on(boards=board, frame=0, cabinet=0)
-                _print("Powered on using", self._transceiver._bmp_connections, board)
             else:
                 self._transceiver.power_off(boards=board, frame=0, cabinet=0)
             return True
@@ -197,10 +186,8 @@ class AsyncBMPController(object):
         """
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
-            _print("Attempting link control using", self._transceiver._bmp_connections, board, link, enable, fpga, addr)
             self._transceiver.write_fpga_register(
                 fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
-            _print("Finished link enable using", self._transceiver._bmp_connections, board, link, enable, fpga, addr)
             return True
         except Exception:
             # Communication issue with the machine, log it but not
@@ -224,7 +211,6 @@ class AsyncBMPController(object):
                     # Send the power command
                     success = self._set_board_state(
                         power_request.state, power_request.board)
-                    _print("Attempt to request power to", self._transceiver._bmp_connections, power_request.board, "result =", success)
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
@@ -239,7 +225,6 @@ class AsyncBMPController(object):
                     success = self._set_link_state(
                         link_request.link, link_request.enable,
                         link_request.board)
-                    _print("Attempt to set link state to", self._transceiver._bmp_connections, link_request.board, "result =", success)
 
                     # Alert waiting thread
                     link_request.on_done(success)
