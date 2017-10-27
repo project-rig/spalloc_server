@@ -67,7 +67,7 @@ class ConfigurationReloader(object):
 
         try:
             parsed_config = self._parse_config(config_script)
-        except:
+        except Exception:
             # Executing the config file failed, don't update any settings
             log.exception("Error while evaluating config file %s",
                           self._config_filename)

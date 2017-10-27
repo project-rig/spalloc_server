@@ -257,7 +257,7 @@ class AsyncBMPController(object):
                         # now
                         if self._stop:  # pragma: no branch
                             return
-        except:  # pragma: no cover
+        except Exception:  # pragma: no cover
             # If the thread crashes something has gone wrong with this program
             # (not the machine), setting _stop will cause set_power and
             # set_link_enable to fail, hopefully propagating news of this
