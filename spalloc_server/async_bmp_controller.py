@@ -50,6 +50,7 @@ class AsyncBMPController(object):
         self._transceiver = create_transceiver_from_hostname(
             None, 5, bmp_connection_data=[
                 BMPConnectionData(0, 0, hostname, [0], None)])
+        self._hostname = hostname
 
         self._stop = False
 
@@ -163,12 +164,44 @@ class AsyncBMPController(object):
         :type board: int or iterable
         """
         try:
+
+            # If powering on...
             if state:
-                self._transceiver.power_on(boards=board, frame=0, cabinet=0)
+
+                # FPGAs are checked after power on - assume incorrect to start
+                incorrect_fpga_number = True
+                while incorrect_fpga_number:
+
+                    # Power on - note don't need to power off if in subsequent
+                    # run of the loop as the BMP handles this correctly
+                    self._transceiver.power_on(
+                        boards=board, frame=0, cabinet=0)
+
+                    # Check if the FPGA number is correct on each FPGA
+                    incorrect_fpga_number = False
+                    for a_board in board:  # pragma: no cover
+                        for fpga in range(_N_FPGAS):
+                            fpga_id = self._transceiver.read_fpga_register(
+                                fpga_num=fpga,
+                                register=_FPGA_FLAG_REGISTER_ADDRESS,
+                                board=a_board, cabinet=0, frame=0)
+                            if (fpga_id & _FPGA_FLAG_ID_MASK) != fpga:
+                                logging.warn(
+                                    "FPGA {} on board {} of {} has incorrect"
+                                    " FPGA id flag {}".format(
+                                        fpga, a_board, self._hostname,
+                                        fpga_id & _FPGA_FLAG_ID_MASK))
+                                incorrect_fpga_number = True
+                                break
+                        if incorrect_fpga_number:
+                            break
+
+            # If powering off...
             else:
                 self._transceiver.power_off(boards=board, frame=0, cabinet=0)
             return True
         except Exception:
+
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
             logging.exception("Failed to set board power.")
@@ -327,12 +360,19 @@ class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
     __slots__ = tuple()
 
 
-_REG_STOP_OFFSET = 0x5C
+# The number of FPGAs
+_N_FPGAS = 3
+
+# The FLAG register address in the FPGAs
+_FPGA_FLAG_REGISTER_ADDRESS = 0x40004
+
+# The FPGA id field within the FLAG register value
+_FPGA_FLAG_ID_MASK = 0x3
 
 # Gives the FPGA number and register addresses for the STOP register (which
 # disables outgoing traffic on a high-speed link) for each link direction.
 # https://github.com/SpiNNakerManchester/spio/tree/master/designs/spinnaker_fpgas#spi-interface
-
+_REG_STOP_OFFSET = 0x5C
 FPGA_LINK_STOP_REGISTERS = {
     Links.east: (0, 0x00000000 + _REG_STOP_OFFSET),
     Links.south: (0, 0x00010000 + _REG_STOP_OFFSET),
