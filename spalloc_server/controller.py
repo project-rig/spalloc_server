@@ -22,8 +22,11 @@ from .async_bmp_controller import AsyncBMPController
 
 job_log = logging.Logger("jobs")
 job_log.propagate = False
-job_log.addHandler(TimedRotatingFileHandler(
-    "spalloc_jobs.log", when="D"))
+job_log_handler = TimedRotatingFileHandler(
+    "spalloc_jobs.log", when="D")
+job_log_formatter = logging.Formatter('%(asctime)s: %(message)s')
+job_log_handler.setFormatter(job_log_formatter)
+job_log.addHandler(job_log_handler)
 
 
 class Controller(object):
