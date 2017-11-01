@@ -1079,7 +1079,7 @@ def main(args=None):
     if not args.quiet:
         log.basicConfig(
             level=log.INFO,
-            format="'%(asctime)s: %(name)s: %(levelname)s: %(message)s'")
+            format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     server = SpallocServer(config_filename=args.config,
                            cold_start=args.cold_start, port=args.port)
