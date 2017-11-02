@@ -204,7 +204,9 @@ class AsyncBMPController(object):
 
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
-            logging.exception("Failed to set board power.")
+            logging.exception(
+                "Failed to set board power on BMP {}, boards {}, state={}."
+                .format(self._hostname, board, state))
             return False
 
     def _set_link_state(self, link, enable, board):
@@ -225,7 +227,9 @@ class AsyncBMPController(object):
         except Exception:
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
-            logging.exception("Failed to set link state.")
+            logging.exception(
+                "Failed to set link state on BMP {}, board {}, link {},"
+                " enable={}.".format(self._hostname, board, link, enable))
             return False
 
     def _run(self):
