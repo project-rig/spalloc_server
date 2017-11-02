@@ -86,6 +86,10 @@ def test_start_and_stop(on_thread_start):
     bmp.join()
 
 
+def mock_read_fpga_register(fpga_num, register, board, cabinet, frame):
+    return fpga_num
+
+
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("power_side_effect,success",
                          [(None, True),
@@ -106,6 +110,7 @@ def test_set_power(abc, bc, power_side_effect, success):
     abc.set_power(11, True, e)
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
+    bc.read_fpga_register.side_effect = mock_read_fpga_register
     e.wait()
     assert e.success is success
     bc.power_on.assert_called_once_with(boards=[11], frame=0, cabinet=0)
@@ -288,6 +293,7 @@ def test_power_priority(abc, bc):
 def test_power_removes_link_enables(abc, bc):
     # Make sure link enable requests are removed for boards with newly added
     # power commands.
+    bc.read_fpga_register.side_effect = mock_read_fpga_register
     with abc:
         e1, e2, e3, e4 = (OnDoneEvent() for _ in range(4))
         abc.set_power(10, True, e1)
