@@ -11,6 +11,8 @@ from spinnman.model import BMPConnectionData
 
 from .links import Links
 
+_N_FPGA_RETRIES = 3
+
 
 class AsyncBMPController(object):
     """An object which provides an asynchronous interface to a power and link
@@ -170,7 +172,9 @@ class AsyncBMPController(object):
 
                 # FPGAs are checked after power on - assume incorrect to start
                 incorrect_fpga_number = True
-                while incorrect_fpga_number:
+                n_tries = 0
+                while incorrect_fpga_number and n_tries < _N_FPGA_RETRIES:
+                    n_tries += 1
 
                     # Power on - note don't need to power off if in subsequent
                     # run of the loop as the BMP handles this correctly
@@ -195,6 +199,11 @@ class AsyncBMPController(object):
                                 break
                         if incorrect_fpga_number:
                             break
+
+                if incorrect_fpga_number:
+                    raise Exception(
+                        "Could not get correct FPGA id after {} tries".format(
+                            n_tries))
 
             # If powering off...
             else:
