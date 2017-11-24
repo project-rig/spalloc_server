@@ -208,15 +208,16 @@ class AsyncBMPController(object):
             # If powering off...
             else:
                 self._transceiver.power_off(boards=board, frame=0, cabinet=0)
-            return True
+            return True, None
         except Exception:
 
-            # Communication issue with the machine, log it but not
-            # much we can do for the end-user.
-            logging.exception(
-                "Failed to set board power on BMP {}, boards {}, state={}."
-                .format(self._hostname, board, state))
-            return False
+            reason = \
+                "Failed to set board power on BMP {}, boards {}, state={}."\
+                .format(self._hostname, board, state)
+
+            # Communication issue with the machine, log it
+            logging.exception(reason)
+            return False, reason
 
     def _set_link_state(self, link, enable, board):
         """Set the power state of a link.
@@ -234,12 +235,12 @@ class AsyncBMPController(object):
                 fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
             return True
         except Exception:
-            # Communication issue with the machine, log it but not
-            # much we can do for the end-user.
-            logging.exception(
-                "Failed to set link state on BMP {}, board {}, link {},"
-                " enable={}.".format(self._hostname, board, link, enable))
-            return False
+            reason = "Failed to set link state on BMP {}, board {}, link {},"\
+                " enable={}.".format(self._hostname, board, link, enable)
+
+            # Communication issue with the machine, log it
+            logging.exception(reason)
+            return False, reason
 
     def _run(self):
         """The background thread for interacting with the BMP.
@@ -255,12 +256,12 @@ class AsyncBMPController(object):
                 power_request = self._get_atomic_power_request()
                 if power_request:
                     # Send the power command
-                    success = self._set_board_state(
+                    success, reason = self._set_board_state(
                         power_request.state, power_request.board)
 
                     # Alert all waiting threads
                     for on_done in power_request.on_done:
-                        on_done(success)
+                        on_done(success, reason)
 
                     continue
 
@@ -268,12 +269,12 @@ class AsyncBMPController(object):
                 link_request = self._get_atomic_link_request()
                 if link_request:
                     # Set the link state, as required
-                    success = self._set_link_state(
+                    success, reason = self._set_link_state(
                         link_request.link, link_request.enable,
                         link_request.board)
 
                     # Alert waiting thread
-                    link_request.on_done(success)
+                    link_request.on_done(success, reason)
 
                     continue
 
