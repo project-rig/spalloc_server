@@ -115,7 +115,7 @@ class AsyncBMPController(object):
                     cancelled.append(request)
 
         for request in cancelled:
-            request.on_done(False)
+            request.on_done(False, "Cancelled")
 
     def set_link_enable(self, board, link, enable, on_done):
         """Enable or disable a link.
@@ -233,7 +233,7 @@ class AsyncBMPController(object):
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
             self._transceiver.write_fpga_register(
                 fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
-            return True
+            return True, None
         except Exception:
             reason = "Failed to set link state on BMP {}, board {}, link {},"\
                 " enable={}.".format(self._hostname, board, link, enable)
