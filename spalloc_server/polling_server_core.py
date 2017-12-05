@@ -78,7 +78,7 @@ class PollingServerCore(object):
                  :py:meth:`.wake` call.
         """
         if self._poll is not None:
-            events = self._poll.poll(timeout_check_interval)
+            events = self._poll.poll(timeout_check_interval * 1000.0)
             for fd, _ in events:
                 if fd == self._notify_recv.fileno():
                     self._notify_recv.recv(BUFFER_SIZE)
