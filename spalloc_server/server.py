@@ -381,9 +381,6 @@ class Server(PollingServerCore, ConfigurationReloader):
             channels = self.ready_channels(
                 self._configuration.timeout_check_interval)
 
-            # Cull any jobs which have timed out
-            self._controller.destroy_timed_out_jobs()
-
             for channel in channels:
                 if channel is None:  # pragma: no cover
                     continue
@@ -393,6 +390,9 @@ class Server(PollingServerCore, ConfigurationReloader):
                 else:
                     # Incoming data from client
                     self._handle_commands(channel)
+
+            # Cull any jobs which have timed out
+            self._controller.destroy_timed_out_jobs()
 
             # Send any job/machine change notifications out
             self._send_change_notifications()
