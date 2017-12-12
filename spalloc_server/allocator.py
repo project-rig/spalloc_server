@@ -761,13 +761,13 @@ class Allocator(object):
         allocation_id : int
             The ID of the allocation to free.
         """
-        Type = self.allocation_types.pop(allocation_id)
+        _type = self.allocation_types.pop(allocation_id)
         x, y, z = self.allocation_board.pop(allocation_id)
 
-        if Type is _AllocationType.triads:
+        if _type is _AllocationType.triads:
             # Simply free the allocation
             self.pack_tree.free(x, y)
-        elif Type is _AllocationType.board:
+        elif _type is _AllocationType.board:
             # If the triad the board came from was full, it now isn't...
             if (x, y) in self.full_single_board_triads:
                 self.full_single_board_triads.remove((x, y))

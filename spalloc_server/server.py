@@ -290,16 +290,16 @@ class Server(PollingServerCore, ConfigurationReloader):
         cmd_obj = dejson(line.decode("utf-8"))
         if "command" not in cmd_obj:
             raise IOError("no command name given")
-        commandName = cmd_obj["command"]
-        if not isinstance(commandName, string_types):
+        command_name = cmd_obj["command"]
+        if not isinstance(command_name, string_types):
             raise IOError("parsed gibberish from user")
-        if commandName not in _COMMANDS:
-            log.info("lookup failure: %s", commandName)
+        if command_name not in _COMMANDS:
+            log.info("lookup failure: %s", command_name)
             raise IOError("unrecognised command name")
-        command = _COMMANDS[commandName]
+        command = _COMMANDS[command_name]
         if command is None:  # pragma: no cover
             # Should be unreachable
-            log.critical("unexpected lookup failure: %s", commandName)
+            log.critical("unexpected lookup failure: %s", command_name)
             raise IOError("unrecognised command name")
         args = cmd_obj["args"] if "args" in cmd_obj else []
         if not isinstance(args, list):

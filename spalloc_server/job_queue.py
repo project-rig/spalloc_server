@@ -118,8 +118,7 @@ class JobQueue(object):
         """
         self._postpone_queue_management += 1
 
-    def __exit__(self,
-                 Type=None, value=None, traceback=None):  # @UnusedVariable
+    def __exit__(self, _type=None, _value=None, _traceback=None):
         self._postpone_queue_management -= 1
         self._regenerate_queues()
 
