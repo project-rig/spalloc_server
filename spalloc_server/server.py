@@ -328,7 +328,7 @@ class Server(PollingServerCore, ConfigurationReloader):
             data = b""
 
         # Did the client disconnect?
-        if len(data) == 0:
+        if not data:
             self._disconnect_client(client)
             return
 
@@ -341,7 +341,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                 line, _, self._client_buffers[client] = \
                     self._client_buffers[client].partition(b"\n")
                 # Note that we skip blank lines
-                if len(line) > 0:
+                if line:
                     self._msg_client(client,
                                      self._handle_command(client, line))
         except Exception:
@@ -480,13 +480,13 @@ class SpallocServer(Server):
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
+    def __exit__(self, _type, _value, _tb):
         if self._running:
             self.stop_and_join()
         return False
 
     @spalloc_command
-    def version(self, client):  # @UnusedVariable
+    def version(self, _client):
         """
         Returns
         -------
@@ -495,7 +495,7 @@ class SpallocServer(Server):
         return __version__
 
     @spalloc_command
-    def create_job(self, client, *args, **kwargs):  # @UnusedVariable
+    def create_job(self, client, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
 
         This function should be called in one of the following styles::
@@ -597,7 +597,7 @@ class SpallocServer(Server):
         return self._controller.create_job(self._name(client), *args, **kwargs)
 
     @spalloc_command
-    def job_keepalive(self, client, job_id):  # @UnusedVariable
+    def job_keepalive(self, client, job_id):
         """Reset the keepalive timer for the specified job.
 
         Note all other job-specific commands implicitly do this.
@@ -610,7 +610,7 @@ class SpallocServer(Server):
         self._controller.job_keepalive(self._name(client), job_id)
 
     @spalloc_command
-    def get_job_state(self, client, job_id):  # @UnusedVariable
+    def get_job_state(self, client, job_id):
         """Poll the state of a running job.
 
         Parameters
@@ -648,7 +648,7 @@ class SpallocServer(Server):
         return out
 
     @spalloc_command
-    def get_job_machine_info(self, client, job_id):  # @UnusedVariable
+    def get_job_machine_info(self, client, job_id):
         """Get the list of Ethernet connections to the allocated machine.
 
         Parameters
@@ -693,7 +693,7 @@ class SpallocServer(Server):
                 "boards": boards}
 
     @spalloc_command
-    def power_on_job_boards(self, client, job_id):  # @UnusedVariable
+    def power_on_job_boards(self, client, job_id):
         """Power on (or reset if already on) boards associated with a job.
 
         Once called, the job will enter the 'power' state until the power state
@@ -707,7 +707,7 @@ class SpallocServer(Server):
         self._controller.power_on_job_boards(self._name(client), job_id)
 
     @spalloc_command
-    def power_off_job_boards(self, client, job_id):  # @UnusedVariable
+    def power_off_job_boards(self, client, job_id):
         """Power off boards associated with a job.
 
         Once called, the job will enter the 'power' state until the power state
@@ -721,7 +721,7 @@ class SpallocServer(Server):
         self._controller.power_off_job_boards(self._name(client), job_id)
 
     @spalloc_command
-    def destroy_job(self, client, job_id, reason=None):  # @UnusedVariable
+    def destroy_job(self, client, job_id, reason=None):
         """Destroy a job.
 
         Call when the job is finished, or to terminate it early, this function
@@ -738,33 +738,31 @@ class SpallocServer(Server):
         """
         self._controller.destroy_job(self._name(client), job_id, reason)
 
-    def _register_for_notifications(self, client, watchset,
-                                    id):  # @ReservedAssignment
+    def _register_for_notifications(self, client, watchset, _id):
         """Helper method that handles the protocol for registration for
         notifications."""
-        if id is None:
+        if _id is None:
             watchset[client] = None
         elif client not in watchset:
-            watchset[client] = set([id])
+            watchset[client] = set([_id])
         elif watchset[client] is not None:
-            watchset[client].add(id)
+            watchset[client].add(_id)
         else:
             # Client is already notified about all changes, do nothing!
             pass
 
-    def _unregister_for_notifications(self, client, watchset,
-                                      id):  # @ReservedAssignment
+    def _unregister_for_notifications(self, client, watchset, _id):
         """Helper method that handles the protocol for unregistration for
         notifications."""
         if client not in watchset:
             return
-        if id is None:
+        if _id is None:
             del watchset[client]
             return
         watches = watchset[client]
         if watches is not None:
-            watches.discard(id)
-            if len(watches) == 0:
+            watches.discard(_id)
+            if not watches:
                 del watchset[client]
 
     @spalloc_command
@@ -789,8 +787,8 @@ class SpallocServer(Server):
         no_notify_job : Stop being notified about a job.
         notify_machine : Register to be notified about changes to machines.
         """
-        self._register_for_notifications(client, self._client_job_watches,
-                                         job_id)
+        self._register_for_notifications(
+            client, self._client_job_watches, job_id)
 
     @spalloc_command
     def no_notify_job(self, client, job_id=None):
@@ -811,8 +809,8 @@ class SpallocServer(Server):
         --------
         notify_job : Register to be notified about changes to a specific job.
         """
-        self._unregister_for_notifications(client, self._client_job_watches,
-                                           job_id)
+        self._unregister_for_notifications(
+            client, self._client_job_watches, job_id)
 
     @spalloc_command
     def notify_machine(self, client, machine_name=None):
@@ -835,9 +833,8 @@ class SpallocServer(Server):
         no_notify_machine : Stop being notified about a machine.
         notify_job : Register to be notified about changes to jobs.
         """
-        self._register_for_notifications(client,
-                                         self._client_machine_watches,
-                                         machine_name)
+        self._register_for_notifications(
+            client, self._client_machine_watches, machine_name)
 
     @spalloc_command
     def no_notify_machine(self, client, machine_name=None):
@@ -858,12 +855,11 @@ class SpallocServer(Server):
         --------
         notify_machine : Register to be notified about changes to a machine.
         """
-        self._unregister_for_notifications(client,
-                                           self._client_machine_watches,
-                                           machine_name)
+        self._unregister_for_notifications(
+            client, self._client_machine_watches, machine_name)
 
     @spalloc_command
-    def list_jobs(self, client):  # @UnusedVariable
+    def list_jobs(self, _client):
         """Enumerate all non-destroyed jobs.
 
         Returns
@@ -916,7 +912,7 @@ class SpallocServer(Server):
         return out
 
     @spalloc_command
-    def list_machines(self, client):  # @UnusedVariable
+    def list_machines(self, _client):
         """Enumerates all machines known to the system.
 
         Returns
@@ -952,8 +948,7 @@ class SpallocServer(Server):
         return out
 
     @spalloc_command
-    def get_board_position(self, client,  # @UnusedVariable
-                           machine_name, x, y, z):
+    def get_board_position(self, _client, machine_name, x, y, z):
         """Get the physical location of a specified board.
 
         Parameters
@@ -972,8 +967,7 @@ class SpallocServer(Server):
         return self._controller.get_board_position(machine_name, x, y, z)
 
     @spalloc_command
-    def get_board_at_position(self, client,  # @UnusedVariable
-                              machine_name, x, y, z):
+    def get_board_at_position(self, _client, machine_name, x, y, z):
         """Get the logical location of a board at the specified physical
         location.
 
@@ -993,7 +987,7 @@ class SpallocServer(Server):
         return self._controller.get_board_at_position(machine_name, x, y, z)
 
     @spalloc_command
-    def where_is(self, client, **kwargs):  # @UnusedVariable
+    def where_is(self, _client, **kwargs):
         """Find out where a SpiNNaker board or chip is located, logically and
         physically.
 

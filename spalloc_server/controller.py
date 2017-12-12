@@ -412,7 +412,7 @@ class Controller(object):
             kwargs["job_id"] = job_id
 
             # Create job and begin attempting to allocate it
-            job = _Job(id=job_id, owner=owner,
+            job = _Job(_id=job_id, owner=owner,
                        keepalive=keepalive,
                        lasthost=ownerhost,
                        args=args, kwargs=kwargs)
@@ -488,9 +488,8 @@ class Controller(object):
                     job.connections,
                     job.allocated_machine.name,
                     job.boards)
-            else:
-                # Job doesn't exist or no boards allocated yet
-                return JobMachineInfoTuple(None, None, None, None, None)
+        # Job doesn't exist or no boards allocated yet
+        return JobMachineInfoTuple(None, None, None, None, None)
 
     def power_on_job_boards(self, clienthost, job_id):
         """Power on (or reset if already on) boards associated with a job."""
@@ -637,9 +636,8 @@ class Controller(object):
             for (x, y, z), (c, f, b) in iteritems(machine.board_locations):
                 if (c, f, b) == (cabinet, frame, board):
                     return (x, y, z)
-            else:
-                # No board found
-                return None
+        # No board found
+        return None
 
     def _job_for_location(self, machine, x, y, z):
         """"Determine what job is running on the given board."""
@@ -845,6 +843,7 @@ class Controller(object):
             }
 
     def _get_job_chip(self, job, x, y, z, board_chip):
+        # pylint: disable=too-many-arguments
         if job is None:
             return None
         board_chip_x, board_chip_y = board_chip
@@ -1052,6 +1051,7 @@ class Controller(object):
     def _job_queue_on_allocate(self, job_id, machine_name, boards,
                                periphery, torus):
         """Called when a job is successfully allocated to a machine."""
+        # pylint: disable=too-many-arguments
         with self._lock:
             # Update job metadata
             job = self._jobs[job_id]
@@ -1367,13 +1367,13 @@ class _Job(object):
         :py:class:`.JobState.ready`.
     """
 
-    def __init__(self, id, owner,  # @ReservedAssignment
+    def __init__(self, _id, owner,
                  start_time=None,
                  keepalive=60.0,
                  lasthost=None,
                  state=JobState.queued,
                  power=None,
-                 args=tuple(), kwargs={},
+                 args=tuple(), kwargs=None,
                  allocated_machine=None,
                  boards=None,
                  periphery=None,
@@ -1382,7 +1382,8 @@ class _Job(object):
                  height=None,
                  connections=None,
                  bmp_requests_until_ready=0):
-        self.id = id
+        # pylint: disable=too-many-arguments
+        self.id = _id
         self.owner = owner
 
         if start_time is not None:  # pragma: no branch
@@ -1410,7 +1411,7 @@ class _Job(object):
 
         # Arguments for the allocator
         self.args = args
-        self.kwargs = kwargs
+        self.kwargs = dict({} if kwargs is None else kwargs)
 
         # The hardware allocated to this job (if any)
         self.allocated_machine = allocated_machine

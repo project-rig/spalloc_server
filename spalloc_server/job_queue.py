@@ -258,7 +258,7 @@ class JobQueue(object):
                 self._enqueue_job(job)
 
     def add_machine(self, name, width, height, tags=None,
-                    dead_boards=set(), dead_links=set()):
+                    dead_boards=frozenset(), dead_links=frozenset()):
         """Add a new machine for processing jobs.
 
         Jobs are offered for allocation on machines in the order the machines
@@ -289,6 +289,7 @@ class JobQueue(object):
                          then re-adding it.
         remove_machine : Remove a machine.
         """
+        # pylint: disable=too-many-arguments
         if name in self._machines:
             raise ValueError("Machine name {} already in use.".format(name))
 
@@ -413,7 +414,7 @@ class JobQueue(object):
             tags = set()
 
         # Create the job
-        job = _Job(id=job_id, pending=True,
+        job = _Job(_id=job_id, pending=True,
                    machine_name=machine_name, tags=tags,
                    args=args, kwargs=kwargs)
         self._jobs[job.id] = job
@@ -471,19 +472,15 @@ class _Job(object):
     allocation_id : int or None
         The allocation ID for the Job's allocation.
     """
-    def __init__(self, id,  # @ReservedAssignment
-                 pending=True,
-                 machine_name=None,
-                 tags=set(),
-                 args=tuple(), kwargs={},
-                 machine=None,
-                 allocation_id=None):
-        self.id = id
+    def __init__(self, _id, pending=True, machine_name=None, tags=frozenset(),
+                 args=tuple(), kwargs=None, machine=None, allocation_id=None):
+        # pylint: disable=too-many-arguments
+        self.id = _id
         self.pending = pending
         self.machine_name = machine_name
-        self.tags = tags if tags is not None else set(["default"])
+        self.tags = set(tags if tags is not None else ["default"])
         self.args = args
-        self.kwargs = kwargs
+        self.kwargs = dict({} if kwargs is None else kwargs)
         self.machine = machine
         self.allocation_id = allocation_id
 

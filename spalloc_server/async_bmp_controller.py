@@ -78,8 +78,7 @@ class AsyncBMPController(object):
         """When used as a context manager, make requests 'atomic'."""
         self._lock.acquire()
 
-    def __exit__(self, type=None,  # @ReservedAssignment
-                 value=None, traceback=None):  # @UnusedVariable
+    def __exit__(self, _type=None, _value=None, _traceback=None):
         self._lock.release()
 
     def set_power(self, board, state, on_done):
@@ -99,7 +98,6 @@ class AsyncBMPController(object):
         # Verify that our arguments are sane
         board = int(board)
         state = bool(state)
-        on_done.__call__
         with self._lock:
             assert not self._stop
 
@@ -136,7 +134,6 @@ class AsyncBMPController(object):
         # Verify that our arguments are sane
         board = int(board)
         enable = bool(enable)
-        on_done.__call__
         with self._lock:
             assert not self._stop
 
@@ -157,6 +154,33 @@ class AsyncBMPController(object):
         """Wait for the thread to actually stop."""
         self._thread.join()
 
+    def _good_fpga(self, board, fpga):
+        fpga_id = self._transceiver.read_fpga_register(
+            fpga_num=fpga, register=_FPGA_FLAG_REGISTER_ADDRESS,
+            board=board, cabinet=0, frame=0)
+        ok = (fpga_id & _FPGA_FLAG_ID_MASK) == fpga
+        if not ok:
+            logging.warn(
+                "FPGA %d on board %d of %s has incorrect FPGA id flag %d",
+                fpga, board, self._hostname, fpga_id & _FPGA_FLAG_ID_MASK)
+        return ok
+
+    def _boot_board(self, boards):
+        # FPGAs are checked after power on - assume incorrect to start
+        for _try in range(_N_FPGA_RETRIES):
+            # Power on - note don't need to power off if in subsequent
+            # run of the loop as the BMP handles this correctly
+            self._transceiver.power_on(boards=boards, frame=0, cabinet=0)
+
+            # Check if the FPGA number is correct on each FPGA
+            if all(self._good_fpga(board, fpga)
+                   for fpga in range(_N_FPGAS)
+                   for board in boards):
+                return
+        raise Exception(
+            "Could not get correct FPGA id after {} tries".format(
+                _N_FPGA_RETRIES))
+
     def _set_board_state(self, state, board):
         """Set the power state of a board.
 
@@ -166,45 +190,9 @@ class AsyncBMPController(object):
         :type board: int or iterable
         """
         try:
-
             # If powering on...
             if state:
-
-                # FPGAs are checked after power on - assume incorrect to start
-                incorrect_fpga_number = True
-                n_tries = 0
-                while incorrect_fpga_number and n_tries < _N_FPGA_RETRIES:
-                    n_tries += 1
-
-                    # Power on - note don't need to power off if in subsequent
-                    # run of the loop as the BMP handles this correctly
-                    self._transceiver.power_on(
-                        boards=board, frame=0, cabinet=0)
-
-                    # Check if the FPGA number is correct on each FPGA
-                    incorrect_fpga_number = False
-                    for a_board in board:  # pragma: no cover
-                        for fpga in range(_N_FPGAS):
-                            fpga_id = self._transceiver.read_fpga_register(
-                                fpga_num=fpga,
-                                register=_FPGA_FLAG_REGISTER_ADDRESS,
-                                board=a_board, cabinet=0, frame=0)
-                            if (fpga_id & _FPGA_FLAG_ID_MASK) != fpga:
-                                logging.warn(
-                                    "FPGA {} on board {} of {} has incorrect"
-                                    " FPGA id flag {}".format(
-                                        fpga, a_board, self._hostname,
-                                        fpga_id & _FPGA_FLAG_ID_MASK))
-                                incorrect_fpga_number = True
-                                break
-                        if incorrect_fpga_number:
-                            break
-
-                if incorrect_fpga_number:
-                    raise Exception(
-                        "Could not get correct FPGA id after {} tries".format(
-                            n_tries))
-
+                self._boot_board(board)
             # If powering off...
             else:
                 self._transceiver.power_off(boards=board, frame=0, cabinet=0)
@@ -214,8 +202,8 @@ class AsyncBMPController(object):
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
             logging.exception(
-                "Failed to set board power on BMP {}, boards {}, state={}."
-                .format(self._hostname, board, state))
+                "Failed to set board power on BMP %s, boards %s, state=%s.",
+                self._hostname, board, state)
             return False
 
     def _set_link_state(self, link, enable, board):
@@ -237,8 +225,8 @@ class AsyncBMPController(object):
             # Communication issue with the machine, log it but not
             # much we can do for the end-user.
             logging.exception(
-                "Failed to set link state on BMP {}, board {}, link {},"
-                " enable={}.".format(self._hostname, board, link, enable))
+                "Failed to set link state on BMP %s, board %s, link %s,"
+                " enable=%s.", self._hostname, board, link, enable)
             return False
 
     def _run(self):

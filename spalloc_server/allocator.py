@@ -6,7 +6,7 @@ functionality of a machine.
 from enum import Enum
 from collections import deque
 from math import ceil
-from six import next
+from six import next  # pylint: disable=redefined-builtin
 
 from .links import Links
 from .pack_tree import PackTree
@@ -33,6 +33,7 @@ class Allocator(object):
     spare boards left in triads allocated for single-board allocations before
     allocating new 1x1 triads.
     """
+    # pylint: disable=too-many-arguments, unused-argument
 
     def __init__(self, width, height, dead_boards=None, dead_links=None,
                  next_id=1):
@@ -522,6 +523,7 @@ class Allocator(object):
             self.next_id += 1
             self.allocation_types[allocation_id] = _AllocationType.board
             self.allocation_board[allocation_id] = (x, y, z)
+            # pylint: disable=not-an-iterable
             return (allocation_id,
                     set([(x, y, z)]),
                     set((x, y, z, link) for link in Links),
@@ -614,7 +616,7 @@ class Allocator(object):
                     args.append(z)
 
         # Select allocation type
-        if len(args) == 0:
+        if not args:
             alloc_type = _AllocationType.board
         elif len(args) == 1:
             if args[0] == 1:
@@ -685,8 +687,7 @@ class Allocator(object):
             return self._alloc_board_possible(*args, **kwargs)
         elif alloc_type is _AllocationType.boards:
             return self._alloc_boards_possible(*args, **kwargs)
-        else:
-            return self._alloc_triads_possible(*args, **kwargs)
+        return self._alloc_triads_possible(*args, **kwargs)
 
     def alloc(self, *args, **kwargs):
         """Attempt to allocate a board or rectangular region of triads of
@@ -750,8 +751,7 @@ class Allocator(object):
             return self._alloc_board(*args, **kwargs)
         elif alloc_type is _AllocationType.boards:
             return self._alloc_boards(*args, **kwargs)
-        else:
-            return self._alloc_triads(*args, **kwargs)
+        return self._alloc_triads(*args, **kwargs)
 
     def free(self, allocation_id):
         """Free the resources consumed by the specified allocation.
@@ -864,6 +864,7 @@ class _CandidateFilter(object):
 
             If None, assumes the candidate width * candidate height * 3.
         """
+        # pylint: disable=too-many-arguments
         self.width = width
         self.height = height
         self.dead_boards = dead_boards
@@ -900,7 +901,7 @@ class _CandidateFilter(object):
             boards.add((x1, y1, z1))
 
             # Visit neighbours which are within the range
-            for link in Links:
+            for link in Links:  # pylint: disable=not-an-iterable
                 # Skip dead links
                 if (x1, y1, z1, link) in self.dead_links:
                     continue
@@ -946,6 +947,7 @@ class _CandidateFilter(object):
             What types of wrap-around links are present (making no distinction
             between dead and alive links)?
         """
+        # pylint: disable=too-many-locals
         alive = set()
         wrap = set()
         dead = set()
@@ -954,22 +956,18 @@ class _CandidateFilter(object):
         wrap_around_type = WrapAround.none
 
         for x1, y1, z1 in boards:
-            for link in Links:
-                is_dead = (x1, y1, z1, link) in self.dead_links
+            for link in Links:  # pylint: disable=not-an-iterable
                 x2, y2, z2, wrapped = board_down_link(
                     x1, y1, z1, link, self.width, self.height)
-                in_set = (x2, y2, z2) in boards
-
-                if in_set:
+                if (x2, y2, z2) in boards:
                     wrap_around_type |= wrapped
-
                     if wrapped:
-                        if is_dead:
+                        if (x1, y1, z1, link) in self.dead_links:
                             dead_wrap.add((x1, y1, z1, link))
                         else:
                             wrap.add((x1, y1, z1, link))
                     else:
-                        if is_dead:
+                        if (x1, y1, z1, link) in self.dead_links:
                             dead.add((x1, y1, z1, link))
                         else:
                             alive.add((x1, y1, z1, link))
@@ -999,7 +997,7 @@ class _CandidateFilter(object):
             if alive == 0 or dead > self.max_dead_boards:
                 return False
         else:
-            if len(boards) == 0:
+            if not boards:
                 return False
 
         # Make sure the maximum dead links limit isn't exceeded (and that torus
