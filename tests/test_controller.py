@@ -17,7 +17,7 @@ from spalloc_server.links import Links
 from common import simple_machine
 
 
-pytestmark = pytest.mark.usefixtures("MockABC")
+pytestmark = pytest.mark.usefixtures("mock_abc")
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def on_background_state_change():
 
 
 @pytest.yield_fixture
-def conn(MockABC, on_background_state_change):
+def conn(mock_abc, on_background_state_change):
     """Auto-stop a controller."""
     conn = Controller(max_retired_jobs=2,
                       on_background_state_change=on_background_state_change)
@@ -72,7 +72,7 @@ def big_m_with_hole(conn):
 
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("expected_success", [True, False])
-def test_mock_abc(MockABC, expected_success):
+def test_mock_abc(mock_abc, expected_success):
     """Meta testing: make sure the MockAsyncBMPController works."""
     # Make sure callbacks are called from another thread
     threads = []
@@ -81,7 +81,7 @@ def test_mock_abc(MockABC, expected_success):
         threads.append(threading.current_thread())
         assert success is expected_success
 
-    abc = MockABC("foo")
+    abc = mock_abc("foo")
     abc.success = expected_success
 
     assert abc.running_theads == 1
@@ -118,7 +118,7 @@ def test_controller_basic_stop_join(conn):
     assert isinstance(conn, Controller)
 
 
-def test_controller_set_machines(conn, MockABC):
+def test_controller_set_machines(conn, mock_abc):
     # Test the ability to add machines
 
     # Create a set of machines
@@ -151,7 +151,7 @@ def test_controller_set_machines(conn, MockABC):
     assert len(conn._machines) == 0
     assert len(conn._job_queue._machines) == 0
     assert len(conn._bmp_controllers) == 0
-    assert MockABC.running_theads == 0
+    assert mock_abc.running_theads == 0
 
     # Try adding a pair of machines
     machines["m1"] = m1
@@ -184,17 +184,15 @@ def test_controller_set_machines(conn, MockABC):
             for f in range(machines[m_name].height):
                 assert controllers[(c*10, f*10)].hostname \
                     == "10.1.{}.{}".format(c, f)
-    assert MockABC.running_theads \
-        == MockABC.num_created \
-        == ((m1.width * m1.height) + (m0.width * m0.height))
+    assert mock_abc.running_theads == mock_abc.num_created == (
+        (m1.width * m1.height) + (m0.width * m0.height))
 
     # If we pass in the same machines in, nothing should get changed
     conn.machines = machines
     assert conn._machines == machines
     assert list(conn._job_queue._machines) == list(machines)
-    assert MockABC.running_theads \
-        == MockABC.num_created \
-        == ((m1.width * m1.height) + (m0.width * m0.height))
+    assert mock_abc.running_theads == mock_abc.num_created == (
+        (m1.width * m1.height) + (m0.width * m0.height))
 
     # If we pass in the same machines in a different order, the order should
     # change but nothing should get spun up/down
@@ -204,9 +202,8 @@ def test_controller_set_machines(conn, MockABC):
     conn.machines = machines
     assert conn._machines == machines
     assert list(conn._job_queue._machines) == list(machines)
-    assert MockABC.running_theads \
-        == MockABC.num_created \
-        == ((m1.width * m1.height) + (m0.width * m0.height))
+    assert mock_abc.running_theads == mock_abc.num_created == (
+        (m1.width * m1.height) + (m0.width * m0.height))
 
     # Adding a new machine should spin just one new machine up leaving the
     # others unchanged
@@ -217,11 +214,8 @@ def test_controller_set_machines(conn, MockABC):
     conn.machines = machines
     assert conn._machines == machines
     assert list(conn._job_queue._machines) == list(machines)
-    assert MockABC.running_theads \
-        == MockABC.num_created \
-        == ((m2.width * m2.height) +
-            (m1.width * m1.height) +
-            (m0.width * m0.height))
+    assert mock_abc.running_theads == mock_abc.num_created == (
+        m2.width * m2.height + m1.width * m1.height + m0.width * m0.height)
 
     # Modifying a machine in minor ways: should not respin anything but the
     # change should be applied
@@ -248,11 +242,8 @@ def test_controller_set_machines(conn, MockABC):
         == set([(0, 0, 0, Links.south)])
 
     # Nothing should be spun up
-    assert MockABC.running_theads \
-        == MockABC.num_created \
-        == ((m2.width * m2.height) +
-            (m1.width * m1.height) +
-            (m0.width * m0.height))
+    assert mock_abc.running_theads == mock_abc.num_created == (
+        m2.width * m2.height + m1.width * m1.height + m0.width * m0.height)
 
     # Removing a machine should result in things being spun down
     del machines["m0"]
@@ -266,15 +257,12 @@ def test_controller_set_machines(conn, MockABC):
 
     # Some BMPs should now be shut down
     time.sleep(0.05)
-    assert MockABC.running_theads \
-        == ((m2.width * m2.height) +
-            (m1.width * m1.height))
+    assert mock_abc.running_theads == (
+        (m2.width * m2.height) + (m1.width * m1.height))
 
     # Nothing new should be spun up
-    assert MockABC.num_created \
-        == ((m2.width * m2.height) +
-            (m1.width * m1.height) +
-            (m0.width * m0.height))
+    assert mock_abc.num_created == (
+        m2.width * m2.height + m1.width * m1.height + m0.width * m0.height)
 
     # Making any significant change to a machine should result in it being
     # re-spun.
@@ -308,16 +296,13 @@ def test_controller_set_machines(conn, MockABC):
     assert m2_alloc_before is m2_alloc_after
 
     # Same number of BMPs should be up
-    assert MockABC.running_theads \
-        == ((m2.width * m2.height) +
-            (m1.width * m1.height))
+    assert mock_abc.running_theads == (
+        (m2.width * m2.height) + (m1.width * m1.height))
 
     # But a new M1 should be spun up
-    assert MockABC.num_created \
-        == ((m2.width * m2.height) +
-            ((m1.width + 1) * m1.height) +
-            (m1.width * m1.height) +
-            (m0.width * m0.height))
+    assert mock_abc.num_created == (
+        (m2.width * m2.height) + ((m1.width + 1) * m1.height) +
+        (m1.width * m1.height) + (m0.width * m0.height))
 
 
 def test_set_machines_sequencing(conn):
@@ -366,17 +351,19 @@ def test_create_job(conn, m):
         assert conn._jobs[job_id1].keepalive == 60.0
 
         # BMPs should have been told to power-on
-        assert all(s is True for b, s, f in controller.set_power_calls)
-        assert set(b for b, s, f in controller.set_power_calls) \
+        assert all(_s is True for _b, _s, _f in controller.set_power_calls)
+        assert set(_b for _b, _s, _f in controller.set_power_calls) \
             == set(range(3))
 
         # Links around the allocation should have been disabled
-        assert all(e is False
-                   for b, l, e, f in controller.set_link_enable_calls)
+        assert all(_e is False
+                   for _b, _l, _e, _f in controller.set_link_enable_calls)
         assert (  # pragma: no branch
-            set((b, l) for b, l, e, f in controller.set_link_enable_calls) ==
-            set((b, l) for b in range(3) for l in Links
-                if board_down_link(0, 0, b, l, 1, 2)[:2] != (0, 0))
+            set((_b, _l)
+                for _b, _l, _e, _f in controller.set_link_enable_calls) ==
+            set((_b, _l)
+                for _b in range(3) for _l in Links
+                if board_down_link(0, 0, _b, _l, 1, 2)[:2] != (0, 0))
         )
 
         # Job should be waiting for power-on since the BMP is blocked
@@ -510,7 +497,7 @@ def test_get_job_machine_info_width_height(conn, args, width, height):
     conn.machines = {"m": simple_machine("m", 2, 3)}
 
     job_id = conn.create_job(None, *args, owner="me", keepalive=60.0)
-    w, h, connections, machine_name, boards = \
+    w, h, _connections, _machine_name, _boards = \
         conn.get_job_machine_info(None, job_id)
 
     assert w == width
@@ -536,10 +523,11 @@ def test_power_on_job_boards(conn, m):
 
     # Should re-set up the links
     assert len(controller.set_link_enable_calls) == 6
-    assert all(e is False for b, l, e, f in controller.set_link_enable_calls)
+    assert all(
+        e is False for _b, _l, e, _f in controller.set_link_enable_calls)
     assert (  # pragma: no branch
-        set((0, l) for b, l, e, f in controller.set_link_enable_calls) ==
-        set((0, l) for l in Links)
+        set((0, _l) for _b, _l, e, _f in controller.set_link_enable_calls) ==
+        set((0, _l) for _l in Links)
     )
 
     # Shouldn't crash for non-existent job
@@ -610,10 +598,10 @@ def test_destroy_job(conn, m):
     # ...powering anything down that was in use
     assert len(controller0.set_power_calls) == 3
     assert len(controller1.set_power_calls) == 3
-    assert all(s is False for b, s, f in controller0.set_power_calls)
-    assert all(s is False for b, s, f in controller1.set_power_calls)
-    assert set(b for b, s, f in controller0.set_power_calls) == set(range(3))
-    assert set(b for b, s, f in controller1.set_power_calls) == set(range(3))
+    assert all(s is False for _b, s, _f in controller0.set_power_calls)
+    assert all(s is False for _b, s, _f in controller1.set_power_calls)
+    assert set(b for b, s, _ in controller0.set_power_calls) == set(range(3))
+    assert set(b for b, s, _ in controller1.set_power_calls) == set(range(3))
     assert controller0.set_link_enable_calls == []
     assert controller1.set_link_enable_calls == []
 
@@ -905,7 +893,7 @@ class TestWhereIs(object):
 @pytest.mark.parametrize("success,mid_state,end_state",
                          [(True, JobState.unknown, JobState.ready),
                           (False, JobState.destroyed, JobState.destroyed)])
-def test_bmp_on_request_complete(MockABC, conn, m,
+def test_bmp_on_request_complete(mock_abc, conn, m,
                                  success, mid_state, end_state):
     job_id = conn.create_job(None, owner="me", keepalive=60.0)
     job = conn._jobs[job_id]
@@ -938,7 +926,7 @@ def test_bmp_on_request_complete(MockABC, conn, m,
 
 @pytest.mark.parametrize("power", [True, False])
 @pytest.mark.parametrize("link_enable", [True, False, None])
-def test_set_job_power_and_links(MockABC, conn, m, power, link_enable):
+def test_set_job_power_and_links(mock_abc, conn, m, power, link_enable):
     job_id = conn.create_job(None, owner="me", keepalive=60.0)
     job = conn._jobs[job_id]
 
@@ -972,17 +960,17 @@ def test_set_job_power_and_links(MockABC, conn, m, power, link_enable):
 
         if link_enable is not None:
             assert len(controller.set_link_enable_calls) == 6
-            assert all(b == 0 for b, l, e, f in
+            assert all(b == 0 for b, l, e, _ in
                        controller.set_link_enable_calls)
-            assert all(e is link_enable for b, l, e, f in
+            assert all(e is link_enable for b, l, e, _ in
                        controller.set_link_enable_calls)
-            assert set(l for b, l, e, f in
+            assert set(l for b, l, e, _ in
                        controller.set_link_enable_calls) == set(Links)
         else:
             assert len(controller.set_link_enable_calls) == 0
 
 
-def test_pickle(MockABC):
+def test_pickle(mock_abc):
     # Create a controller, with a running job and some threads etc.
     conn = Controller()
     try:
@@ -991,13 +979,13 @@ def test_pickle(MockABC):
         time.sleep(0.05)
         assert conn.get_job_state(None, job_id).state == JobState.ready
 
-        assert MockABC.running_theads == 2
+        assert mock_abc.running_theads == 2
     finally:
         # Pickling the controller should succeed
         conn.stop()
         conn.join()
 
-    assert MockABC.running_theads == 0
+    assert mock_abc.running_theads == 0
 
     pickled_conn = pickle.dumps(conn)
     del conn
@@ -1007,7 +995,7 @@ def test_pickle(MockABC):
     try:
 
         # And some BMP connections should be running again
-        assert MockABC.running_theads == 2
+        assert mock_abc.running_theads == 2
 
         # And our job should still be there
         assert conn2.get_job_state(None, job_id).state == JobState.ready

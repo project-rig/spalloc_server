@@ -6,7 +6,7 @@ from collections import deque
 
 
 @pytest.fixture
-def MockABC(monkeypatch):  # pragma: no cover
+def mock_abc(monkeypatch):  # pragma: no cover
     """This test fixture mocks-out the AsyncBMPController class with a shim
     which immediately calls the supplied callbacks via another thread (to
     ensure no inter-thread calling issues).
@@ -62,8 +62,7 @@ def MockABC(monkeypatch):  # pragma: no cover
                                 if not self._request_queue:
                                     self._event.clear()
                                     break
-                                else:
-                                    cb = self._request_queue.popleft()
+                                cb = self._request_queue.popleft()
 
                             # Run callback (while not holding any locks)
                             cb(self.success)
@@ -79,8 +78,7 @@ def MockABC(monkeypatch):  # pragma: no cover
         def __enter__(self):
             self._lock.acquire()
 
-        def __exit__(self, type=None, value=None,  # @ReservedAssignment
-                     traceback=None):
+        def __exit__(self, _type=None, _value=None, _traceback=None):
             self._lock.release()
 
         def set_power(self, board, state, on_done):

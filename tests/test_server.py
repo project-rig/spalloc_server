@@ -976,9 +976,9 @@ def test_machine_notify_register_unregister(simple_config, s):
 @pytest.fixture
 def mock_server():
     server = Mock()
-    serverFactory = Mock(return_value=server)
+    server_factory = Mock(return_value=server)
     type(server)._running = PropertyMock(return_value=False)
-    return (server, serverFactory)
+    return (server, server_factory)
 
 
 @pytest.mark.timeout(2.0)
