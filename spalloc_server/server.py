@@ -459,7 +459,7 @@ class SpallocServer(Server):
         self._client_job_watches = {}
         self._client_machine_watches = {}
 
-        Server.__init__(self, config_filename, cold_start, port)
+        super(SpallocServer, self).__init__(config_filename, cold_start, port)
 
     def _send_change_notifications(self):
         """Send any registered change notifications to clients.
