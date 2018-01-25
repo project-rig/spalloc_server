@@ -48,6 +48,7 @@ class OnDoneEvent(object):
     def __init__(self):
         self.event = threading.Event()
         self.success = None
+        self.reason = None
 
     def set(self, *args, **kwargs):
         return self.event.set(*args, **kwargs)
@@ -55,7 +56,7 @@ class OnDoneEvent(object):
     def wait(self, *args, **kwargs):
         return self.event.wait(*args, **kwargs)
 
-    def __call__(self, success):
+    def __call__(self, success, reason):
         # Should be passed a valid success value
         assert (success is True) or (success is False)
 
@@ -63,6 +64,7 @@ class OnDoneEvent(object):
         assert self.success is None
 
         self.success = success
+        self.reason = reason
 
         self.set()
 
