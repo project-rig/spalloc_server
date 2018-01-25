@@ -32,6 +32,9 @@ class PollingServerCore(object):
     """Wrapper around the operating system's poll() call. Also knows the\
     basics of making sockets.
     """
+
+    MILLISECOND_TO_SECOND_CONVERTER = 1000.0
+
     def __init__(self):
         # The poll object used for listening for connections
         self._poll = None
@@ -78,7 +81,8 @@ class PollingServerCore(object):
                  :py:meth:`.wake` call.
         """
         if self._poll is not None:
-            events = self._poll.poll(timeout_check_interval * 1000.0)
+            events = self._poll.poll(
+                timeout_check_interval * self.MILLISECOND_TO_SECOND_CONVERTER)
             for fd, _ in events:
                 if fd == self._notify_recv.fileno():
                     self._notify_recv.recv(BUFFER_SIZE)
