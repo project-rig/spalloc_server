@@ -19,7 +19,8 @@ class SCPOKMessage(SDPMessage):
             flags=SDPFlag.REPLY_NOT_EXPECTED, destination_port=0,
             destination_cpu=0, destination_chip_x=x, destination_chip_y=y)
         utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
-        SDPMessage.__init__(self, sdp_header, data=scp_header.bytestring)
+        super(SCPOKMessage, self).__init__(
+            sdp_header, data=scp_header.bytestring)
 
 
 class SCPVerMessage(SDPMessage):
@@ -34,7 +35,7 @@ class SCPVerMessage(SDPMessage):
             flags=SDPFlag.REPLY_NOT_EXPECTED, destination_port=0,
             destination_cpu=0, destination_chip_x=x, destination_chip_y=y)
         utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
-        SDPMessage.__init__(self, sdp_header)
+        super(SCPVerMessage, self).__init__(sdp_header)
 
     def set_sequence(self, sequence):
         self._scp_header.sequence = sequence
@@ -61,7 +62,7 @@ class MockBMP(Thread):
             Note that responses can include "None" which means that no\
             response will be sent to that request
         """
-        Thread.__init__(self, verbose=True)
+        super(MockBMP, self).__init__(verbose=True)
 
         # Set up a connection to be the machine
         self._receiver = UDPConnection(local_port=SCP_SCAMP_PORT)
@@ -79,26 +80,29 @@ class MockBMP(Thread):
     def local_port(self):  # pragma: no cover
         return self._receiver.local_port
 
+    def _do_receive(self):
+        data, address = self._receiver.receive_with_address(10)
+        sdp_header = SDPHeader.from_bytestring(data, 2)
+        _, sequence = struct.unpack_from("<2H", data, 10)
+        response = None
+        if self._responses:
+            response = self._responses.popleft()
+        else:  # pragma: no cover
+            response = SCPOKMessage(
+                sdp_header.source_chip_x, sdp_header.source_chip_y,
+                sequence)
+        if hasattr(response, "set_sequence"):
+            response.set_sequence(sequence)
+        if response is not None:
+            self._receiver.send_to(
+                struct.pack("<2x") + response.bytestring, address)
+
     def run(self):
         self._running = True
         while self._running:
             try:
                 if self._receiver.is_ready_to_receive():
-                    data, address = self._receiver.receive_with_address(10)
-                    sdp_header = SDPHeader.from_bytestring(data, 2)
-                    _, sequence = struct.unpack_from("<2H", data, 10)
-                    response = None
-                    if len(self._responses) > 0:
-                        response = self._responses.popleft()
-                    else:  # pragma: no cover
-                        response = SCPOKMessage(
-                            sdp_header.source_chip_x, sdp_header.source_chip_y,
-                            sequence)
-                    if hasattr(response, "set_sequence"):
-                        response.set_sequence(sequence)
-                    if response is not None:
-                        self._receiver.send_to(
-                            struct.pack("<2x") + response.bytestring, address)
+                    self._do_receive()
             except Exception as e:
                 if self._running:  # pragma: no cover
                     traceback.print_exc()

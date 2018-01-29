@@ -60,14 +60,14 @@ class SimpleClient(SimpleClientSocket):
     """A simple line receiving and sending client."""
 
     def __init__(self, host="127.0.0.1", port=22244):
-        SimpleClientSocket.__init__(self, host, port)
+        super(SimpleClient, self).__init__(host, port)
         self.buf = b""
         self.notifications = []
 
     def recv_line(self, length=1024):
         while b"\n" not in self.buf:
             data = self.sock.recv(length)
-            if not data:  # pragma: no cover
+            if not data:
                 raise DisconnectedException("Socket disconnected!")
             self.buf += data
         line, _, self.buf = self.buf.partition(b"\n")
@@ -101,52 +101,16 @@ class SimpleClient(SimpleClientSocket):
     def get_notification(self):
         if self.notifications:  # pragma: no cover
             return self.notifications.pop(0)
-        else:
-            line = self.recv_line()
-            return json.loads(line.decode("utf-8"))
+        line = self.recv_line()
+        return json.loads(line.decode("utf-8"))
 
 
-class EvilClient(SimpleClientSocket):
+class EvilClient(SimpleClient):
     """An evil line receiving and sending client."""
-
-    def __init__(self, host="127.0.0.1", port=22244):
-        SimpleClientSocket.__init__(self, host, port)
-        self.buf = b""
-        self.notifications = []
-
-    def _recv_line(self, length=1024):
-        while b"\n" not in self.buf:
-            data = self.sock.recv(length)
-            if not data:
-                raise DisconnectedException("Socket disconnected!")
-            self.buf += data
-        line, _, self.buf = self.buf.partition(b"\n")
-        return line
-
-    def get_return(self):
-        while True:
-            line = self._recv_line()
-            try:
-                resp = json.loads(line.decode("utf-8"))
-            except Exception:  # pragma: no cover
-                print("Bad line: {}".format(repr(line)))
-                raise
-            if "return" in resp:
-                return resp["return"]
-            if "exception" in resp:
-                raise ServerException(resp["exception"])
-            else:  # pragma: no cover
-                self.notifications.append(resp)
 
     def call(self, call):
         self.sock.send(call.replace("'", "\"").encode("utf-8") + b"\n")
         return self.get_return()
-
-    def get_notification(self):  # pragma: no cover
-        if self.notifications:
-            return self.notifications.pop(0)
-        line = self._recv_line()
-        return json.loads(line.decode("utf-8"))
 
 
 @pytest.yield_fixture
