@@ -20,7 +20,7 @@ from spalloc_server import __version__
 from .common import simple_machine
 
 
-pytestmark = pytest.mark.usefixtures("MockABC")
+pytestmark = pytest.mark.usefixtures("mock_abc")
 
 logging.basicConfig(level=logging.INFO)
 
