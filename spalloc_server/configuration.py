@@ -102,9 +102,7 @@ from .coordinates import chip_to_board
 
 
 def _empty_default_dict(d):
-    if d is None:
-        return {}
-    return dict(d)
+    return dict(d) if d is not None else {}
 
 
 class Configuration(namedtuple("Configuration",

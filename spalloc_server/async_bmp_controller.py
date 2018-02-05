@@ -161,7 +161,7 @@ class AsyncBMPController(object):
             fpga_num=fpga, register=_FPGA_FLAG_REGISTER_ADDRESS,
             board=board, cabinet=0, frame=0)
         ok = (fpga_id & _FPGA_FLAG_ID_MASK) == fpga
-        if not ok:
+        if not ok:  # pragma: no cover
             logging.warn(
                 "FPGA %d on board %d of %s has incorrect FPGA id flag %d",
                 fpga, board, self._hostname, fpga_id & _FPGA_FLAG_ID_MASK)
@@ -179,9 +179,10 @@ class AsyncBMPController(object):
                    for fpga in range(_N_FPGAS)
                    for board in boards):
                 return
-        raise Exception(
-            "Could not get correct FPGA id after {} tries".format(
-                _N_FPGA_RETRIES))
+        else:  # pragma: no cover
+            raise Exception(
+                "Could not get correct FPGA id after {} tries".format(
+                    _N_FPGA_RETRIES))
 
     def _set_board_state(self, state, board):
         """Set the power state of a board.
