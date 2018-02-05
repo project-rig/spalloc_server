@@ -75,17 +75,19 @@ def test_start_and_stop(on_thread_start):
     # Make sure that if a BMP controller is started, we can stop it immediately
     bmp = MockBMP(responses=[SCPVerMessage(0, 0, "2.1.0")])
     bmp.start()
-    abc = AsyncBMPController("localhost", on_thread_start=on_thread_start)
-    assert abc._stop is False
+    try:
+        abc = AsyncBMPController("localhost", on_thread_start=on_thread_start)
+        assert abc._stop is False
 
-    abc.stop()
-    abc.join()
-    assert abc._stop is True
+        abc.stop()
+        abc.join()
+        assert abc._stop is True
 
-    if on_thread_start is not None:
-        on_thread_start.assert_called_once_with()
-    bmp.stop()
-    bmp.join()
+        if on_thread_start is not None:
+            on_thread_start.assert_called_once_with()
+    finally:
+        bmp.stop()
+        bmp.join()
 
 
 def mock_read_fpga_register(fpga_num, register, board, cabinet, frame):
