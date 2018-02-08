@@ -85,7 +85,6 @@ class Server(PollingServerCore, ConfigurationReloader):
         :type cold_start: bool
         :param port: Which port to listen on. Defaults to 22244.
         :type port: int
-        
         """
         # ============ STATE THAT NEEDS TO BE ALWAYS DEFINED ============
 
