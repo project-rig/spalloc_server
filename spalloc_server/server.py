@@ -169,7 +169,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         filename = ".{}.state.{}".format(basename, __version__)
         return path.join(dirname, filename)
 
-    @overrides(super_class_method=ConfigurationReloader._parse_config)
+    @overrides(ConfigurationReloader._parse_config)
     def _parse_config(self, config_file_contents):
         g = {}
         g.update(configuration.__dict__)
@@ -177,14 +177,14 @@ class Server(PollingServerCore, ConfigurationReloader):
         exec(config_file_contents, g)
         return g
 
-    @overrides(super_class_method=ConfigurationReloader._validate_config)
+    @overrides(ConfigurationReloader._validate_config)
     def _validate_config(self, parsed_config):
         new = parsed_config.get("configuration", None)
         if new is None or not isinstance(new, Configuration):
             return None
         return new
 
-    @overrides(super_class_method=ConfigurationReloader._load_valid_config)
+    @overrides(ConfigurationReloader._load_valid_config)
     def _load_valid_config(self, validated_config):
         old = self._configuration
         self._configuration = validated_config
