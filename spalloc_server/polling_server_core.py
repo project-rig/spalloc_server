@@ -113,7 +113,7 @@ class PollingServerCore(object):
         :param str ipaddress: The local address of the socket.
         :param int port: The local port of the socket.
         """
-        log.info("opening server socket for %s" % (str((ipaddress, port))))
+        log.info("opening server socket for %s", (ipaddress, port))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((ipaddress, port))

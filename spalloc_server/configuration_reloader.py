@@ -22,14 +22,14 @@ class ConfigurationReloader(object):
             log.info("configuration reloading enabled: "
                      "send SIGHUP to trigger reload")
 
-    def _sighup_handler(self, signum, frame):  # @UnusedVariable
+    def _sighup_handler(self, signum, _frame):
         """Handler for SIGHUP. If such a signal is delivered, will trigger a
         reread of the configuration file.
 
         Parameters
         ----------
         signum : int
-        frame :
+        _frame :
         """
         if signum == _SIGHUP:
             self._reload_config = True
