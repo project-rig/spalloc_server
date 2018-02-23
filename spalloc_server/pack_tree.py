@@ -91,6 +91,20 @@ class PackTree(object):
             PackTree(self.x, self.y, (x - self.x), self.height),
             PackTree(x, self.y, self.width - (x - self.x), self.height))
 
+    def _find_acceptable(self, width, height, candidate_filter):
+        tried = set()
+        if candidate_filter is None:
+            # Dummy filter that always accepts a candidate
+            candidate_filter = (lambda _a, _b, _c, _d: True)
+        for x, y in ((self.x + x, self.y + y)
+                     for x in (0, self.width - width)
+                     for y in (0, self.height - height)):
+            key = (x, y)
+            if key not in tried and candidate_filter(x, y, width, height):
+                return key
+            tried.add(key)
+        return None
+
     def alloc(self, width, height, candidate_filter=None):
         """Attempt to allocate a rectangular region of a specified size.
 
@@ -136,24 +150,16 @@ class PackTree(object):
                 allocation = child.alloc(width, height, candidate_filter)
                 if allocation:
                     return allocation
-            else:
-                # No child could fit the allocation, fail
-                return None
+            # No child could fit the allocation, fail
+            return None
 
         # This node is an empty leaf with enough room. Try and find a corner
         # into which this allocation can fit which is acceptable to the caller.
-        tried = set()
-        for x, y in ((self.x + x, self.y + y)
-                     for x in (0, self.width - width)
-                     for y in (0, self.height - height)):
-            if ((x, y) not in tried and
-                    (candidate_filter is None or
-                     candidate_filter(x, y, width, height))):
-                break
-            tried.add((x, y))
-        else:
+        xy = self._find_acceptable(width, height, candidate_filter)
+        if xy is None:
             # No acceptable subregion could be found, give up.
             return None
+        x, y = xy
 
         # If the region fits exactly, just become allocated
         if width == self.width and height == self.height:
@@ -195,9 +201,8 @@ class PackTree(object):
                           child.children[1])
             grandchild.allocated = True
             return (grandchild.x, grandchild.y)
-        else:
-            child.allocated = True
-            return (child.x, child.y)
+        child.allocated = True
+        return (child.x, child.y)
 
     def alloc_area(self, area, min_ratio=0.0, candidate_filter=None):
         """Attempt to allocate a rectangular region with at least the specified
@@ -245,13 +250,12 @@ class PackTree(object):
             # Try the smallest child first
             for child in sorted(self.children,
                                 key=(lambda c: c.width * c.height)):
-                allocation = child.alloc_area(area, min_ratio,
-                                              candidate_filter)
+                allocation = child.alloc_area(
+                    area, min_ratio, candidate_filter)
                 if allocation:
                     return allocation
-            else:
-                # No child could fit the allocation, fail
-                return None
+            # No child could fit the allocation, fail
+            return None
 
         # This is a child node, try to work out a suitable size for the
         # allocation if possible
@@ -262,11 +266,10 @@ class PackTree(object):
         # Try allocating that size
         width, height = rect
         allocation = self.alloc(width, height, candidate_filter)
-        if allocation:
-            x, y = allocation
-            return (x, y, width, height)
-        else:
+        if not allocation:
             return None
+        x, y = allocation
+        return (x, y, width, height)
 
     def request(self, x, y):
         """Request the allocation of a specific 1x1 block.
@@ -327,16 +330,13 @@ class PackTree(object):
 
         if _l == largest:
             self.vsplit(x=x)
-            return self.request(x, y)
         elif r == largest:
             self.vsplit(x=x + 1)
-            return self.request(x, y)
         elif a == largest:
             self.hsplit(y=y + 1)
-            return self.request(x, y)
         else:  # b == largest
             self.hsplit(y=y)
-            return self.request(x, y)
+        return self.request(x, y)
 
     def free(self, x, y):
         """Free a previous allocation, allowing the space to be reused.
@@ -366,12 +366,10 @@ class PackTree(object):
                 if all(not c.allocated and c.children is None
                        for c in self.children):
                     self.children = None
-
                 return
-        else:
-            # No child contains the location to be freed. Crash out!
-            raise FreeError(
-                "Cannot free {}, {} which is outside the region.".format(x, y))
+        # No child contains the location to be freed. Crash out!
+        raise FreeError(
+            "Cannot free {}, {} which is outside the region.".format(x, y))
 
 
 class FreeError(Exception):

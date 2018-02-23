@@ -78,8 +78,7 @@ def area_to_rect(area, bound_width, bound_height, min_ratio=0.0):
     # fit.
     if float(min(w, h)) / float(max(w, h)) >= min_ratio:
         return (w, h)
-    else:
-        return None
+    return None
 
 
 def squarest_rectangle(area):
@@ -92,6 +91,7 @@ def squarest_rectangle(area):
         Width and height of a rectangle with the area specified where w and h
         are as similar as possible and w >= h.
     """
+    # pylint: disable=undefined-loop-variable
     assert area >= 0
 
     # Special case

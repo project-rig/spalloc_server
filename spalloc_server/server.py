@@ -26,62 +26,65 @@ from spalloc_server.configuration_reloader import ConfigurationReloader
 BUFFER_SIZE = 1024
 
 _COMMANDS = {}
-"""A dictionary from command names to (unbound) methods of the
+"""A dictionary from command names to (unbound) methods of the\
 :py:class:`.Server` class.
 """
 
 
 def spalloc_command(f):
-    """Decorator which marks a class function of :py:class:`.Server` as a
-    command which may be called by a client.
+    """ Decorator which marks a class function of :py:class:`.Server` as a\
+        command which may be called by a client.
     """
     _COMMANDS[f.__name__] = f
     return f
 
 
 class Server(PollingServerCore, ConfigurationReloader):
-    """A TCP server which manages, power, partitioning and scheduling of jobs
-    on SpiNNaker machines.
+    """ A TCP server which manages, power, partitioning and scheduling of jobs\
+        on SpiNNaker machines.
 
-    Once constructed the server starts a background thread
-    (:py:attr:`._server_thread`, :py:meth:`._run`) which implements the main
-    server logic and handles communication with clients, monitoring of
-    asynchronous board control events (e.g. board power-on completion) and
-    watches the config file for changes. All members of this object are assumed
-    to be accessed only from this thread while it is running. The thread is
-    stopped, and its completion awaited by calling :py:meth:`.stop_and_join`,
-    stopping the server.
+    Once constructed the server starts a background thread\
+    (:py:attr:`._server_thread`, :py:meth:`._run`) which implements the main\
+    server logic and handles communication with clients, monitoring of\
+    asynchronous board control events (e.g. board power-on completion) and\
+    watches for selected signals. All members of this object are assumed to be\
+    accessed only from this thread while it is running. The thread is stopped,\
+    and its completion awaited by calling\
+    :py:meth:`.stop_and_join`, stopping the server.
 
-    The server uses a :py:class:`~spalloc_server.Controller` object to
-    implement scheduling, allocation and machine management functionality. This
-    object is :py:mod:`pickled <pickle>` when the server shuts down in order to
-    preserve the state of all managed machines (e.g. allocated jobs etc.).
+    The server uses a :py:class:`~spalloc_server.Controller` object to\
+    implement scheduling, allocation and machine management functionality.\
+    This object is :py:mod:`pickled <pickle>` when the server shuts down in\
+    order to preserve the state of all managed machines (e.g. allocated jobs\
+    etc.).
 
-    To allow the interruption of the server thread on asynchronous events from
-    the Controller a :py:func:`~socket.socketpair` (:py:attr:`._notify_send`
-    and :py:attr:`._notify_send`) is used which monitored along with client
-    connections and config file changes.
+    To allow the interruption of the server thread on asynchronous events from\
+    the Controller a :py:func:`~socket.socketpair` (:py:attr:`._notify_send`\
+    and :py:attr:`._notify_send`) is used which monitored along with client\
+    connections and SIGHUP signals (used to trigger config file reloading).
 
-    A number of callable commands are implemented by the server in the form of
-    a subset of the :py:class:`.Server`'s methods indicated by the
-    :py:func:`.spalloc_command` decorator. These may be called by a client by
-    sending a line ``{"command": "...", "args": [...], "kwargs": {...}}``. If
-    the function throws an exception, the client is disconnected. If the
-    function returns, it is packed as a JSON line ``{"return": ...}``.
+    A number of callable commands are implemented by the server in the form of\
+    a subset of the :py:class:`.Server`'s methods indicated by the\
+    :py:func:`.spalloc_command` decorator. These may be called by a client by\
+    sending a line ``{"command": "...", "args": [...], "kwargs": {...}}``. If\
+    the function throws an exception, the client is disconnected. If the\
+    function returns, it is packed as a JSON line ``{"return": ...}``, and if\
+    the function raises an exception, it is packed as a JSON line\
+    ``{"exception": "the message"}``.
     """
 
     def __init__(self, config_filename, cold_start=False, port=22244):
         """
-        Parameters
-        ----------
-        config_filename : str
-            The filename of the config file for the server which describes the
+        :param config_filename: \
+            The filename of the config file for the server which describes the\
             machines to be controlled.
-        cold_start : bool, optional
-            If False (the default), the server will attempt to restore its
+        :type config_filename: str
+        :param cold_start: \
+            If False (the default), the server will attempt to restore its\
             previous state, if True, the server will start from scratch.
-        port : int, optional
-            Which port to listen on. Defaults to 22244.
+        :type cold_start: bool
+        :param port: Which port to listen on. Defaults to 22244.
+        :type port: int
         """
         # ============ STATE THAT NEEDS TO BE ALWAYS DEFINED ============
 
@@ -157,11 +160,13 @@ class Server(PollingServerCore, ConfigurationReloader):
         self._running = True
 
     def _get_state_filename(self, cfg):
-        """How to get the name of the state file from the name of another file
-        (expected to be the config file). Assumes that the config file is in a
-        directory that can be written to.
+        """ How to get the name of the state file from the name of another\
+            file (expected to be the config file). Assumes that the config\
+            file is in a directory that can be written to.
 
-        :param str cfg: The name of the file to use as a base.
+        :param cfg: The name of the file to use as a base.
+        :type cfg: str
+        :return: The full filename
         """
         # Factored out for ease of reading.
         dirname = path.dirname(cfg)
@@ -169,7 +174,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         filename = ".{}.state.{}".format(basename, __version__)
         return path.join(dirname, filename)
 
-    @overrides(super_class_method=ConfigurationReloader._parse_config)
+    @overrides(ConfigurationReloader._parse_config)
     def _parse_config(self, config_file_contents):
         g = {}
         g.update(configuration.__dict__)
@@ -177,14 +182,14 @@ class Server(PollingServerCore, ConfigurationReloader):
         exec(config_file_contents, g)
         return g
 
-    @overrides(super_class_method=ConfigurationReloader._validate_config)
+    @overrides(ConfigurationReloader._validate_config)
     def _validate_config(self, parsed_config):
         new = parsed_config.get("configuration", None)
         if new is None or not isinstance(new, Configuration):
             return None
         return new
 
-    @overrides(super_class_method=ConfigurationReloader._load_valid_config)
+    @overrides(ConfigurationReloader._load_valid_config)
     def _load_valid_config(self, validated_config):
         old = self._configuration
         self._configuration = validated_config
@@ -207,7 +212,10 @@ class Server(PollingServerCore, ConfigurationReloader):
         self.wake()
 
     def _close(self):
-        """Close all server sockets and disconnect all client connections."""
+        """ Close all server sockets and disconnect all client connections.
+
+        :return: Whether the server socket itself was closed.
+        """
         result = False
         if self._server_socket is not None:
             self.unregister_channel(self._server_socket)
@@ -222,9 +230,8 @@ class Server(PollingServerCore, ConfigurationReloader):
     def _disconnect_client(self, client):
         """Disconnect a client.
 
-        Parameters
-        ----------
-        client : :py:class:`socket.Socket`
+        :param client: The client to disconnect
+        :type client: :py:class:`socket.Socket`
         """
         try:
             log.info("Client %s disconnected.", client.getpeername())
@@ -245,7 +252,8 @@ class Server(PollingServerCore, ConfigurationReloader):
         client.close()
 
     def _accept_client(self):
-        """Accept a new client."""
+        """ Accept a new client.
+        """
         try:
             client, addr = self._server_socket.accept()
         except IOError as e:  # pragma: no cover
@@ -260,14 +268,11 @@ class Server(PollingServerCore, ConfigurationReloader):
         self._client_buffers[client] = b""
 
     def _msg_client(self, client, message):
-        """Low-level way to send a message to a client.
+        """ Low-level way to send a message to a client.
 
-        Parameters
-        ----------
-        client : :py:class:`socket.Socket`
-            The client that we are sending a message to.
-        message :
-            The object or array to send. Will be converted to JSON.
+        :param client: The client that we are sending a message to.
+        :type client: :py:class:`socket.Socket`
+        :param message: The object or array to send. Will be converted to JSON.
         """
         try:
             client.send(json(message).encode("utf-8") + b"\n")
@@ -276,30 +281,35 @@ class Server(PollingServerCore, ConfigurationReloader):
             raise
 
     def _handle_command(self, client, line):
-        """Dispatch a single command.
+        """ Dispatch a single command.
 
-        Parameters
-        ----------
-        client : :py:class:`socket.Socket`
-            The client that made the request, used to provide a session
+        :param client: \
+            The client that made the request, used to provide a session\
             context where relevant.
-        line : string
-            The line parsed from the socket. Should be a complete JSON object
+        :type client: :py:class:`socket.Socket`
+        :param line: \
+            The line parsed from the socket. Should be a complete JSON object\
             with at least a 'command' key.
+        :type line: str
+        :return: Dictionary describing the result of the operation.
+        :rtype: dict
+        :raises IOError: \
+            If something really bad goes wrong with message decoding. The\
+            expected response at this point would be simply closing the socket.
         """
         cmd_obj = dejson(line.decode("utf-8"))
         if "command" not in cmd_obj:
             raise IOError("no command name given")
-        commandName = cmd_obj["command"]
-        if not isinstance(commandName, string_types):
+        command_name = cmd_obj["command"]
+        if not isinstance(command_name, string_types):
             raise IOError("parsed gibberish from user")
-        if commandName not in _COMMANDS:
-            log.info("lookup failure: %s", commandName)
+        if command_name not in _COMMANDS:
+            log.info("lookup failure: %s", command_name)
             raise IOError("unrecognised command name")
-        command = _COMMANDS[commandName]
+        command = _COMMANDS[command_name]
         if command is None:  # pragma: no cover
             # Should be unreachable
-            log.critical("unexpected lookup failure: %s", commandName)
+            log.critical("unexpected lookup failure: %s", command_name)
             raise IOError("unrecognised command name")
         args = cmd_obj["args"] if "args" in cmd_obj else []
         if not isinstance(args, list):
@@ -316,11 +326,12 @@ class Server(PollingServerCore, ConfigurationReloader):
             return {"exception": str(e)}
 
     def _handle_commands(self, client):
-        """Handle incoming commands from a client.
+        """ Handle incoming commands from a client.
 
-        Parameters
-        ----------
-        client : :py:class:`socket.Socket`
+        :param client: \
+            The client that made the request, used to provide a session\
+            context where relevant.
+        :type client: :py:class:`socket.Socket`
         """
         try:
             data = client.recv(BUFFER_SIZE)
@@ -328,7 +339,7 @@ class Server(PollingServerCore, ConfigurationReloader):
             data = b""
 
         # Did the client disconnect?
-        if len(data) == 0:
+        if not data:
             self._disconnect_client(client)
             return
 
@@ -341,7 +352,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                 line, _, self._client_buffers[client] = \
                     self._client_buffers[client].partition(b"\n")
                 # Note that we skip blank lines
-                if len(line) > 0:
+                if line:
                     self._msg_client(client,
                                      self._handle_command(client, line))
         except Exception:
@@ -353,7 +364,7 @@ class Server(PollingServerCore, ConfigurationReloader):
             self._disconnect_client(client)
 
     def _send_notifications(self, label, changes, watches):
-        """How to actually send requested notifications."""
+        """ How to actually send requested notifications."""
         if changes:
             for client, items in list(iteritems(watches)):
                 if items is None or not items.isdisjoint(changes):
@@ -365,13 +376,13 @@ class Server(PollingServerCore, ConfigurationReloader):
                         log.exception("Could not send notification.")
 
     def _run(self):
-        """The main server thread.
+        """ The main server thread.
 
-        This 'infinite' loop runs in a background thread and waits for and
-        processes events such as the :py:meth:`.PollingServerCore.wake` method
-        being called, the config file changing, clients sending commands or
-        new clients connecting. It also periodically calls
-        :py:meth:`.controller.Controller.destroy_timed_out_jobs` on the
+        This 'infinite' loop runs in a background thread and waits for and\
+        processes events such as the :py:meth:`.PollingServerCore.wake` method\
+        being called, the config file changing, clients sending commands or\
+        new clients connecting. It also periodically calls\
+        :py:meth:`.controller.Controller.destroy_timed_out_jobs` on the\
         controller.
         """
         log.info("Server running.")
@@ -403,16 +414,19 @@ class Server(PollingServerCore, ConfigurationReloader):
                     log.warning("failed to reread configuration file")
 
     def is_alive(self):
-        """Is the server running?"""
+        """ Is the server running?
+        """
         return self._running
 
     def join(self):
-        """Wait for the server to completely shut down."""
+        """ Wait for the server to completely shut down.
+        """
         self._server_thread.join()
         self._controller.join()
 
     def stop_and_join(self):
-        """Stop the server and wait for it to shut down completely."""
+        """ Stop the server and wait for it to shut down completely.
+        """
         log.info("Server shutting down, please wait...")
 
         try:
@@ -441,8 +455,10 @@ class Server(PollingServerCore, ConfigurationReloader):
 
     @staticmethod
     def _name(client):
-        """Get the 'name' of the client. This is the string form of the IP
-        address, or None if the concept isn't well defined.
+        """ Get the 'name' of the client. This is the string form of the IP\
+            address, or None if the concept isn't well defined.
+
+        :return: The client's name (for logging).
         """
         try:
             return None if client is None else str(client.getpeername()[0])
@@ -459,13 +475,13 @@ class SpallocServer(Server):
         self._client_job_watches = {}
         self._client_machine_watches = {}
 
-        Server.__init__(self, config_filename, cold_start, port)
+        super(SpallocServer, self).__init__(config_filename, cold_start, port)
 
     def _send_change_notifications(self):
-        """Send any registered change notifications to clients.
+        """ Send any registered change notifications to clients.
 
-        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}``
-        and ``{"machines_changed": [machine_name, ...]}`` to clients who have
+        Sends notifications of the forms ``{"jobs_changed": [job_id, ...]}``\
+        and ``{"machines_changed": [machine_name, ...]}`` to clients who have\
         subscribed to be notified of changes to jobs or machines.
         """
         # Notify clients about jobs which have changed
@@ -480,22 +496,21 @@ class SpallocServer(Server):
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, tb):  # @UnusedVariable @ReservedAssignment
+    def __exit__(self, _type, _value, _tb):
         if self._running:
             self.stop_and_join()
         return False
 
     @spalloc_command
-    def version(self, client):  # @UnusedVariable
+    def version(self, _client):
         """
-        Returns
-        -------
-        str
-            The server's version number."""
+        :rtype: str
+        :return: The server's version number.
+        """
         return __version__
 
     @spalloc_command
-    def create_job(self, client, *args, **kwargs):  # @UnusedVariable
+    def create_job(self, client, *args, **kwargs):
         """Create a new job (i.e. allocation of boards).
 
         This function should be called in one of the following styles::
@@ -521,70 +536,70 @@ class SpallocServer(Server):
             # Any torus-connected (full machine) 4x2 machine
             job_id = create_job(4, 2, require_torus=True, owner="me")
 
-        The 'other parameters' enumerated below may be used to further restrict
-        what machines the job may be allocated onto.
+        The 'other parameters' enumerated below may be used to further\
+        restrict what machines the job may be allocated onto.
 
-        Jobs for which no suitable machines are available are immediately
+        Jobs for which no suitable machines are available are immediately\
         destroyed (and the reason given).
 
-        Once a job has been created, it must be 'kept alive' by a simple
-        watchdog_ mechanism. Jobs may be kept alive by periodically calling the
-        :py:meth:`.job_keepalive` command or by calling any other job-specific
-        command. Jobs are culled if no keep alive message is received for
-        ``keepalive`` seconds. If absolutely necessary, a job's keepalive value
-        may be set to None, disabling the keepalive mechanism.
+        Once a job has been created, it must be 'kept alive' by a simple\
+        watchdog_ mechanism. Jobs may be kept alive by periodically calling\
+        the :py:meth:`.job_keepalive` command or by calling any other\
+        job-specific command. Jobs are culled if no keep alive message is\
+        received for ``keepalive`` seconds. If absolutely necessary, a job's\
+        keepalive value may be set to None, disabling the keepalive mechanism.
 
         .. _watchdog: https://en.wikipedia.org/wiki/Watchdog_timer
 
-        Once a job has been allocated some boards, these boards will be
+        Once a job has been allocated some boards, these boards will be\
         automatically powered on and left unbooted ready for use.
 
-        Parameters
-        ----------
-        owner : str
+        :param owner:
             **Required.** The name of the owner of this job.
-        keepalive : float or None, optional
-            The maximum number of seconds which may elapse between a query on
-            this job before it is automatically destroyed. If None, no timeout
+        :type owner: str
+        :param keepalive:
+            The maximum number of seconds which may elapse between a query on\
+            this job before it is automatically destroyed. If None, no timeout\
             is used. (Default: 60.0)
-
-        Other Parameters
-        ----------------
-        machine : str or None, optional
-            Specify the name of a machine which this job must be executed on.
-            If None, the first suitable machine available will be used,
-            according to the tags selected below. Must be None when tags are
+        :type keepalive: float or None
+        :param machine: \
+            Specify the name of a machine which this job must be executed on.\
+            If None, the first suitable machine available will be used,\
+            according to the tags selected below. Must be None when tags are\
             given. (Default: None)
-        tags : [str, ...] or None, optional
-            The set of tags which any machine running this job must have. If
-            None is supplied, only machines with the "default" tag will be
-            used. If machine is given, this argument must be None.
+        :type machine: str or None
+        :param tags: \
+            The set of tags which any machine running this job must have. If\
+            None is supplied, only machines with the "default" tag will be\
+            used. If machine is given, this argument must be None.\
             (Default: None)
-        min_ratio : float, optional
-            The aspect ratio (h/w) which the allocated region must be 'at least
-            as square as'. Set to 0.0 for any allowable shape, 1.0 to be
-            exactly square. Ignored when allocating single boards or specific
+        :type tags: [str, ...] or None
+        :param min_ratio: \
+            The aspect ratio (h/w) which the allocated region must be 'at\
+            least as square as'. Set to 0.0 for any allowable shape, 1.0 to be\
+            exactly square. Ignored when allocating single boards or specific\
             rectangles of triads.
-        max_dead_boards : int or None, optional
-            The maximum number of broken or unreachable boards to allow in the
-            allocated region. If None, any number of dead boards is permitted,
-            as long as the board on the bottom-left corner is alive (Default:
+        :type min_ratio: float
+        :param max_dead_boards: \
+            The maximum number of broken or unreachable boards to allow in the\
+            allocated region. If None, any number of dead boards is permitted,\
+            as long as the board on the bottom-left corner is alive (Default:\
             None).
-        max_dead_links : int or None, optional
-            The maximum number of broken links allow in the allocated region.
-            When require_torus is True this includes wrap-around links,
-            otherwise peripheral links are not counted.  If None, any number of
-            broken links is allowed. (Default: None).
-        require_torus : bool, optional
-            If True, only allocate blocks with torus connectivity. In general
-            this will only succeed for requests to allocate an entire machine
-            (when the machine is otherwise not in use!). Must be False when
+        :type max_dead_boards: int or None
+        :param max_dead_links: \
+            The maximum number of broken links allow in the allocated region.\
+            When require_torus is True this includes wrap-around links,\
+            otherwise peripheral links are not counted.  If None, any number\
+            of broken links is allowed. (Default: None).
+        :type max_dead_links: int or None
+        :param require_torus: \
+            If True, only allocate blocks with torus connectivity. In general\
+            this will only succeed for requests to allocate an entire machine\
+            (when the machine is otherwise not in use!). Must be False when\
             allocating boards. (Default: False)
-
-        Returns
-        -------
-        int
-            The job ID given to the newly allocated job.
+        :type require_torus: bool
+        :return: The job ID given to the newly allocated job.
+        :rtype: int
         """
         if kwargs.get("tags", None) is not None:
             kwargs["tags"] = set(kwargs["tags"])
@@ -597,49 +612,41 @@ class SpallocServer(Server):
         return self._controller.create_job(self._name(client), *args, **kwargs)
 
     @spalloc_command
-    def job_keepalive(self, client, job_id):  # @UnusedVariable
-        """Reset the keepalive timer for the specified job.
+    def job_keepalive(self, client, job_id):
+        """ Reset the keepalive timer for the specified job.
 
-        Note all other job-specific commands implicitly do this.
+        .. note::
+            All other job-specific commands implicitly do this.
 
-        Parameters
-        ----------
-        job_id : int
-            A job ID to be kept alive.
+        :param job_id: A job ID to be kept alive.
+        :type job_id: int
         """
         self._controller.job_keepalive(self._name(client), job_id)
 
     @spalloc_command
-    def get_job_state(self, client, job_id):  # @UnusedVariable
-        """Poll the state of a running job.
+    def get_job_state(self, client, job_id):
+        """ Poll the state of a running job.
 
-        Parameters
-        ----------
-        job_id : int
-            A job ID to get the state of.
-
-        Returns
-        -------
-        {"state": state, "power": power, \
-         "keepalive": keepalive, "reason": reason}
-            Where:
-
+        :param job_id: A job ID to get the state of.
+        :type job_id: int
+        :rtype: dict
+        :return: A dictionary with the following keys:
             state : :py:class:`~spalloc_server.controller.JobState`
                 The current state of the queried job.
             power : bool or None
-                If job is in the ready or power states, indicates whether the
-                boards are power{ed,ing} on (True), or power{ed,ing} off
+                If job is in the ready or power states, indicates whether the\
+                boards are power{ed,ing} on (True), or power{ed,ing} off\
                 (False). In other states, this value is None.
             keepalive : float or None
-                The Job's keepalive value: the number of seconds between
-                queries about the job before it is automatically destroyed.
-                None if no timeout is active (or when the job has been
+                The Job's keepalive value: the number of seconds between\
+                queries about the job before it is automatically destroyed.\
+                None if no timeout is active (or when the job has been\
                 destroyed).
             reason : str or None
-                If the job has been destroyed, this may be a string describing
+                If the job has been destroyed, this may be a string describing\
                 the reason the job was terminated.
             start_time : float or None
-                For queued and allocated jobs, gives the Unix time (UTC) at
+                For queued and allocated jobs, gives the Unix time (UTC) at\
                 which the job was created (or None otherwise).
         """
         out = self._controller.get_job_state(
@@ -648,35 +655,25 @@ class SpallocServer(Server):
         return out
 
     @spalloc_command
-    def get_job_machine_info(self, client, job_id):  # @UnusedVariable
-        """Get the list of Ethernet connections to the allocated machine.
+    def get_job_machine_info(self, client, job_id):
+        """ Get the list of Ethernet connections to the allocated machine.
 
-        Parameters
-        ----------
-        job_id : int
-            A job ID to get the machine info for.
-
-        Returns
-        -------
-        {"width": width, "height": height, \
-         "connections": connections, "machine_name": machine_name}
-            Where:
-
+        :param job_id: A job ID to get the machine info for.
+        :type job_id: int
+        :rtype: dict
+        :return: A dictionary with the following keys:
             width, height : int or None
-                The dimensions of the machine in chips, e.g. for booting.
-
+                The dimensions of the machine in chips, e.g. for booting.\
                 None if no boards are allocated to the job.
             connections : [[[x, y], hostname], ...] or None
-                A list giving Ethernet-connected chip coordinates in the
-                machine to hostname.
-
+                A list giving Ethernet-connected chip coordinates in the\
+                machine to hostname.\
                 None if no boards are allocated to the job.
             machine_name : str or None
-                The name of the machine the job is allocated on.
-
+                The name of the machine the job is allocated on.\
                 None if no boards are allocated to the job.
             boards : [[x, y, z], ...] or None
-                All the boards allocated to the job or None if no boards
+                All the boards allocated to the job or None if no boards\
                 allocated.
         """
         width, height, connections, machine_name, boards = \
@@ -693,184 +690,173 @@ class SpallocServer(Server):
                 "boards": boards}
 
     @spalloc_command
-    def power_on_job_boards(self, client, job_id):  # @UnusedVariable
-        """Power on (or reset if already on) boards associated with a job.
+    def power_on_job_boards(self, client, job_id):
+        """ Power on (or reset if already on) boards associated with a job.
 
-        Once called, the job will enter the 'power' state until the power state
-        change is complete, this may take some time.
+        Once called, the job will enter the 'power' state until the power\
+        state change is complete, this may take some time.
 
-        Parameters
-        ----------
-        job_id : int
-            A job ID to turn boards on for.
+        :param job_id: A job ID to turn boards on for.
+        :type job_id: int
         """
         self._controller.power_on_job_boards(self._name(client), job_id)
 
     @spalloc_command
-    def power_off_job_boards(self, client, job_id):  # @UnusedVariable
-        """Power off boards associated with a job.
+    def power_off_job_boards(self, client, job_id):
+        """ Power off boards associated with a job.
 
-        Once called, the job will enter the 'power' state until the power state
-        change is complete, this may take some time.
+        Once called, the job will enter the 'power' state until the power\
+        state change is complete, this may take some time.
 
-        Parameters
-        ----------
-        job_id : int
-            A job ID to turn boards off for.
+        :param job_id: A job ID to turn boards off for.
+        :type job_id: int
         """
         self._controller.power_off_job_boards(self._name(client), job_id)
 
     @spalloc_command
-    def destroy_job(self, client, job_id, reason=None):  # @UnusedVariable
-        """Destroy a job.
+    def destroy_job(self, client, job_id, reason=None):
+        """ Destroy a job.
 
-        Call when the job is finished, or to terminate it early, this function
-        releases any resources consumed by the job and removes it from any
+        Call when the job is finished, or to terminate it early, this function\
+        releases any resources consumed by the job and removes it from any\
         queues.
 
-        Parameters
-        ----------
-        job_id : int
-            A job ID to destroy.
-        reason : str, optional
-            A human-readable string describing the reason for the job's
+        :param job_id: A job ID to destroy.
+        :type job_id: int
+        :param reason: \
+            An optional human-readable description of the reason for the job's\
             destruction.
+        :type reason: str
         """
         self._controller.destroy_job(self._name(client), job_id, reason)
 
-    def _register_for_notifications(self, client, watchset,
-                                    id):  # @ReservedAssignment
-        """Helper method that handles the protocol for registration for
-        notifications."""
-        if id is None:
+    def _register_for_notifications(self, client, watchset, _id):
+        """ Helper method that handles the protocol for registration for\
+            notifications.
+        """
+        if _id is None:
             watchset[client] = None
         elif client not in watchset:
-            watchset[client] = set([id])
+            watchset[client] = set([_id])
         elif watchset[client] is not None:
-            watchset[client].add(id)
+            watchset[client].add(_id)
         else:
             # Client is already notified about all changes, do nothing!
             pass
 
-    def _unregister_for_notifications(self, client, watchset,
-                                      id):  # @ReservedAssignment
-        """Helper method that handles the protocol for unregistration for
-        notifications."""
+    def _unregister_for_notifications(self, client, watchset, _id):
+        """ Helper method that handles the protocol for unregistration for\
+            notifications.
+        """
         if client not in watchset:
             return
-        if id is None:
+        if _id is None:
             del watchset[client]
             return
         watches = watchset[client]
         if watches is not None:
-            watches.discard(id)
-            if len(watches) == 0:
+            watches.discard(_id)
+            if not watches:
                 del watchset[client]
 
     @spalloc_command
     def notify_job(self, client, job_id=None):
-        r"""Register to be notified about changes to a specific job ID.
+        """Register to be notified about changes to a specific job ID.
 
-        Once registered, a client will be asynchronously be sent notifications
-        form ``{"jobs_changed": [job_id, ...]}\n`` enumerating job IDs which
-        have changed. Notifications are sent when a job changes state, for
-        example when created, queued, powering on/off, powered on and
-        destroyed. The specific nature of the change is not reflected in the
+        Once registered, a client will be asynchronously be sent notifications\
+        form ``{"jobs_changed": [job_id, ...]}\\n`` enumerating job IDs which\
+        have changed. Notifications are sent when a job changes state, for\
+        example when created, queued, powering on/off, powered on and\
+        destroyed. The specific nature of the change is not reflected in the\
         notification.
 
-        Parameters
-        ----------
-        job_id : int or None, optional
-            A job ID to be notified of or None if all job state changes should
-            be reported.
+        :param job_id: \
+            A job ID to be notified of or None if all job state changes should\
+            be reported. Defaults to None (i.e., all jobs).
+        :type job_id: int or None
 
         See Also
         --------
         no_notify_job : Stop being notified about a job.
         notify_machine : Register to be notified about changes to machines.
         """
-        self._register_for_notifications(client, self._client_job_watches,
-                                         job_id)
+        self._register_for_notifications(
+            client, self._client_job_watches, job_id)
 
     @spalloc_command
     def no_notify_job(self, client, job_id=None):
         """Stop being notified about a specific job ID.
 
-        Once this command returns, no further notifications for the specified
+        Once this command returns, no further notifications for the specified\
         ID will be received.
 
-        Parameters
-        ----------
-        job_id : id or None, optional
-            A job ID to no longer be notified of or None to not be notified of
-            any jobs. Note that if all job IDs were registered for
-            notification, this command only has an effect if the specified
-            job_id is None.
+        :param job_id: \
+            A job ID to no longer be notified of or None to not be notified of\
+            any jobs. Note that if all job IDs were registered for\
+            notification, this command only has an effect if the specified\
+            job_id is None. Defaults to None (i.e., all jobs).
+        :type job_id: int or None
 
         See Also
         --------
         notify_job : Register to be notified about changes to a specific job.
         """
-        self._unregister_for_notifications(client, self._client_job_watches,
-                                           job_id)
+        self._unregister_for_notifications(
+            client, self._client_job_watches, job_id)
 
     @spalloc_command
     def notify_machine(self, client, machine_name=None):
-        r"""Register to be notified about a specific machine name.
+        """Register to be notified about a specific machine name.
 
-        Once registered, a client will be asynchronously be sent notifications
-        of the form ``{"machines_changed": [machine_name, ...]}\n`` enumerating
-        machine names which have changed. Notifications are sent when a machine
-        changes state, for example when created, change, removed, allocated a
-        job or an allocated job is destroyed.
+        Once registered, a client will be asynchronously be sent notifications\
+        of the form ``{"machines_changed": [machine_name, ...]}\n``\
+        enumerating machine names which have changed. Notifications are sent\
+        when a machine changes state, for example when created, change,\
+        removed, allocated a job or an allocated job is destroyed.
 
-        Parameters
-        ----------
-        machine_name : machine or None, optional
-            A machine name to be notified of or None if all machine state
-            changes should be reported.
+        :param machine_name: \
+            A machine name to be notified of or None if all machine state\
+            changes should be reported. Defaults to None (i.e., all machines).
+        :type machine_name: str or None
 
         See Also
         --------
         no_notify_machine : Stop being notified about a machine.
         notify_job : Register to be notified about changes to jobs.
         """
-        self._register_for_notifications(client,
-                                         self._client_machine_watches,
-                                         machine_name)
+        self._register_for_notifications(
+            client, self._client_machine_watches, machine_name)
 
     @spalloc_command
     def no_notify_machine(self, client, machine_name=None):
         """Unregister to be notified about a specific machine name.
 
-        Once this command returns, no further notifications for the specified
+        Once this command returns, no further notifications for the specified\
         ID will be received.
 
-        Parameters
-        ----------
-        machine_name : name or None, optional
-            A machine name to no longer be notified of or None to not be
-            notified of any machines. Note that if all machines were registered
-            for notification, this command only has an effect if the specified
-            machine_name is None.
+        :param machine_name: \
+            A machine name to no longer be notified of or None to not be\
+            notified of any machines. Note that if all machines were\
+            registered for notification, this command only has an effect if\
+            the specified machine_name is None. Defaults to None (i.e., all\
+            machines).
+        :type machine_name: str or None
 
         See Also
         --------
         notify_machine : Register to be notified about changes to a machine.
         """
-        self._unregister_for_notifications(client,
-                                           self._client_machine_watches,
-                                           machine_name)
+        self._unregister_for_notifications(
+            client, self._client_machine_watches, machine_name)
 
     @spalloc_command
-    def list_jobs(self, client):  # @UnusedVariable
-        """Enumerate all non-destroyed jobs.
+    def list_jobs(self, _client):
+        """ Enumerate all non-destroyed jobs.
 
-        Returns
-        -------
-        jobs : [{...}, ...]
-            A list of allocated/queued jobs in order of creation from oldest
-            (first) to newest (last). Each job is described by a dictionary
+        :rtype: list(dict)
+        :return: \
+            A list of allocated/queued jobs in order of creation from oldest\
+            (first) to newest (last). Each job is described by a dictionary\
             with the following keys:
 
             "job_id" is the ID of the job.
@@ -879,29 +865,29 @@ class SpallocServer(Server):
 
             "start_time" is the time the job was created (Unix time, UTC).
 
-            "keepalive" is the maximum time allowed between queries for this
-            job before it is automatically destroyed (or None if the job can
+            "keepalive" is the maximum time allowed between queries for this\
+            job before it is automatically destroyed (or None if the job can\
             remain allocated indefinitely).
 
-            "state" is the current
+            "state" is the current\
             :py:class:`~spalloc_server.controller.JobState` of the job.
 
-            "power" indicates whether the boards are powered on or not. If job
-            is in the ready or power states, indicates whether the boards are
-            power{ed,ing} on (True), or power{ed,ing} off (False). In other
+            "power" indicates whether the boards are powered on or not. If job\
+            is in the ready or power states, indicates whether the boards are\
+            power{ed,ing} on (True), or power{ed,ing} off (False). In other\
             states, this value is None.
 
-            "args" and "kwargs" are the arguments to the alloc function
-            which specifies the type/size of allocation requested and the
+            "args" and "kwargs" are the arguments to the alloc function\
+            which specifies the type/size of allocation requested and the\
             restrictions on dead boards, links and torus connectivity.
 
-            "allocated_machine_name" is the name of the machine the job has
+            "allocated_machine_name" is the name of the machine the job has\
             been allocated to run on (or None if not allocated yet).
 
             "boards" is a list [(x, y, z), ...] of boards allocated to the job.
 
-            "keepalivehost" is the IP address of the host reckoned to be
-            keeping this job alive (i.e., the host that did a request most
+            "keepalivehost" is the IP address of the host reckoned to be\
+            keeping this job alive (i.e., the host that did a request most\
             recently that updated the internal keep-alive timeout).
         """
         out = []
@@ -916,28 +902,26 @@ class SpallocServer(Server):
         return out
 
     @spalloc_command
-    def list_machines(self, client):  # @UnusedVariable
-        """Enumerates all machines known to the system.
+    def list_machines(self, _client):
+        """ Enumerates all machines known to the system.
 
-        Returns
-        -------
-        machines : [{...}, ...]
-            The list of machines known to the system in order of priority from
-            highest (first) to lowest (last). Each machine is described by a
+        :rtype: list(dict)
+        :return: \
+            The list of machines known to the system in order of priority from\
+            highest (first) to lowest (last). Each machine is described by a\
             dictionary with the following keys:
 
             "name" is the name of the machine.
 
             "tags" is the list ['tag', ...] of tags the machine has.
 
-            "width" and "height" are the dimensions of the machine in
-            triads.
+            "width" and "height" are the dimensions of the machine in triads.
 
-            "dead_boards" is a list([(x, y, z), ...]) giving the coordinates
+            "dead_boards" is a list([(x, y, z), ...]) giving the coordinates\
             of known-dead boards.
 
-            "dead_links" is a list([(x, y, z, link), ...]) giving the
-            locations of known-dead links from the perspective of the sender.
+            "dead_links" is a list([(x, y, z, link), ...]) giving the\
+            locations of known-dead links from the perspective of the sender.\
             Links to dead boards may or may not be included in this list.
         """
         out = []
@@ -952,50 +936,48 @@ class SpallocServer(Server):
         return out
 
     @spalloc_command
-    def get_board_position(self, client,  # @UnusedVariable
-                           machine_name, x, y, z):
-        """Get the physical location of a specified board.
+    def get_board_position(self, _client, machine_name, x, y, z):
+        """ Get the physical location of a specified board.
 
-        Parameters
-        ----------
-        machine_name : str
-            The name of the machine containing the board.
-        x, y, z : int
-            The logical board location within the machine.
-
-        Returns
-        -------
-        (cabinet, frame, board) or None
-            The physical location of the board at the specified location or
-            None if the machine/board are not recognised.
+        :param machine_name: The name of the machine containing the board.
+        :type machine_name: str
+        :param x: Logical address within machine: first coordinate.
+        :type x: int
+        :param y: Logical address within machine: second coordinate.
+        :type y: int
+        :param z: Logical address within machine: third coordinate.
+        :type z: int
+        :return: \
+            The physical location of the board (cabinet, frame, board) at the\
+            specified location or None if the machine/board are not recognised.
+        :rtype: list(int) or None
         """
         return self._controller.get_board_position(machine_name, x, y, z)
 
     @spalloc_command
-    def get_board_at_position(self, client,  # @UnusedVariable
-                              machine_name, x, y, z):
-        """Get the logical location of a board at the specified physical
-        location.
+    def get_board_at_position(self, _client, machine_name, x, y, z):
+        """ Get the logical location of a board at the specified physical\
+            location.
 
-        Parameters
-        ----------
-        machine_name : str
-            The name of the machine containing the board.
-        cabinet, frame, board : int
-            The physical board location within the machine.
-
-        Returns
-        -------
-        (x, y, z) or None
-            The logical location of the board at the specified location or None
-            if the machine/board are not recognised.
+        :param machine_name: The name of the machine containing the board.
+        :type machine_name: str
+        :param x: Physical address within machine: cabinet ID.
+        :type x: int
+        :param y: Physical address within machine: frame ID.
+        :type y: int
+        :param z: Physical address within machine: board ID.
+        :type z: int
+        :return: \
+            The logical location of the board (a triple) at the specified\
+            location or None if the machine/board are not recognised.
+        :rtype: list(int) or None
         """
         return self._controller.get_board_at_position(machine_name, x, y, z)
 
     @spalloc_command
-    def where_is(self, client, **kwargs):  # @UnusedVariable
-        """Find out where a SpiNNaker board or chip is located, logically and
-        physically.
+    def where_is(self, _client, **kwargs):
+        """ Find out where a SpiNNaker board or chip is located, logically and\
+            physically.
 
         May be called in one of the following styles::
 
@@ -1013,37 +995,40 @@ class SpallocServer(Server):
             >>> # job.
             >>> where_is(job_id=..., chip_x=..., chip_y=...)
 
-        Returns
-        -------
-        {"machine": ..., "logical": ..., "physical": ..., "chip": ..., \
-                "board_chip": ..., "job_chip": ..., "job_id": ...} or None
-            If a board exists at the supplied location, a dictionary giving the
-            location of the board/chip, supplied in a number of alternative
-            forms. If the supplied coordinates do not specify a specific chip,
-            the chip coordinates given are those of the Ethernet connected chip
-            on that board.
+        Only these patterns of use are supported; all keyword arguments\
+        listed above are mandatory when used for a particular query.
 
-            If no board exists at the supplied position, None is returned
+        :rtype: dict or None
+        :return: \
+            If a board exists at the supplied location, a dictionary giving\
+            the location of the board/chip, supplied in a number of\
+            alternative forms. If the supplied coordinates do not specify a\
+            specific chip, the chip coordinates given are those of the\
+            Ethernet connected chip on that board.
+
+            If no board exists at the supplied position, None is returned\
             instead.
+
+            The dictionary will have the following keys:
 
             ``machine`` gives the name of the machine containing the board.
 
-            ``logical`` the logical board coordinate, (x, y, z) within the
+            ``logical`` the logical board coordinate, (x, y, z) within the\
             machine.
 
-            ``physical`` the physical board location, (cabinet, frame, board),
+            ``physical`` the physical board location, (cabinet, frame, board),\
             within the machine.
 
-            ``chip`` the coordinates of the chip, (x, y), if the whole machine
+            ``chip`` the coordinates of the chip, (x, y), if the whole machine\
             were booted as a single machine.
 
-            ``board_chip`` the coordinates of the chip, (x, y), within its
+            ``board_chip`` the coordinates of the chip, (x, y), within its\
             board.
 
-            ``job_id`` is the job ID of the job currently allocated to the
+            ``job_id`` is the job ID of the job currently allocated to the\
             board identified or None if the board is not allocated to a job.
 
-            ``job_chip`` the coordinates of the chip, (x, y), within its
+            ``job_chip`` the coordinates of the chip, (x, y), within its\
             job, if a job is allocated to the board or None otherwise.
         """
         return self._controller.where_is(**kwargs)
@@ -1052,13 +1037,10 @@ class SpallocServer(Server):
 def main(args=None):
     """Command-line launcher for the server.
 
-    The server may be cleanly terminated using a keyboard interrupt (e.g.,
+    The server may be cleanly terminated using a keyboard interrupt (e.g.,\
     ctrl+c), and may be told to reload its configuration via SIGHUP.
 
-    Parameters
-    ----------
-    args : [arg, ...], optional
-        The command-line arguments passed to the program.
+    :param args: The command-line arguments passed to the program.
     """
     parser = ArgumentParser(
         description="Start a SpiNNaker machine partitioning server.")

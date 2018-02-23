@@ -167,6 +167,7 @@ def board_down_link(x1, y1, z1, link, width, height):
     wrapped : :py:class:`.WrapAround`
         In what way did we wrap-around when following that link?
     """
+    # pylint: disable=too-many-arguments
     dx, dy, dz = link_to_vector[(z1, link)]
 
     x2_ = (x1 + dx)

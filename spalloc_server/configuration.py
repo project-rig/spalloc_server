@@ -101,6 +101,10 @@ from six import iteritems, itervalues
 from .coordinates import chip_to_board
 
 
+def _empty_default_dict(d):
+    return dict(d) if d is not None else {}
+
+
 class Configuration(namedtuple("Configuration",
                                "machines,port,ip,timeout_check_interval,"
                                "max_retired_jobs")):
@@ -124,13 +128,16 @@ class Configuration(namedtuple("Configuration",
         The number of retired jobs to keep records of. (Default: 1200)
     """
 
-    def __new__(cls, machines=[], port=22244, ip="",
+    def __new__(cls, machines=None, port=22244, ip="",
                 timeout_check_interval=5.0,
                 max_retired_jobs=1200):
+        # pylint: disable=too-many-arguments
+
         # Validate machine definitions
         used_names = set()
         used_bmp_ips = set()
         used_spinnaker_ips = set()
+        machines = list([] if machines is None else machines)
         for m in machines:
             # Typecheck...
             if not isinstance(m, Machine):
@@ -156,9 +163,8 @@ class Configuration(namedtuple("Configuration",
                                      "times.".format(spinnaker_ip))
                 used_spinnaker_ips.add(spinnaker_ip)
 
-        return super(Configuration, cls).__new__(cls, machines, port, ip,
-                                                 timeout_check_interval,
-                                                 max_retired_jobs)
+        return super(Configuration, cls).__new__(
+            cls, machines, port, ip, timeout_check_interval, max_retired_jobs)
 
 
 class Machine(namedtuple("Machine", "name,tags,width,height,"
@@ -196,20 +202,23 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         Ethernet connected chip.
     """
 
-    def __new__(cls, name, tags=set(["default"]),
+    def __new__(cls, name, tags=frozenset(["default"]),
                 width=None, height=None,
-                dead_boards=set(), dead_links=set(),
-                board_locations={},
-                bmp_ips={},
-                spinnaker_ips={}):
+                dead_boards=frozenset(), dead_links=frozenset(),
+                board_locations=None, bmp_ips=None, spinnaker_ips=None):
+        # pylint: disable=too-many-arguments
 
         # Make sure the set-type arguments are the correct type...
-        if not isinstance(tags, set):
+        if not isinstance(tags, (set, frozenset)):
             raise TypeError("tags should be a set.")
-        if not isinstance(dead_boards, set):
+        if not isinstance(dead_boards, (set, frozenset)):
             raise TypeError("dead_boards should be a set.")
-        if not isinstance(dead_links, set):
+        if not isinstance(dead_links, (set, frozenset)):
             raise TypeError("dead_links should be a set.")
+
+        board_locations = _empty_default_dict(board_locations)
+        bmp_ips = _empty_default_dict(bmp_ips)
+        spinnaker_ips = _empty_default_dict(spinnaker_ips)
 
         # If not specified, infer the dimensions of the system
         if width is None and height is None:
@@ -263,8 +272,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
                 "Board locations missing for {}".format(missing_boards))
 
         # BMP IPs should be given for all frames which have been used
-        frames = set((c, f) for c, f, b in locations)
-        missing_bmp_ips = frames - set(bmp_ips)
+        missing_bmp_ips = set((c, f) for c, f, _ in locations) - set(bmp_ips)
         if missing_bmp_ips:
             raise ValueError(
                 "BMP IPs not given for frames {}".format(missing_bmp_ips))
@@ -275,13 +283,12 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             raise ValueError(
                 "SpiNNaker IPs not given for boards {}".format(missing_ips))
 
-        return super(Machine, cls).__new__(cls, name, tags, width, height,
-                                           dead_boards, dead_links,
-                                           board_locations,
-                                           bmp_ips, spinnaker_ips)
+        return super(Machine, cls).__new__(
+            cls, name, tags, width, height, frozenset(dead_boards),
+            frozenset(dead_links), board_locations, bmp_ips, spinnaker_ips)
 
     @classmethod
-    def single_board(cls, name, tags=set(["default"]),
+    def single_board(cls, name, tags=frozenset(["default"]),
                      bmp_ip=None, spinnaker_ip=None):
         """Convenience constructor. Construct a :py:class:`.Machine`
         representing a single SpiNNaker board.
@@ -302,17 +309,16 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         if spinnaker_ip is None:
             raise TypeError("spinnaker_ip must be given.")
 
-        return cls(name, tags, 1, 1,
-                   dead_boards=set([(0, 0, 1), (0, 0, 2)]), dead_links=set(),
-                   board_locations={(0, 0, 0): (0, 0, 0)},
-                   bmp_ips={(0, 0): bmp_ip},
-                   spinnaker_ips={(0, 0, 0): spinnaker_ip})
+        return cls(
+            name, tags, 1, 1, dead_boards=set([(0, 0, 1), (0, 0, 2)]),
+            dead_links=set(), board_locations={(0, 0, 0): (0, 0, 0)},
+            bmp_ips={(0, 0): bmp_ip}, spinnaker_ips={(0, 0, 0): spinnaker_ip})
 
     @classmethod
-    def with_standard_ips(cls, name, tags=set(["default"]),
+    def with_standard_ips(cls, name, tags=frozenset(["default"]),
                           width=None, height=None,
-                          dead_boards=set(), dead_links=set(),
-                          board_locations={},
+                          dead_boards=frozenset(), dead_links=frozenset(),
+                          board_locations=None,
                           base_ip="192.168.0.0",
                           cabinet_stride="0.0.5.0",
                           frame_stride="0.0.1.0",
@@ -364,7 +370,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         ----------
         name : str
             The name of the machine.
-        tags : set([str, ...])
+        tags : iterable([str, ...])
             A set of tags which jobs may use to filter machines by. Note that
             by default jobs are assigned the 'default' tag and thus machines
             probably ought have this tag too.
@@ -372,9 +378,9 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             The dimensions of the machine in triads of boards. If omitted,
             these are inferred from the boards defined in board_locations and
             dead_boards.
-        dead_boards : set([(x, y, z), ...])
+        dead_boards : iterable([(x, y, z), ...])
             The board coordinates of all dead boards in the machine.
-        dead_links : set([(x, y, z,\
+        dead_links : iterable([(x, y, z,\
                            :py:class:`~spalloc_server.links.Links`), ...])
             The board coordinates of all dead links in the machine. Links to
             dead boards are implicitly dead and may or may not be included in
@@ -403,6 +409,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             the start of a board's IP address range, expressed as an IPv4
             address.
         """
+        # pylint: disable=too-many-arguments
 
         def ip_to_int(ip):
             """Convert from string-based IP to a 32-bit integer."""
@@ -430,28 +437,26 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         board_stride = ip_to_int(board_stride)
         bmp_offset = ip_to_int(bmp_offset)
         spinnaker_offset = ip_to_int(spinnaker_offset)
+        board_locations = _empty_default_dict(board_locations)
 
         # Generate IP addresses for BMPs
         cabinets_and_frames = set((c, f) for c, f, _ in
                                   itervalues(board_locations))
-        bmp_ips = {(c, f): int_to_ip(base_ip +
-                                     (cabinet_stride * c) +
-                                     (frame_stride * f) +
-                                     bmp_offset)
-                   for (c, f) in cabinets_and_frames}
+        bmp_ips = {
+            (c, f): int_to_ip(base_ip + (cabinet_stride * c) +
+                              (frame_stride * f) + bmp_offset)
+            for (c, f) in cabinets_and_frames}
 
         # Generate IP addresses for SpiNNaker boards
-        spinnaker_ips = {(x, y, z): int_to_ip(base_ip +
-                                              (cabinet_stride * c) +
-                                              (frame_stride * f) +
-                                              (board_stride * b) +
-                                              spinnaker_offset)
-                         for (x, y, z), (c, f, b)
-                         in iteritems(board_locations)}
+        spinnaker_ips = {
+            (x, y, z): int_to_ip(base_ip + (cabinet_stride * c) +
+                                 (frame_stride * f) + (board_stride * b) +
+                                 spinnaker_offset)
+            for (x, y, z), (c, f, b) in iteritems(board_locations)}
 
-        return cls(name, tags, width, height,
-                   dead_boards=dead_boards, dead_links=dead_links,
-                   board_locations=board_locations,
+        return cls(name, set(tags), width, height,
+                   dead_boards=set(dead_boards), dead_links=set(dead_links),
+                   board_locations=dict(board_locations),
                    bmp_ips=bmp_ips, spinnaker_ips=spinnaker_ips)
 
 
