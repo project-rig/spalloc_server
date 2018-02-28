@@ -12,6 +12,9 @@ from spinnman.constants import SCP_SCAMP_PORT
 
 from .links import Links
 
+# The first BMP version with FPGA register support
+_BMP_VER_MIN = 2
+
 _N_FPGA_RETRIES = 3
 
 
@@ -175,9 +178,24 @@ class AsyncBMPController(object):
             self._transceiver.power_on(boards=boards, frame=0, cabinet=0)
 
             # Check if the FPGA number is correct on each FPGA
-            if all(self._good_fpga(board, fpga)
-                   for fpga in range(_N_FPGAS)
-                   for board in boards):
+            _retry_boards = []
+            for board in boards:
+                # skip board if old BMP version
+                vi = self._transceiver.read_bmp_version(board=board,
+                                                        frame=0, cabinet=0)
+                if vi.version_number[0] < _BMP_VER_MIN:
+                    continue
+
+                # check each FPGA on board
+                for fpga in range(_N_FPGAS):
+                    if not self._good_fpga(board, fpga):
+                        _retry_boards.append(board)
+                        break
+
+            # try again with incorrect boards only
+            if len(_retry_boards):
+                boards = _retry_boards
+            else:
                 return
         else:  # pragma: no cover
             raise Exception(
@@ -219,6 +237,12 @@ class AsyncBMPController(object):
         :param board: Which board or boards to set the link enable-state of.
         :type board: int or iterable
         """
+        # skip FPGA link configuration if old BMP version
+        vi = self._transceiver.read_bmp_version(board=board,
+                                                frame=0, cabinet=0)
+        if vi.version_number[0] < _BMP_VER_MIN:
+            return True, None
+
         try:
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
             self._transceiver.write_fpga_register(
