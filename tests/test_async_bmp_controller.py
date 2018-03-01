@@ -8,7 +8,6 @@ from spalloc_server.async_bmp_controller import AsyncBMPController
 from spalloc_server.links import Links
 from mock_bmp import MockBMP
 from mock_bmp import SCPVerMessage
-from spinnman.model.version_info import VersionInfo
 
 
 @pytest.yield_fixture
