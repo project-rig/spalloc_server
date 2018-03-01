@@ -237,13 +237,13 @@ class AsyncBMPController(object):
         :param board: Which board or boards to set the link enable-state of.
         :type board: int or iterable
         """
-        # skip FPGA link configuration if old BMP version
-        vi = self._transceiver.read_bmp_version(board=board,
-                                                frame=0, cabinet=0)
-        if vi.version_number[0] < _BMP_VER_MIN:
-            return True, None
-
         try:
+            # skip FPGA link configuration if old BMP version
+            vi = self._transceiver.read_bmp_version(board=board,
+                                                frame=0, cabinet=0)
+            if vi.version_number[0] < _BMP_VER_MIN:
+                return True, None
+
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
             self._transceiver.write_fpga_register(
                 fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
