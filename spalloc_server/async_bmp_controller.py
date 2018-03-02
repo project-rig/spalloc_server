@@ -190,8 +190,7 @@ class AsyncBMPController(object):
 
                 # check each FPGA on board
                 if not all(self._good_fpga(board, fpga)
-                           for fpga in range(_N_FPGAS)
-                           for board in boards):
+                           for fpga in range(_N_FPGAS)):
                     retry_boards.append(board)
 
             # try again with incorrect boards only
