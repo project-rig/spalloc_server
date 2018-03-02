@@ -94,6 +94,19 @@ def mock_read_fpga_register(fpga_num, register, board, cabinet, frame):
     return fpga_num
 
 
+class MockVersionNumber(object):
+    def __init__(self, version):
+        self._version = version
+
+    @property
+    def version_number(self):
+        return self._version
+
+
+def mock_read_bmp_version(board, frame, cabinet):
+    return MockVersionNumber((2, 0, 0))
+
+
 @pytest.mark.timeout(1.0)
 @pytest.mark.parametrize("power_side_effect,success",
                          [(None, True),
@@ -115,6 +128,7 @@ def test_set_power(abc, bc, power_side_effect, success):
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
     bc.read_fpga_register.side_effect = mock_read_fpga_register
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
     e.wait()
     assert e.success is success
     bc.power_on.assert_called_once_with(boards=[11], frame=0, cabinet=0)
@@ -205,6 +219,7 @@ def test_set_link_enable(abc, bc, link, fpga, addr, enable, value,
     # Make sure that the set link command works (and failure is reported)
     e = OnDoneEvent()
     bc.write_fpga_register.side_effect = side_effect
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
     abc.set_link_enable(10, link, enable, e)
     e.wait()
     assert e.success is success
@@ -218,6 +233,7 @@ def test_set_link_enable_blocks(abc, bc):
     # Make sure that the set power command can block
     event = threading.Event()
     bc.write_fpga_register.side_effect = (lambda *a, **k: event.wait())
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
 
     done_event = OnDoneEvent()
     abc.set_link_enable(10, Links.east, True, done_event)
@@ -244,6 +260,7 @@ def test_power_priority(abc, bc):
     bc.power_on.side_effect = (lambda *a, **k: power_on_event.wait(1.0))
     bc.power_off.side_effect = (lambda *a, **k: power_off_event.wait(1.0))
     bc.write_fpga_register.side_effect = (lambda *a, **k: link_event.wait(1.0))
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
 
     with abc:
         e1, e2, e3 = (OnDoneEvent() for _ in range(3))
@@ -298,6 +315,7 @@ def test_power_removes_link_enables(abc, bc):
     # Make sure link enable requests are removed for boards with newly added
     # power commands.
     bc.read_fpga_register.side_effect = mock_read_fpga_register
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
     with abc:
         e1, e2, e3, e4 = (OnDoneEvent() for _ in range(4))
         abc.set_power(10, True, e1)
@@ -333,6 +351,7 @@ def test_stop_drains(abc, bc):
     # processed
     set_power_done = OnDoneEvent()
     set_link_enable_done = OnDoneEvent()
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
     with abc:
         abc.set_power(10, False, set_power_done)
         abc.set_link_enable(11, Links.east, False, set_link_enable_done)

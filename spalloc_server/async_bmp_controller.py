@@ -12,6 +12,9 @@ from spinnman.constants import SCP_SCAMP_PORT
 
 from .links import Links
 
+# The first BMP version with FPGA register support
+_BMP_VER_MIN = 2
+
 _N_FPGA_RETRIES = 3
 
 
@@ -169,15 +172,31 @@ class AsyncBMPController(object):
 
     def _boot_board(self, boards):
         # FPGAs are checked after power on - assume incorrect to start
+        boards_to_power = boards
         for _try in range(_N_FPGA_RETRIES):
             # Power on - note don't need to power off if in subsequent
             # run of the loop as the BMP handles this correctly
-            self._transceiver.power_on(boards=boards, frame=0, cabinet=0)
+            self._transceiver.power_on(
+                boards=boards_to_power, frame=0, cabinet=0)
 
             # Check if the FPGA number is correct on each FPGA
-            if all(self._good_fpga(board, fpga)
-                   for fpga in range(_N_FPGAS)
-                   for board in boards):
+            retry_boards = []
+            for board in boards_to_power:
+                # skip board if old BMP version
+                vi = self._transceiver.read_bmp_version(
+                    board=board, frame=0, cabinet=0)
+                if vi.version_number[0] < _BMP_VER_MIN:
+                    continue
+
+                # check each FPGA on board
+                if not all(self._good_fpga(board, fpga)
+                           for fpga in range(_N_FPGAS)):
+                    retry_boards.append(board)
+
+            # try again with incorrect boards only
+            if len(retry_boards):
+                boards_to_power = retry_boards
+            else:
                 return
         else:  # pragma: no cover
             raise Exception(
@@ -220,6 +239,12 @@ class AsyncBMPController(object):
         :type board: int or iterable
         """
         try:
+            # skip FPGA link configuration if old BMP version
+            vi = self._transceiver.read_bmp_version(
+                board=board, frame=0, cabinet=0)
+            if vi.version_number[0] < _BMP_VER_MIN:
+                return True, None
+
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
             self._transceiver.write_fpga_register(
                 fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
