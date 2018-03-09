@@ -1,6 +1,6 @@
 import json
 import logging
-from mock import Mock, call, PropertyMock
+from .mocker import Mock, call, PropertyMock
 import os.path
 import pytest
 import shutil

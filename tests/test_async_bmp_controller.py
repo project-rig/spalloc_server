@@ -1,5 +1,5 @@
+from .mocker import Mock, call
 import pytest
-from mock import Mock, call
 import threading
 
 from spalloc_server.async_bmp_controller import AsyncBMPController
