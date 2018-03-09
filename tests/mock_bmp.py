@@ -11,7 +11,6 @@ import traceback
 
 
 class SCPOKMessage(SDPMessage):
-
     def __init__(self, x, y, sequence=0):  # pragma: no cover
         scp_header = SCPRequestHeader(
             command=SCPResult.RC_OK, sequence=sequence)
@@ -24,6 +23,7 @@ class SCPOKMessage(SDPMessage):
 
 
 class SCPVerMessage(SDPMessage):
+    _MSG = struct.Struct("<BBBBHHI")
 
     def __init__(self, x, y, version):
         self._scp_header = SCPRequestHeader(
@@ -43,9 +43,9 @@ class SCPVerMessage(SDPMessage):
     @property
     def bytestring(self):
         data = self._scp_header.bytestring
-        data += struct.pack("<BBBBHHI", 0, 0, self._y, self._x, 0, 0xFFFF, 0)
-        data += "BC&MP/Test\0"
-        data += self._version + "\0"
+        data += self._MSG.pack(0, 0, self._y, self._x, 0, 0xFFFF, 0)
+        data += b"BC&MP/Test\0"
+        data += self._version + b"\0"
         return SDPMessage.bytestring.fget(self) + data  # @UndefinedVariable
 
 
@@ -53,9 +53,11 @@ class MockBMP(Thread):
     """ A BMP that can be used for testing protocol
     """
 
+    _SCP_HEADER = struct.Struct("<2H")
+    _TWO_NUL_BYTES = struct.pack("<2x")  # Constant byte sequence
+
     def __init__(self, responses=None):
         """
-
         :param responses:\
             An optional list of responses to send in the order to be sent. \
             If not specified, OK responses will be sent for every request. \
@@ -83,19 +85,18 @@ class MockBMP(Thread):
     def _do_receive(self):
         data, address = self._receiver.receive_with_address(10)
         sdp_header = SDPHeader.from_bytestring(data, 2)
-        _, sequence = struct.unpack_from("<2H", data, 10)
+        _, sequence = self._SCP_HEADER.unpack_from(data, 10)
         response = None
         if self._responses:
             response = self._responses.popleft()
         else:  # pragma: no cover
             response = SCPOKMessage(
-                sdp_header.source_chip_x, sdp_header.source_chip_y,
-                sequence)
+                sdp_header.source_chip_x, sdp_header.source_chip_y, sequence)
         if hasattr(response, "set_sequence"):
             response.set_sequence(sequence)
         if response is not None:
             self._receiver.send_to(
-                struct.pack("<2x") + response.bytestring, address)
+                self._TWO_NUL_BYTES + response.bytestring, address)
 
     def run(self):
         self._running = True
