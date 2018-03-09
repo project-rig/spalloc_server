@@ -28,7 +28,7 @@ class SCPVerMessage(SDPMessage):
     def __init__(self, x, y, version):
         self._scp_header = SCPRequestHeader(
             command=SCPResult.RC_OK)
-        self._version = version
+        self._version_descriptor = b"BC&MP/Test\0" + version + b"\0"
         self._y = y
         self._x = x
         sdp_header = SDPHeader(
@@ -44,8 +44,7 @@ class SCPVerMessage(SDPMessage):
     def bytestring(self):
         data = self._scp_header.bytestring
         data += self._MSG.pack(0, 0, self._y, self._x, 0, 0xFFFF, 0)
-        data += b"BC&MP/Test\0"
-        data += self._version + b"\0"
+        data += self._version_descriptor
         return SDPMessage.bytestring.fget(self) + data  # @UndefinedVariable
 
 

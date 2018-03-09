@@ -10,7 +10,7 @@ from .mock_bmp import MockBMP, SCPVerMessage
 @pytest.yield_fixture
 def abc():
     """Make an AsyncBMPController and stop it at the end."""
-    bmp = MockBMP(responses=[SCPVerMessage(0, 0, "2.1.0")])
+    bmp = MockBMP(responses=[SCPVerMessage(0, 0, b"2.1.0")])
     bmp.start()
     abc = AsyncBMPController("localhost")
     yield abc
@@ -70,7 +70,7 @@ class OnDoneEvent(object):
 @pytest.mark.parametrize("on_thread_start", [None, Mock()])
 def test_start_and_stop(on_thread_start):
     # Make sure that if a BMP controller is started, we can stop it immediately
-    bmp = MockBMP(responses=[SCPVerMessage(0, 0, "2.1.0")])
+    bmp = MockBMP(responses=[SCPVerMessage(0, 0, b"2.1.0")])
     bmp.start()
     try:
         abc = AsyncBMPController("localhost", on_thread_start=on_thread_start)
