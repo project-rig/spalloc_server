@@ -62,7 +62,7 @@ class MockBMP(Thread):
             Note that responses can include "None" which means that no\
             response will be sent to that request
         """
-        super(MockBMP, self).__init__(verbose=True)
+        super(MockBMP, self).__init__()
 
         # Set up a connection to be the machine
         self._receiver = UDPConnection(local_port=SCP_SCAMP_PORT)
