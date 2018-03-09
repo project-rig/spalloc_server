@@ -1,7 +1,5 @@
 import pytest
-
 from mock import Mock, call
-
 import random
 
 from spalloc_server.pack_tree import PackTree, FreeError

@@ -1,5 +1,4 @@
 import pytest
-
 from mock import Mock
 
 from spalloc_server.links import Links

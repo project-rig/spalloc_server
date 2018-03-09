@@ -1,6 +1,5 @@
 import pytest
 from mock import Mock
-
 import threading
 import time
 from datetime import datetime
@@ -13,9 +12,7 @@ from spalloc_server.coordinates import board_down_link
 from spalloc_server.configuration import Machine
 from spalloc_server.controller import Controller, JobState
 from spalloc_server.links import Links
-
-from common import simple_machine
-
+from .common import simple_machine
 
 pytestmark = pytest.mark.usefixtures("mock_abc")
 

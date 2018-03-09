@@ -1,13 +1,10 @@
 import pytest
-
 from mock import Mock, call
-
 import threading
 
 from spalloc_server.async_bmp_controller import AsyncBMPController
 from spalloc_server.links import Links
-from mock_bmp import MockBMP
-from mock_bmp import SCPVerMessage
+from .mock_bmp import MockBMP, SCPVerMessage
 
 
 @pytest.yield_fixture
@@ -17,13 +14,13 @@ def abc():
     bmp.start()
     abc = AsyncBMPController("localhost")
     yield abc
-    print "Stopping"
+    print("Stopping")
     abc.stop()
     abc.join()
-    print "ABC stopped"
+    print("ABC stopped")
     bmp.stop()
     bmp.join()
-    print "BMP Stopped"
+    print("BMP Stopped")
 
 
 @pytest.fixture

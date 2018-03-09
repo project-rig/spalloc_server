@@ -16,12 +16,9 @@ from spalloc_server.controller import JobState
 from spalloc_server.server import SpallocServer, main
 from spalloc_server.configuration import Configuration
 from spalloc_server import __version__
-
 from .common import simple_machine
 
-
 pytestmark = pytest.mark.usefixtures("mock_abc")
-
 logging.basicConfig(level=logging.INFO)
 
 
