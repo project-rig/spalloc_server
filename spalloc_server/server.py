@@ -322,7 +322,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         # Execute the specified command
         try:
             return {"return": command(self, client, *args, **kwargs)}
-        except Exception, e:
+        except Exception as e:
             return {"exception": str(e)}
 
     def _handle_commands(self, client):

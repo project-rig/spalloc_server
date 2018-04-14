@@ -1,7 +1,6 @@
 import pytest
 
 from spalloc_server.links import Links
-
 from spalloc_server.coordinates import board_down_link, WrapAround
 from spalloc_server.allocator import \
     _AllocationType, _CandidateFilter, Allocator
@@ -717,19 +716,19 @@ class TestAllocator(object):
         assert a._alloc_board_possible() is True
         assert a._alloc_board_possible(0, 0, 0) is True
 
-    @pytest.mark.parametrize("type", ["empty", "one", "specific"])
+    @pytest.mark.parametrize("_type", ["empty", "one", "specific"])
     @pytest.mark.parametrize("add_require_torus_false", [True, False])
     @pytest.mark.parametrize("max_dead_boards", [None, 0, 2])
     @pytest.mark.parametrize("max_dead_links", [None, 0, 2])
-    def test_alloc_type_board(self, type, max_dead_boards, max_dead_links,
+    def test_alloc_type_board(self, _type, max_dead_boards, max_dead_links,
                               add_require_torus_false):
         a = Allocator(2, 3)
 
-        if type == "empty":
+        if _type == "empty":
             args = tuple()
-        elif type == "one":
+        elif _type == "one":
             args = (1, )
-        else:  # type == "specific":
+        else:  # _type == "specific":
             args = (1, 1, 1)
 
         if add_require_torus_false:

@@ -1,7 +1,6 @@
-import pytest
-
-import tempfile
 import os
+import pytest
+import tempfile
 
 from spalloc_server.configuration import \
     Configuration, Machine, board_locations_from_spinner
