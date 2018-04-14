@@ -51,7 +51,8 @@ def process_create(match):
 
 
 def process_power_on(match):
-    _date = match.group(1)
+    # date isn't used
+    # date = match.group(1)
     job_id = match.group(2)
     state = match.group(3)
     ip_address = match.group(4)
