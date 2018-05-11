@@ -91,13 +91,11 @@ use any code you like to pragmatically specify machines, etc. which you use.
 Configuration File API Reference
 ````````````````````````````````
 """
-
 from collections import namedtuple
 import re
 import csv
 from itertools import chain
 from six import iteritems, itervalues
-
 from .coordinates import chip_to_board
 
 

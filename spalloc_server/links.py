@@ -1,8 +1,7 @@
 """A datastructure representing links in a SpiNNaker machine.
 """
-
-from six import iteritems
 from enum import IntEnum
+from six import iteritems
 
 
 class Links(IntEnum):

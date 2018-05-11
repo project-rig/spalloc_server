@@ -1,13 +1,12 @@
+from collections import deque
+from threading import Thread
+import struct
+import traceback
 from spinnman.messages.sdp import SDPMessage, SDPHeader, SDPFlag
 from spinnman.messages.scp import SCPRequestHeader
 from spinnman.messages.scp.enums import SCPResult
 from spinnman.connections.udp_packet_connections import utils, UDPConnection
 from spinnman.constants import SCP_SCAMP_PORT
-
-from collections import deque
-from threading import Thread
-import struct
-import traceback
 
 
 class SCPOKMessage(SDPMessage):

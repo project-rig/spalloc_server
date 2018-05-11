@@ -1,8 +1,6 @@
-import pytest
-
-import threading
-
 from collections import deque
+import threading
+import pytest
 
 
 @pytest.fixture

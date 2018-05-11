@@ -4,8 +4,6 @@ space.
 This algorithm is used to allocate triads of boards in SpiNNaker systems but is
 otherwise a relatively generic 2D packing algorithm.
 """
-
-
 from .area_to_rect import area_to_rect
 
 

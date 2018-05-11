@@ -1,7 +1,6 @@
-from .mocker import Mock, call
-import pytest
 import threading
-
+import pytest
+from .mocker import Mock, call
 from spalloc_server.async_bmp_controller import AsyncBMPController
 from spalloc_server.links import Links
 from .mock_bmp import MockBMP, SCPVerMessage

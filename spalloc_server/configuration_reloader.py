@@ -1,5 +1,5 @@
-import signal
 import logging as log
+import signal
 from six import add_metaclass
 from spinn_utilities.abstract_base import AbstractBase, abstractmethod
 

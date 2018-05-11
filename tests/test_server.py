@@ -1,16 +1,15 @@
 import json
 import logging
-from .mocker import Mock, MagicMock, call, PropertyMock
 import os.path
-import pytest
 import shutil
 import signal
-from six import itervalues
 import socket
 import tempfile
 import threading
 import time
-
+import pytest
+from six import itervalues
+from .mocker import Mock, MagicMock, call, PropertyMock
 from spalloc_server.links import Links
 from spalloc_server.controller import JobState
 from spalloc_server.server import SpallocServer, main

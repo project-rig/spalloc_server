@@ -2,12 +2,10 @@
 the granularity of individual SpiNNaker boards and with awareness of the
 functionality of a machine.
 """
-
 from enum import Enum
 from collections import deque
 from math import ceil
 from six import next  # pylint: disable=redefined-builtin
-
 from .links import Links
 from .pack_tree import PackTree
 from .area_to_rect import area_to_rect

@@ -11,12 +11,10 @@ from json import dumps as json, loads as dejson
 import logging as log
 from os import path
 from pickle import dump as pickle, load as unpickle
-from six import iteritems, string_types
 from threading import Thread
 from time import sleep
-
+from six import iteritems, string_types
 from spinn_utilities.overrides import overrides
-
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
 from spalloc_server.controller import Controller

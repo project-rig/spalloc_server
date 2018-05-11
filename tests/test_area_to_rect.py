@@ -1,7 +1,6 @@
 import pytest
-
-from spalloc_server.area_to_rect import \
-    area_to_rect, squarest_rectangle, rectangle_with_aspect_ratio
+from spalloc_server.area_to_rect import (
+    area_to_rect, squarest_rectangle, rectangle_with_aspect_ratio)
 
 
 @pytest.mark.parametrize("area,wh",
