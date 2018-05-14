@@ -1,6 +1,6 @@
 import json
 import logging
-from .mocker import Mock, call, PropertyMock
+from .mocker import Mock, MagicMock, call, PropertyMock
 import os.path
 import pytest
 import shutil
@@ -428,7 +428,9 @@ def test_bad_disconnect(simple_config, s, monkeypatch):
     client.getpeername.side_effect = OSError()
     monkeypatch.setattr(s, "_fdmap", {1: client})
     monkeypatch.setattr(s, "_client_buffers", {client: b""})
-    monkeypatch.setattr(s, "_poll", Mock())
+    p = MagicMock()
+    p.__iter__.return_value = []
+    monkeypatch.setattr(s, "_poll", p)
 
     s._disconnect_client(client)
 
