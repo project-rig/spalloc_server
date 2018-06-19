@@ -1,4 +1,4 @@
-"""Utility functions for working out sensible sizes of machine to allocate
+""" Utility functions for working out sensible sizes of machine to allocate
 given a minimum number of boards and worst-case aspect ratio.
 """
 
@@ -6,7 +6,7 @@ from math import sqrt, ceil
 
 
 def area_to_rect(area, bound_width, bound_height, min_ratio=0.0):
-    """Given an area requirement, select a rectangular subregion of the given
+    """ Given an area requirement, select a rectangular subregion of the given
     width and height bounds whose aspect ratio (when rotated into a landscape
     orientation) is at least that specified.
 
@@ -82,7 +82,7 @@ def area_to_rect(area, bound_width, bound_height, min_ratio=0.0):
 
 
 def squarest_rectangle(area):
-    """Given a specific area, calculate the squarest possible rectangle with
+    """ Given a specific area, calculate the squarest possible rectangle with
     exactly that area, preferring landscape rectangles.
 
     Returns
@@ -111,7 +111,7 @@ def squarest_rectangle(area):
 
 
 def rectangle_with_aspect_ratio(area, ratio):
-    """Return a (landscape) rectangle with at least the specified area and
+    """ Return a (landscape) rectangle with at least the specified area and
     aspect ratio.
 
     Note that the returned rectangles are not at all guaranteed to be the

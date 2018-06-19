@@ -1,4 +1,4 @@
-"""A configuration file is used to describe the machines which are to be
+""" A configuration file is used to describe the machines which are to be
 managed.  Configuration files are Python scripts which define a global
 ``configuration`` variable which is an instance of the
 :py:class:`.Configuration` class.
@@ -108,7 +108,7 @@ def _empty_default_dict(d):
 class Configuration(namedtuple("Configuration",
                                "machines,port,ip,timeout_check_interval,"
                                "max_retired_jobs")):
-    """Defines the configuration of a server.
+    """ Defines the configuration of a server.
 
     Parameters
     ----------
@@ -171,7 +171,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
                                     "dead_boards,dead_links,"
                                     "board_locations,"
                                     "bmp_ips,spinnaker_ips")):
-    """Defines a SpiNNaker machine.
+    """ Defines a SpiNNaker machine.
 
     Parameters
     ----------
@@ -290,7 +290,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
     @classmethod
     def single_board(cls, name, tags=frozenset(["default"]),
                      bmp_ip=None, spinnaker_ip=None):
-        """Convenience constructor. Construct a :py:class:`.Machine`
+        """ Convenience constructor. Construct a :py:class:`.Machine`
         representing a single SpiNNaker board.
 
         Parameters
@@ -325,7 +325,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
                           board_stride="0.0.0.8",
                           bmp_offset="0.0.0.0",
                           spinnaker_offset="0.0.0.1"):
-        """Convenience constructor. Construct a :py:class:`.Machine` which
+        """ Convenience constructor. Construct a :py:class:`.Machine` which
         infers IP addresses of the form conventionally used by SpiNNaker
         installations.
 
@@ -412,7 +412,8 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         # pylint: disable=too-many-arguments
 
         def ip_to_int(ip):
-            """Convert from string-based IP to a 32-bit integer."""
+            """ Convert from string-based IP to a 32-bit integer.
+            """
             match = re.match("^(\d+).(\d+).(\d+).(\d+)$", ip)
             if not match:
                 raise ValueError("Malformed IPv4 address '{}'".format(ip))
@@ -427,7 +428,8 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             return ip_int
 
         def int_to_ip(ip_int):
-            """Convert from 32-bit integer to string-based IP address."""
+            """ Convert from 32-bit integer to string-based IP address.
+            """
             return ".".join(str((ip_int >> b) & 0xFF)
                             for b in range(24, -8, -8))
 
@@ -461,7 +463,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
 
 
 def board_locations_from_spinner(filename):
-    """Utility function which converts a CSV file produced by
+    """ Utility function which converts a CSV file produced by
     the `spinner-ethernet-chips
     <http://spinner.readthedocs.org/en/stable/spinner-ethernet-chips.html>`_
     utility into a ``board_locations`` dictionary suitable for defining
