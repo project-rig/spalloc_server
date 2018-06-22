@@ -264,7 +264,7 @@ def triad_dimensions_to_chips(w, h, torus):
     ----------
     w, h : int
         Dimensions of the system in triads.
-    torus : :py:class`.WrapAround`
+    torus : :py:class:`.WrapAround`
         What wrap-around connections are present?
 
     Returns

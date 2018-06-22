@@ -548,7 +548,7 @@ class Controller(object):
 
         Returns
         -------
-        jobs : [:py:class`.JobTuple`, ...]
+        jobs : [:py:class:`.JobTuple`, ...]
             A list of allocated/queued jobs in order of creation from oldest
             (first) to newest (last).
         """
