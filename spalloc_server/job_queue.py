@@ -1,4 +1,4 @@
-"""A multi-machine and job queueing and allocation mechanism.
+""" A multi-machine and job queueing and allocation mechanism.
 """
 
 from collections import deque, OrderedDict
@@ -8,8 +8,8 @@ from .allocator import Allocator
 
 
 class JobQueue(object):
-    """A mechanism for matching incoming allocation requests (jobs) to a set of
-    available machines.
+    """ A mechanism for matching incoming allocation requests (jobs) to a set
+    of available machines.
 
     For every :py:class:`._Machine` being managed this object contains a queue
     of outstanding jobs and an :py:class:`spalloc_server.allocator.Allocator`
@@ -40,7 +40,7 @@ class JobQueue(object):
     """
 
     def __init__(self, on_allocate, on_free, on_cancel):
-        """Create a new (empty) job queue with no machines.
+        """ Create a new (empty) job queue with no machines.
 
         Parameters
         ----------
@@ -98,7 +98,7 @@ class JobQueue(object):
         self._postpone_queue_management = 0
 
     def __enter__(self):
-        """This context manager will cause all changes to machines to be made
+        """ This context manager will cause all changes to machines to be made
         atomically, without regenerating queues between each change.
 
         This is useful when modifying multiple machines at once or destroying
@@ -123,7 +123,7 @@ class JobQueue(object):
         self._regenerate_queues()
 
     def __getstate__(self):
-        """Called when pickling this object.
+        """ Called when pickling this object.
 
         In Python 2, references to methods cannot be pickled. Since this
         object maintains a number of function pointers as callbacks (which may
@@ -140,7 +140,7 @@ class JobQueue(object):
         return state
 
     def _try_job(self, job, machine):
-        """Attempt to allocate a job on a given machine.
+        """ Attempt to allocate a job on a given machine.
 
         Returns
         -------
@@ -166,7 +166,7 @@ class JobQueue(object):
         return True
 
     def _enqueue_job(self, job):
-        """Either allocate or enqueue a new job.
+        """ Either allocate or enqueue a new job.
 
         Given a new job which is not yet running or enqueued use a simple
         scheduling mechanism to decided what to do with it:
@@ -210,7 +210,8 @@ class JobQueue(object):
         self._process_queue()
 
     def _process_queue(self):
-        """Try and process any queued jobs."""
+        """ Try and process any queued jobs.
+        """
         if self._postpone_queue_management:
             return
 
@@ -236,7 +237,7 @@ class JobQueue(object):
                     break
 
     def _regenerate_queues(self):
-        """Regenerate all queues to account for any significant changes to the
+        """ Regenerate all queues to account for any significant changes to the
         machines available.
 
         This function clears all machine queues and then reinserts the jobs
@@ -258,7 +259,7 @@ class JobQueue(object):
 
     def add_machine(self, name, width, height, tags=None,
                     dead_boards=frozenset(), dead_links=frozenset()):
-        """Add a new machine for processing jobs.
+        """ Add a new machine for processing jobs.
 
         Jobs are offered for allocation on machines in the order the machines
         are inserted to this list.
@@ -298,7 +299,7 @@ class JobQueue(object):
         self._regenerate_queues()
 
     def move_machine_to_end(self, name):
-        """Move the specified machine to the end of the OrderedDict of
+        """ Move the specified machine to the end of the OrderedDict of
         machines.
 
         Parameters
@@ -314,7 +315,7 @@ class JobQueue(object):
 
     def modify_machine(self, name, tags=None,
                        dead_boards=None, dead_links=None):
-        """Make minor modifications to the description of an existing machine.
+        """ Make minor modifications to the description of an existing machine.
 
         Note that any changes made will not impact already allocated jobs but
         may alter queued jobs.
@@ -345,7 +346,7 @@ class JobQueue(object):
         self._regenerate_queues()
 
     def remove_machine(self, name):
-        """Remove a machine from the available set.
+        """ Remove a machine from the available set.
 
         All jobs allocated on that machine will be freed and then the machine
         will be removed.
@@ -363,7 +364,7 @@ class JobQueue(object):
             del self._machines[name]
 
     def create_job(self, *args, **kwargs):
-        """Attempt to create a new job.
+        """ Attempt to create a new job.
 
         If no machine is immediately available to allocate the job the job is
         placed in the queues of all machines into which it can fit. The first
@@ -420,7 +421,7 @@ class JobQueue(object):
         self._enqueue_job(job)
 
     def destroy_job(self, job_id, reason=None):
-        """Destroy a queued or allocated job.
+        """ Destroy a queued or allocated job.
 
         If the job is already allocated, this frees the job resulting in the
         :py:attr:`.on_free` callback being called.  If the job is queued, this
@@ -449,7 +450,7 @@ class JobQueue(object):
 
 
 class _Job(object):
-    """The internal state representing a job.
+    """ The internal state representing a job.
 
     Attributes
     ----------
@@ -488,7 +489,7 @@ class _Job(object):
 
 
 class _Machine(object):
-    """Internal data which maintains state information about machine on which
+    """ Internal data which maintains state information about machine on which
     jobs may run.
 
     Attributes

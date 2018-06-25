@@ -1,4 +1,4 @@
-"""Algorithm/data structure for allocating boards in SpiNNaker machines at
+""" Algorithm/data structure for allocating boards in SpiNNaker machines at
 the granularity of individual SpiNNaker boards and with awareness of the
 functionality of a machine.
 """
@@ -15,8 +15,8 @@ from .coordinates import board_down_link, WrapAround
 
 
 class Allocator(object):
-    """This object allows high-level allocation of SpiNNaker boards from a
-    larger, possibly faulty, toroidal machine.
+    """ Performs high-level allocation of SpiNNaker boards from a larger,
+    possibly faulty, toroidal machine.
 
     Internally this object uses a
     :py:class:`spalloc_server.pack_tree.PackTree` to allocate
@@ -92,7 +92,7 @@ class Allocator(object):
     def _alloc_triads_possible(self, width, height, max_dead_boards=None,
                                max_dead_links=None, require_torus=False,
                                min_ratio=0.0):  # @UnusedVariable
-        """Is it guaranteed that the specified allocation *could* succeed if
+        """ Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
         This function may be conservative. If the specified request would fail
@@ -162,7 +162,7 @@ class Allocator(object):
     def _alloc_triads(self, width, height, max_dead_boards=None,
                       max_dead_links=None, require_torus=False,
                       min_ratio=0.0):  # @UnusedVariable
-        """Allocate a rectangular block of triads of interconnected boards.
+        """ Allocate a rectangular block of triads of interconnected boards.
 
         Parameters
         ----------
@@ -235,7 +235,7 @@ class Allocator(object):
     def _alloc_boards_possible(self, boards, min_ratio=0.0,
                                max_dead_boards=None, max_dead_links=None,
                                require_torus=False):
-        """Is it guaranteed that the specified allocation *could* succeed if
+        """ Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
         This function may be conservative. If the specified request would fail
@@ -314,7 +314,7 @@ class Allocator(object):
 
     def _alloc_boards(self, boards, min_ratio=0.0, max_dead_boards=None,
                       max_dead_links=None, require_torus=False):
-        """Allocate a rectangular block of triads with at least the specified
+        """ Allocate a rectangular block of triads with at least the specified
         number of boards which is 'at least as square' as the specified aspect
         ratio.
 
@@ -399,7 +399,7 @@ class Allocator(object):
             self, x=None, y=None, z=None,
             max_dead_boards=None, max_dead_links=None,  # @UnusedVariable
             require_torus=False, min_ratio=0.0):  # @UnusedVariable
-        """Is it guaranteed that the specified allocation *could* succeed if
+        """ Is it guaranteed that the specified allocation *could* succeed if
         enough of the machine is free?
 
         Parameters
@@ -452,7 +452,7 @@ class Allocator(object):
             self, x=None, y=None, z=None,
             max_dead_boards=None, max_dead_links=None,  # @UnusedVariable
             require_torus=False, min_ratio=0.0):  # @UnusedVariable
-        """Allocate a single board, optionally specifying a specific board to
+        """ Allocate a single board, optionally specifying a specific board to
         allocate.
 
         Parameters
@@ -564,7 +564,7 @@ class Allocator(object):
             self, x_or_num_or_width=None, y_or_height=None, z=None,
             max_dead_boards=None, max_dead_links=None,  # @UnusedVariable
             require_torus=False, min_ratio=0.0):  # @UnusedVariable
-        """Returns the type of allocation the user is attempting to make (and
+        """ Returns the type of allocation the user is attempting to make (and
         fails if it is invalid.
 
         Usage::
@@ -637,7 +637,7 @@ class Allocator(object):
         return alloc_type
 
     def alloc_possible(self, *args, **kwargs):
-        """Is the specified allocation actually possible on this machine?
+        """ Is the specified allocation actually possible on this machine?
 
         Usage::
 
@@ -690,7 +690,7 @@ class Allocator(object):
         return self._alloc_triads_possible(*args, **kwargs)
 
     def alloc(self, *args, **kwargs):
-        """Attempt to allocate a board or rectangular region of triads of
+        """ Attempt to allocate a board or rectangular region of triads of
         boards.
 
         Usage::
@@ -754,7 +754,7 @@ class Allocator(object):
         return self._alloc_triads(*args, **kwargs)
 
     def free(self, allocation_id):
-        """Free the resources consumed by the specified allocation.
+        """ Free the resources consumed by the specified allocation.
 
         Parameters
         ----------
@@ -788,16 +788,19 @@ class Allocator(object):
 
 
 class _AllocationType(Enum):
-    """Type identifiers for allocations."""
+    """ Type identifiers for allocations.
+    """
 
     triads = 0
-    """A rectangular block of triads."""
+    """ A rectangular block of triads.
+    """
 
     board = 1
-    """A single board."""
+    """ A single board.
+    """
 
     boards = 2
-    """Two or more boards, to be allocated as triads.
+    """ Two or more boards, to be allocated as triads.
 
     This type only returned by :py:meth:`.Allocator._alloc_type` and is never
     used as an allocation type.
@@ -805,7 +808,7 @@ class _AllocationType(Enum):
 
 
 class _CandidateFilter(object):
-    """A callable object which, given a rectangular region of triads will check
+    """ A filter which, given a rectangular region of triads, will check
     to see if it meets some set of criteria.
 
     If any candidate is accepted the following attributes are set according to
@@ -827,7 +830,7 @@ class _CandidateFilter(object):
     def __init__(self, width, height, dead_boards, dead_links,
                  max_dead_boards, max_dead_links, require_torus,
                  expected_boards=None):
-        """Create a new candidate filter.
+        """ Create a new candidate filter.
 
         Parameters
         ----------
@@ -879,7 +882,7 @@ class _CandidateFilter(object):
         self.torus = None
 
     def _enumerate_boards(self, x, y, width, height):
-        """Starting from board (x, y, 0), enumerate as many reachable and
+        """ Starting from board (x, y, 0), enumerate as many reachable and
         working boards as possible within the rectangle width x height triads.
 
         Returns
@@ -918,8 +921,8 @@ class _CandidateFilter(object):
         return boards
 
     def _classify_links(self, boards):
-        """Get a list of links of various classes connected to the supplied set
-        of boards.
+        """ Get a list of links of various classes connected to the supplied
+        set of boards.
 
         Parameters
         ----------
@@ -978,7 +981,7 @@ class _CandidateFilter(object):
             WrapAround(wrap_around_type)
 
     def __call__(self, x, y, width, height):
-        """Test whether the region specified meets the stated requirements.
+        """ Test whether the region specified meets the stated requirements.
 
         If True is returned, the set of boards in the region is stored in
         self.boards and the set of links on the periphery are stored in
@@ -996,9 +999,8 @@ class _CandidateFilter(object):
             dead = expected_boards - alive
             if alive == 0 or dead > self.max_dead_boards:
                 return False
-        else:
-            if not boards:
-                return False
+        elif not boards:
+            return False
 
         # Make sure the maximum dead links limit isn't exceeded (and that torus
         # links exist if requested)

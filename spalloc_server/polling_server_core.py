@@ -7,7 +7,8 @@ BUFFER_SIZE = 1024
 
 
 def _simulated_socketpair():  # pragma: no cover
-    """Create your own socket pair."""
+    """ Create your own socket pair.
+    """
     temp_srv = socket.socket()
     try:
         temp_srv.setblocking(True)
@@ -29,8 +30,8 @@ def _simulated_socketpair():  # pragma: no cover
 
 
 class PollingServerCore(object):
-    """Wrapper around the operating system's poll() call. Also knows the\
-    basics of making sockets.
+    """ Wrapper around the operating system's poll() call. Also knows the\
+        basics of making sockets.
     """
 
     MILLISECOND_TO_SECOND_CONVERTER = 1000.0
@@ -55,8 +56,8 @@ class PollingServerCore(object):
         self.register_channel(self._notify_recv)
 
     def register_channel(self, channel):
-        """Register a channel (file, socket, etc.) for being reported via the
-        :py:meth:`.ready_channels` method.
+        """ Register a channel (file, socket, etc.) for being reported via the\
+            :py:meth:`.ready_channels` method.
         """
         if self._poll is not None:
             self._poll.register(
@@ -64,8 +65,8 @@ class PollingServerCore(object):
         self._fdmap[channel.fileno()] = channel
 
     def unregister_channel(self, channel):
-        """Unregister a channel (file, socket, etc.) for being reported via
-        the :py:meth:`.ready_channels` method.
+        """ Unregister a channel (file, socket, etc.) for being reported via\
+            the :py:meth:`.ready_channels` method.
         """
         if self._poll is not None:
             self._poll.unregister(channel)
@@ -73,12 +74,12 @@ class PollingServerCore(object):
             del self._fdmap[channel.fileno()]
 
     def ready_channels(self, timeout_check_interval):
-        """Waits up to timeout_check_interval milliseconds for a channel to
-        become readable. Multiple channels may become readable at once.
+        """ Waits up to timeout_check_interval milliseconds for a channel to\
+            become readable. Multiple channels may become readable at once.
 
-        :return: An iterable listing the channels that are currently
-                 readable. Can be empty if the poller is woken via the
-                 :py:meth:`.wake` call.
+        :return: An iterable listing the channels that are currently\
+            readable. Can be empty if the poller is woken via the\
+            :py:meth:`.wake` call.
         """
         if self._poll is not None:
             events = self._poll.poll(
@@ -99,19 +100,21 @@ class PollingServerCore(object):
                     yield channel
 
     def wake(self):
-        """Notify the waiting thread that something has happened.
+        """ Notify the waiting thread that something has happened.
 
-        Calling this method simply wakes up the waiting thread (which will be
-        waiting in :py:meth:`.ready_channels`) causing it to perform all its
+        Calling this method simply wakes up the waiting thread (which will be\
+        waiting in :py:meth:`.ready_channels`) causing it to perform all its\
         usual checks and processing steps.
         """
         self._notify_send.send(b"x")
 
     def _open_server_socket(self, ipaddress, port):
-        """Create a new server socket.
+        """ Create a new server socket.
 
-        :param str ipaddress: The local address of the socket.
-        :param int port: The local port of the socket.
+        :param ipaddress: The local address of the socket.
+        :type ipaddress: str
+        :param port: The local port of the socket.
+        :type port: int
         """
         log.info("opening server socket for %s", (ipaddress, port))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
