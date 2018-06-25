@@ -652,7 +652,7 @@ class Controller(object):
         return None, None
 
     def _where_is_by_logical_triple(self, machine_name, x, y, z):
-        """ Helper for :py:meth:`.where_is()`
+        """ Helper for :py:meth:`where_is`
         """
         with self._lock:
             # Get the actual Machine
@@ -698,7 +698,7 @@ class Controller(object):
 
     def _where_is_by_physical_triple(self, machine_name, cabinet, frame,
                                      board):
-        """ Helper for :py:meth:`.where_is()`
+        """ Helper for :py:meth:`where_is`
         """
         with self._lock:
             # Get the actual Machine
@@ -747,7 +747,7 @@ class Controller(object):
             }
 
     def _where_is_by_chip_coordinate(self, machine_name, chip_x, chip_y):
-        """ Helper for :py:meth:`.where_is()`
+        """ Helper for :py:meth:`where_is`
         """
         with self._lock:
             # Get the actual Machine
@@ -790,7 +790,7 @@ class Controller(object):
             }
 
     def _where_is_by_job_chip_coordinate(self, job_id, chip_x, chip_y):
-        """ Helper for :py:meth:`.where_is()`
+        """ Helper for :py:meth:`where_is`
         """
         with self._lock:
             # Covert from job-relative chip location
