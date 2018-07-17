@@ -27,7 +27,8 @@ def on_background_state_change():
 def conn(mock_abc, on_background_state_change):
     """Auto-stop a controller."""
     conn = Controller(max_retired_jobs=2,
-                      on_background_state_change=on_background_state_change)
+                      on_background_state_change=on_background_state_change,
+                      seconds_before_free=0.1)
     try:
         yield conn
     finally:
@@ -1064,6 +1065,9 @@ def test_changed_jobs(conn, m):
     with controller.handler_lock:
         # Job freed, another job un-queued but awaiting power-on
         conn.destroy_job(None, job_id0)
+        # Sleep then update free
+        time.sleep(0.1)
+        conn.check_free()
         assert conn.changed_jobs == set([job_id0, job_id1])
         assert conn.changed_jobs == set()
 

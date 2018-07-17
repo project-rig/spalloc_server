@@ -168,6 +168,7 @@ def fast_keepalive_config(config_file):
         f.write(
             "configuration = Configuration(\n"
             "    timeout_check_interval=0.1,\n"
+            "    seconds_before_free=0.1,\n"
             "    machines=[\n"
             "        Machine('m', set(['default']), 1, 2,\n"
             "                set(), set(),\n"
@@ -507,7 +508,7 @@ def test_evil_calls3(simple_config, s, evil, badreq, msg):
 
 
 @pytest.mark.timeout(2.0)
-def test_job_management(simple_config, s, c):
+def test_job_management(fast_keepalive_config, s, c):
     # First more complete test of calling a remote method with complex
     # arguments
 
@@ -616,6 +617,8 @@ def test_job_management(simple_config, s, c):
         "reason": "Test reason...",
         "start_time": None,
         "keepalivehost": None}
+    # Should be enough time for the free to actually happen
+    time.sleep(0.5)
     assert c.call("get_job_state", job_id1) == {
         "state": JobState.ready, "power": True,
         "keepalive": 60.0, "reason": None,
@@ -705,7 +708,7 @@ def test_get_board_at_position(simple_config, s, c):
 
 
 @pytest.mark.timeout(1.0)
-def test_job_notifications(simple_config, s):
+def test_job_notifications(fast_keepalive_config, s):
     with SimpleClient() as c0:
         with SimpleClient() as c1:
 
@@ -732,9 +735,9 @@ def test_job_notifications(simple_config, s):
             with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
                 c0.call("destroy_job", job_id0)
                 assert c0.get_notification() == {"jobs_changed": [job_id0]}
-                assert c1.get_notification() in (
-                    {"jobs_changed": [job_id0, job_id1]},
-                    {"jobs_changed": [job_id1, job_id0]})
+                assert c1.get_notification() == {"jobs_changed": [job_id0]}
+                time.sleep(0.5)
+                assert c1.get_notification() == {"jobs_changed": [job_id1]}
             assert c1.get_notification() == {"jobs_changed": [job_id1]}
 
 

@@ -7,11 +7,13 @@ from enum import Enum
 from collections import deque
 from math import ceil
 from six import next  # pylint: disable=redefined-builtin
+from datetime import datetime
 
 from .links import Links
 from .pack_tree import PackTree
 from .area_to_rect import area_to_rect
 from .coordinates import board_down_link, WrapAround
+from threading import RLock
 
 
 class Allocator(object):
@@ -36,7 +38,7 @@ class Allocator(object):
     # pylint: disable=too-many-arguments, unused-argument
 
     def __init__(self, width, height, dead_boards=None, dead_links=None,
-                 next_id=1):
+                 next_id=1, seconds_before_free=30):
         """
         Parameters
         ----------
@@ -53,11 +55,15 @@ class Allocator(object):
             down).
         next_id : int
             The ID of the next allocation to be made.
+        seconds_before_free : int
+            The number of seconds between a board being freed and it becoming
+            available again
         """
         self.width = width
         self.height = height
         self.dead_boards = dead_boards if dead_boards is not None else set()
         self.dead_links = dead_links if dead_links is not None else set()
+        self.seconds_before_free = seconds_before_free
 
         # Unique IDs are assigned to every new allocation. The next ID to be
         # allocated.
@@ -72,6 +78,10 @@ class Allocator(object):
 
         # Lookup from allocation IDs to the bottom-left board in the allocation
         self.allocation_board = {}
+
+        # Storage for delayed freeing of boards
+        self.to_free = deque()
+        self.to_free_lock = RLock()
 
         # Since we cannot allocate individual boards in the pack_tree, whenever
         # an individual board is requested a whole triad may be allocated and
@@ -88,6 +98,30 @@ class Allocator(object):
         # When all the boards in a triad in single_board_triads are used up the
         # triad is removed from that dictionary and placed into the set below.
         self.full_single_board_triads = set()
+
+    def __getstate__(self):
+        """ Called when pickling this object.
+
+        This object may only be pickled once :py:meth:`.stop` and
+        :py:meth:`.join` have returned.
+        """
+        state = self.__dict__.copy()
+
+        # Do not keep references to unpickleable dynamic state
+        state["to_free_lock"] = None
+
+        return state
+
+    def __setstate__(self, state):
+        """ Called when unpickling this object.
+
+        Note that though the object must be pickled when stopped, the unpickled
+        object will start running immediately.
+        """
+        self.__dict__.update(state)
+
+        # Restore lock
+        self.to_free_lock = RLock()
 
     def _alloc_triads_possible(self, width, height, max_dead_boards=None,
                                max_dead_links=None, require_torus=False,
@@ -746,6 +780,10 @@ class Allocator(object):
             :py:class:`.WrapAround` value indicating torus connectivity when at
             least one torus may exist.
         """
+        # Free things that can now be freed
+        self.check_free()
+
+        # Do the allocation
         alloc_type = self._alloc_type(*args, **kwargs)
         if alloc_type is _AllocationType.board:
             return self._alloc_board(*args, **kwargs)
@@ -763,7 +801,27 @@ class Allocator(object):
         """
         _type = self.allocation_types.pop(allocation_id)
         x, y, z = self.allocation_board.pop(allocation_id)
+        with self.to_free_lock:
+            self.to_free.append((datetime.now(), _type, x, y, z))
 
+    def check_free(self):
+        """ Free any of the items on the "to free" list that have expired
+        """
+        changed = False
+        with self.to_free_lock:
+            while self.to_free:
+                free_time, _, _, _, _ = self.to_free[0]
+                time_diff = (datetime.now() - free_time).total_seconds()
+                if time_diff < self.seconds_before_free:
+                    break
+                self._free_next()
+                changed = True
+        return changed
+
+    def _free_next(self):
+        """ Free the next item on the "to_free" list
+        """
+        _, _type, x, y, z = self.to_free.popleft()
         if _type is _AllocationType.triads:
             # Simply free the allocation
             self.pack_tree.free(x, y)

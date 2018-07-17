@@ -4,6 +4,7 @@ import pytest
 from spalloc_server.links import Links
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.job_queue import JobQueue
+import time
 
 
 @pytest.fixture
@@ -24,7 +25,7 @@ def on_cancel():
 @pytest.fixture
 def q(on_allocate, on_free, on_cancel):
     # A job queue with some mock callbacks
-    return JobQueue(on_allocate, on_free, on_cancel)
+    return JobQueue(on_allocate, on_free, on_cancel, 0.1)
 
 
 @pytest.fixture
@@ -425,6 +426,8 @@ def test_destroy_job(q, m, on_free, on_cancel):
     q.destroy_job(10)
     on_free.assert_called_once_with(10, None)
     on_free.reset_mock()
+    time.sleep(0.1)
+    q.check_free()
     assert list(q._machines[m].queue) == []
     assert set(q._jobs) == set([40])
     assert job_40.pending is False

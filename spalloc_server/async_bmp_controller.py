@@ -107,16 +107,16 @@ class AsyncBMPController(object):
         with self._lock:
             assert not self._stop
 
-            # Enqueue the request
-            self._power_requests.append(_PowerRequest(state, board, on_done))
-            self._requests_pending.set()
-
             # Cancel any existing link enable commands for this board
             cancelled = []
             for request in list(self._link_requests):
                 if request.board == board:
                     self._link_requests.remove(request)
                     cancelled.append(request)
+
+            # Enqueue the request
+            self._power_requests.append(_PowerRequest(state, board, on_done))
+            self._requests_pending.set()
 
         for request in cancelled:
             request.on_done(False, "Cancelled")

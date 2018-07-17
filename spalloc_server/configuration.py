@@ -107,7 +107,7 @@ def _empty_default_dict(d):
 
 class Configuration(namedtuple("Configuration",
                                "machines,port,ip,timeout_check_interval,"
-                               "max_retired_jobs")):
+                               "max_retired_jobs,seconds_before_free")):
     """ Defines the configuration of a server.
 
     Parameters
@@ -130,7 +130,8 @@ class Configuration(namedtuple("Configuration",
 
     def __new__(cls, machines=None, port=22244, ip="",
                 timeout_check_interval=5.0,
-                max_retired_jobs=1200):
+                max_retired_jobs=1200,
+                seconds_before_free=30):
         # pylint: disable=too-many-arguments
 
         # Validate machine definitions
@@ -164,7 +165,8 @@ class Configuration(namedtuple("Configuration",
                 used_spinnaker_ips.add(spinnaker_ip)
 
         return super(Configuration, cls).__new__(
-            cls, machines, port, ip, timeout_check_interval, max_retired_jobs)
+            cls, machines, port, ip, timeout_check_interval, max_retired_jobs,
+            seconds_before_free)
 
 
 class Machine(namedtuple("Machine", "name,tags,width,height,"

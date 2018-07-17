@@ -39,7 +39,8 @@ class JobQueue(object):
     callback is produced (as a result of calling :py:class:`.destroy_job`).
     """
 
-    def __init__(self, on_allocate, on_free, on_cancel):
+    def __init__(self, on_allocate, on_free, on_cancel,
+                 seconds_before_free=30):
         """ Create a new (empty) job queue with no machines.
 
         Parameters
@@ -80,10 +81,15 @@ class JobQueue(object):
             reason : str or None
                 A human readable string explaining why the job was cancelled or
                 None if no reason was given.
+
+        seconds_before_free : int
+            The number of seconds between a board being freed and it becoming
+            available again
         """
         self.on_allocate = on_allocate
         self.on_free = on_free
         self.on_cancel = on_cancel
+        self.seconds_before_free = seconds_before_free
 
         # The machines onto which jobs may be queued.
         # {name: _Machine, ...}
@@ -293,7 +299,8 @@ class JobQueue(object):
         if name in self._machines:
             raise ValueError("Machine name {} already in use.".format(name))
 
-        allocator = Allocator(width, height, dead_boards, dead_links)
+        allocator = Allocator(width, height, dead_boards, dead_links,
+                              seconds_before_free=self.seconds_before_free)
         self._machines[name] = _Machine(name, tags, allocator)
 
         self._regenerate_queues()
@@ -447,6 +454,18 @@ class JobQueue(object):
             self.on_free(job.id, reason)
 
         self._process_queue()
+
+    def check_free(self):
+        """ Check for freed machines that are now available
+        """
+        if self._postpone_queue_management:
+            return
+        changed = False
+        for machine in self._machines:
+            if self._machines[machine].allocator.check_free():
+                changed = True
+        if changed:
+            self._process_queue()
 
 
 class _Job(object):

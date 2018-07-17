@@ -103,7 +103,8 @@ class Controller(object):
     """
 
     def __init__(self, next_id=1, max_retired_jobs=1200,
-                 on_background_state_change=None):
+                 on_background_state_change=None,
+                 seconds_before_free=30):
         """
         Parameters
         ----------
@@ -113,6 +114,9 @@ class Controller(object):
             See attribute of same name.
         on_background_state_change : function, optional
             See attribute of same name.
+        seconds_before_free : int
+            The number of seconds between a board being freed and it becoming
+            available again
         """
         # The next job ID to assign
         self._next_id = next_id
@@ -123,7 +127,8 @@ class Controller(object):
         # allocation of all jobs.
         self._job_queue = JobQueue(self._job_queue_on_allocate,
                                    self._job_queue_on_free,
-                                   self._job_queue_on_cancel)
+                                   self._job_queue_on_cancel,
+                                   seconds_before_free)
 
         # The machines available.
         # {name: Machine, ...}
@@ -960,6 +965,12 @@ class Controller(object):
                     # Job timed out, destroy it
                     self.destroy_job(None, job.id, "Job timed out.")
 
+    def check_free(self):
+        """ Check for freed machines that are now available
+        """
+        with self._lock:
+            self._job_queue.check_free()
+
     def _bmp_on_request_complete(self, job, what, success, reason=None):
         """ Callback function called by an AsyncBMPController when it completes
         a previously issued request.
@@ -1174,6 +1185,13 @@ class Controller(object):
                 self.stop()
                 raise
 
+    @property
+    def seconds_before_free(self):
+        return self._job_queue.seconds_before_free
+
+    @seconds_before_free.setter
+    def seconds_before_free(self, seconds_before_free):
+        self._job_queue.seconds_before_free = seconds_before_free
 
 class JobState(IntEnum):
     """ All the possible states that a job may be in.
