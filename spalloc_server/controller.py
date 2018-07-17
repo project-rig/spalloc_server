@@ -1193,6 +1193,7 @@ class Controller(object):
     def seconds_before_free(self, seconds_before_free):
         self._job_queue.seconds_before_free = seconds_before_free
 
+
 class JobState(IntEnum):
     """ All the possible states that a job may be in.
     """
