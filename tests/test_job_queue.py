@@ -424,6 +424,7 @@ def test_destroy_job(q, m, on_free, on_cancel):
     # If we free job 10 it should be cleanly removed and job 40 should be
     # started.
     q.destroy_job(10)
+    q.free(10)
     on_free.assert_called_once_with(10, None)
     on_free.reset_mock()
     time.sleep(0.1)
@@ -434,6 +435,7 @@ def test_destroy_job(q, m, on_free, on_cancel):
 
     # Finally, freeing the last job should succeed.
     q.destroy_job(40)
+    q.free(40)
     on_free.assert_called_once_with(40, None)
     on_free.reset_mock()
     assert list(q._machines[m].queue) == []

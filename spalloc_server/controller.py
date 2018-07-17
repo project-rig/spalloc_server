@@ -1006,6 +1006,8 @@ class Controller(object):
             assert job.bmp_requests_until_ready >= 0
             if job.bmp_requests_until_ready == 0:
                 job.state = JobState.ready
+                if job.id in self._retired_jobs:
+                    self._job_queue.free(job.id)
 
                 # Report state changes for jobs which are still running
                 if job.id in self._jobs:

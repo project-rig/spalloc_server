@@ -366,6 +366,7 @@ class JobQueue(object):
             for job in list(itervalues(self._jobs)):
                 if job.machine is machine:
                     self.destroy_job(job.id, "Machine removed.")
+                    self.free(job.id)
 
             # Remove the machine from service
             del self._machines[name]
@@ -442,18 +443,24 @@ class JobQueue(object):
         reason : str or None
             *Optional.* A human-readable reason that the job was destroyed.
         """
-        job = self._jobs.pop(job_id)
+        job = self._jobs.get(job_id)
 
         if job.pending:
             # Mark the job as no longer pending to prevent it being processed
             job.pending = False
             self.on_cancel(job.id, reason)
+            self._jobs.pop(job_id)
         else:
             # Job was allocated somewhere, deallocate it
-            job.machine.allocator.free(job.allocation_id)
             self.on_free(job.id, reason)
 
         self._process_queue()
+
+    def free(self, job_id):
+        if job_id in self._jobs:
+            job = self._jobs.pop(job_id)
+            job.machine.allocator.free(job.allocation_id)
+            self._process_queue()
 
     def check_free(self):
         """ Check for freed machines that are now available

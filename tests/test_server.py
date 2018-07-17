@@ -736,9 +736,11 @@ def test_job_notifications(fast_keepalive_config, s):
                 c0.call("destroy_job", job_id0)
                 assert c0.get_notification() == {"jobs_changed": [job_id0]}
                 assert c1.get_notification() == {"jobs_changed": [job_id0]}
-                time.sleep(0.5)
+
+            time.sleep(0.5)
+            with s._controller._bmp_controllers["m"][(0, 0)].handler_lock:
                 assert c1.get_notification() == {"jobs_changed": [job_id1]}
-            assert c1.get_notification() == {"jobs_changed": [job_id1]}
+                assert c1.get_notification() == {"jobs_changed": [job_id1]}
 
 
 @pytest.mark.timeout(1.0)

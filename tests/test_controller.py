@@ -1062,11 +1062,14 @@ def test_changed_jobs(conn, m):
     assert conn.changed_jobs == set([job_id1])
     assert conn.changed_jobs == set()
 
+    # Job freed, another job un-queued but awaiting power-on
+    conn.destroy_job(None, job_id0)
+
+    # Sleep to allow job to process
+    time.sleep(0.2)
+
     with controller.handler_lock:
-        # Job freed, another job un-queued but awaiting power-on
-        conn.destroy_job(None, job_id0)
-        # Sleep then update free
-        time.sleep(0.1)
+        # Update free and check
         conn.check_free()
         assert conn.changed_jobs == set([job_id0, job_id1])
         assert conn.changed_jobs == set()
