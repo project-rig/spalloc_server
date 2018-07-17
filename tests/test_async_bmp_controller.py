@@ -121,11 +121,11 @@ def test_set_power(abc, bc, power_side_effect, success):
     bc.power_off.reset_mock()
 
     e = OnDoneEvent()
-    abc.set_power(11, True, e)
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
     bc.read_fpga_register.side_effect = mock_read_fpga_register
     bc.read_bmp_version.side_effect = mock_read_bmp_version
+    abc.set_power(11, True, e)
     e.wait()
     assert e.success is success
     bc.power_on.assert_called_once_with(boards=[11], frame=0, cabinet=0)
