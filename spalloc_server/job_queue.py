@@ -443,8 +443,8 @@ class JobQueue(object):
             self.on_cancel(job.id, reason)
         else:
             # Job was allocated somewhere, deallocate it
-            job.machine.allocator.free(job.allocation_id)
             self.on_free(job.id, reason)
+            job.machine.allocator.free(job.allocation_id)
 
         self._process_queue()
 
