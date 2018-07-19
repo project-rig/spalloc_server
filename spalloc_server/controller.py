@@ -1033,6 +1033,8 @@ class Controller(object):
             for xyz in job.boards:
                 c, f, b = machine.board_locations[xyz]
                 controller = controllers[(c, f)]
+                job_log.info("set_power(%s, %s) on BMP %s for job %s",
+                             b, power, controller.hostname, job.id)
                 frame_commands[controller].append(
                     partial(controller.set_power, b, power, on_done_b))
 
@@ -1042,6 +1044,9 @@ class Controller(object):
                 for x, y, z, link in job.periphery:
                     c, f, b = machine.board_locations[(x, y, z)]
                     controller = controllers[(c, f)]
+                    job_log.info(
+                        "set_link_enable(%s, %s, %s) on BMP %s for job %s",
+                        b, link, link_enable, controller.hostname, job.id)
                     frame_commands[controller].append(
                         partial(controller.set_link_enable,
                                 b, link, link_enable, on_done_l))

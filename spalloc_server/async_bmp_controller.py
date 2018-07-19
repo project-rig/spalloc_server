@@ -338,6 +338,10 @@ class AsyncBMPController(object):
             # Otherwise return just the next request
             return self._requests.popleft()
 
+    @property
+    def hostname(self):
+        return self._hostname
+
 
 class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
     """ Requests that a specific board should have its power state set to a
