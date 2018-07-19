@@ -327,7 +327,9 @@ class AsyncBMPController(object):
                 state = self._requests[0].state
                 boards = list()
                 on_done = []
-                while self._requests and self._requests[0].state == state:
+                while (self._requests and
+                       isinstance(self._requests[0], _PowerRequest) and
+                       self._requests[0].state == state):
                     request = self._requests.popleft()
                     boards.append(request.board)
                     on_done.append(request.on_done)
