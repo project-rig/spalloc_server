@@ -249,7 +249,7 @@ def test_set_link_enable_blocks(abc, bc):
 
 
 @pytest.mark.timeout(1.0)
-def test_power_priority(abc, bc):
+def test_power_no_priority(abc, bc):
     # Make sure that power queue has higher priority
     power_on_event = threading.Event()
     power_off_event = threading.Event()
@@ -257,6 +257,7 @@ def test_power_priority(abc, bc):
     bc.power_on.side_effect = (lambda *a, **k: power_on_event.wait(1.0))
     bc.power_off.side_effect = (lambda *a, **k: power_off_event.wait(1.0))
     bc.write_fpga_register.side_effect = (lambda *a, **k: link_event.wait(1.0))
+    bc.read_fpga_register.side_effect = mock_read_fpga_register
     bc.read_bmp_version.side_effect = mock_read_bmp_version
 
     with abc:
@@ -280,6 +281,20 @@ def test_power_priority(abc, bc):
     e1.wait(1.0)
 
     # Block for a short time to ensure background thread gets chance to execute
+    assert e2.wait(0.1) is False
+
+    # We should be sure the power command is blocking on the BMP call
+    assert len(bc.power_on.mock_calls) == 0
+    assert len(bc.power_off.mock_calls) == 0
+    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=11,
+                                                   frame=0, cabinet=0)
+    bc.write_fpga_register.reset_mock()
+
+    # Make BMP call complete and the last event finish
+    link_event.set()
+    e2.wait(1.0)
+
+    # Block for a short time to ensure background thread gets chance to execute
     assert e3.wait(0.1) is False
 
     # Make sure just the power command has been called a second time (and not
@@ -292,19 +307,6 @@ def test_power_priority(abc, bc):
     # Let the second power command complete
     power_off_event.set()
     e3.wait(1.0)
-
-    # Block for a short time to ensure background thread gets chance to execute
-    assert e2.wait(0.1) is False
-
-    # We should be sure the power command is blocking on the BMP call
-    assert len(bc.power_on.mock_calls) == 0
-    assert len(bc.power_off.mock_calls) == 0
-    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=11,
-                                                   frame=0, cabinet=0)
-
-    # Make BMP call complete and the last event finish
-    link_event.set()
-    e2.wait(1.0)
 
 
 @pytest.mark.timeout(1.0)
