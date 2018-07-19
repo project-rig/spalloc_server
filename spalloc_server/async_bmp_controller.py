@@ -67,11 +67,8 @@ class AsyncBMPController(object):
         # required.
         self._requests_pending = threading.Event()
 
-        # A queue of power change states
-        self._power_requests = deque()
-
-        # A queue of link-enabled state changes
-        self._link_requests = deque()
+        # A queue of requests to be done
+        self._requests = deque()
 
         self._thread = threading.Thread(
             target=self._run,
@@ -108,14 +105,15 @@ class AsyncBMPController(object):
             assert not self._stop
 
             # Enqueue the request
-            self._power_requests.append(_PowerRequest(state, board, on_done))
+            self._requests.append(_PowerRequest(state, board, on_done))
             self._requests_pending.set()
 
             # Cancel any existing link enable commands for this board
             cancelled = []
-            for request in list(self._link_requests):
-                if request.board == board:
-                    self._link_requests.remove(request)
+            for request in list(self._requests):
+                if (isinstance(request, _LinkRequest) and
+                        request.board == board):
+                    self._requests.remove(request)
                     cancelled.append(request)
 
         for request in cancelled:
@@ -144,7 +142,7 @@ class AsyncBMPController(object):
             assert not self._stop
 
             # Enqueue the request
-            self._link_requests.append(
+            self._requests.append(
                 _LinkRequest(board, link, enable, on_done))
             self._requests_pending.set()
 
@@ -269,37 +267,30 @@ class AsyncBMPController(object):
             while True:
                 self._requests_pending.wait()
 
-                # Priority 0: Power commands
-                power_request = self._get_atomic_power_request()
-                if power_request:
-                    # Send the power command
-                    success, reason = self._set_board_state(
-                        power_request.state, power_request.board)
+                request = self._get_atomic_request()
+                if request:
+                    if isinstance(request, _PowerRequest):
+                        # Send the power command
+                        success, reason = self._set_board_state(
+                            request.state, request.board)
 
-                    # Alert all waiting threads
-                    for on_done in power_request.on_done:
-                        on_done(success, reason)
+                        # Alert all waiting threads
+                        for on_done in request.on_done:
+                            on_done(success, reason)
 
-                    continue
+                    if isinstance(request, _LinkRequest):
+                        # Set the link state, as required
+                        success, reason = self._set_link_state(
+                            request.link, request.enable, request.board)
 
-                # Priority 1: Link enable/disable commands
-                link_request = self._get_atomic_link_request()
-                if link_request:
-                    # Set the link state, as required
-                    success, reason = self._set_link_state(
-                        link_request.link, link_request.enable,
-                        link_request.board)
-
-                    # Alert waiting thread
-                    link_request.on_done(success, reason)
-
+                        # Alert waiting thread
+                        request.on_done(success, reason)
                     continue
 
                 # If nothing left in the queues, clear the request flag and
                 # break out of queue-processing loop.
                 with self._lock:
-                    if (not self._power_requests and  # pragma: no branch
-                            not self._link_requests):
+                    if not self._requests:
                         self._requests_pending.clear()
 
                         # If we've been told to stop, actually stop the thread
@@ -315,38 +306,35 @@ class AsyncBMPController(object):
                 self._stop = True
             raise
 
-    def _get_atomic_power_request(self):
-        """ If any power requests are outstanding, return a (boards, state)\
-            tuple which combines as many of the requests at the head of the\
-            queue as possible.
+    def _get_atomic_request(self):
+        """ Gets the next request or requests from the queue.
+            If the next outstanding request is a power request, return a \
+            _PowerRequest which combines as many of the requests at\
+            the head of the queue as possible.
+            If the next outstanding request is a link request, return it
 
-        :rtype: :py:class:`._PowerRequest` or None
+        :rtype: :py:class:`._PowerRequest`, :py:class:`._LinkRequest` or None
         """
         with self._lock:
             # Special case: no requests
-            if not self._power_requests:
+            if not self._requests:
                 return None
 
-            # Otherwise, accumulate as many boards as possible
-            state = self._power_requests[0].state
-            boards = list()
-            on_done = []
-            while (self._power_requests and
-                   self._power_requests[0].state == state):
-                request = self._power_requests.popleft()
-                boards.append(request.board)
-                on_done.append(request.on_done)
-            return _PowerRequest(state, boards, on_done)
+            # If the next request is a power request
+            if isinstance(self._requests[0], _PowerRequest):
 
-    def _get_atomic_link_request(self):
-        """ Pop the next link state change request, if one exists.
+                # Accumulate as many boards as possible
+                state = self._requests[0].state
+                boards = list()
+                on_done = []
+                while self._requests and self._requests[0].state == state:
+                    request = self._requests.popleft()
+                    boards.append(request.board)
+                    on_done.append(request.on_done)
+                return _PowerRequest(state, boards, on_done)
 
-        :rtype: :py:class:`._LinkRequest` or None
-        """
-        with self._lock:
-            if not self._link_requests:
-                return None
-            return self._link_requests.popleft()
+            # Otherwise return just the next request
+            return self._requests.popleft()
 
 
 class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
