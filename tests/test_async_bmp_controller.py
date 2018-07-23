@@ -2,6 +2,7 @@ from .mocker import Mock, call
 import pytest
 import threading
 
+from spalloc_server import async_bmp_controller
 from spalloc_server.async_bmp_controller import AsyncBMPController
 from spalloc_server.links import Links
 from .mock_bmp import MockBMP, SCPVerMessage
@@ -111,13 +112,18 @@ def mock_read_bmp_version(board, frame, cabinet):
 def test_set_power(abc, bc, power_side_effect, success):
     # Make sure that the set power command works (and failure is reported)
     e = OnDoneEvent()
+    async_bmp_controller._SECONDS_BETWEEN_RETRIES = 0.1
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
     abc.set_power(10, False, e)
     e.wait()
     assert e.success is success
     assert len(bc.power_on.mock_calls) == 0
-    bc.power_off.assert_called_once_with(boards=[10], frame=0, cabinet=0)
+    expected_calls = [call(boards=[10], frame=0, cabinet=0)]
+    if isinstance(power_side_effect, Exception):
+        expected_calls.append(call(boards=[10], frame=0, cabinet=0))
+    bc.power_off.assert_has_calls(expected_calls)
+
     bc.power_off.reset_mock()
 
     e = OnDoneEvent()
@@ -128,7 +134,10 @@ def test_set_power(abc, bc, power_side_effect, success):
     bc.read_bmp_version.side_effect = mock_read_bmp_version
     e.wait()
     assert e.success is success
-    bc.power_on.assert_called_once_with(boards=[11], frame=0, cabinet=0)
+    expected_calls = [call(boards=[11], frame=0, cabinet=0)]
+    if isinstance(power_side_effect, Exception):
+        expected_calls.append(call(boards=[11], frame=0, cabinet=0))
+    bc.power_on.assert_has_calls(expected_calls)
     bc.power_on.reset_mock()
     assert len(bc.power_off.mock_calls) == 0
 
@@ -161,6 +170,7 @@ def test_set_power_blocks(abc, bc):
                           (IOError("Fail."), False)])
 def test_set_power_merge(abc, bc, power_side_effect, success):
     bc.power_off.side_effect = power_side_effect
+    async_bmp_controller._SECONDS_BETWEEN_RETRIES = 0.1
 
     # Make sure we can queue up several power commands which will get merged
     # (and any errors duplicated).
@@ -174,13 +184,16 @@ def test_set_power_merge(abc, bc, power_side_effect, success):
         event.wait()
         assert event.success is success
 
-    bc.power_off.assert_called_once_with(boards=[10, 11, 13], frame=0,
-                                         cabinet=0)
+    expected_calls = [call(boards=[10, 11, 13], frame=0, cabinet=0)]
+    if isinstance(power_side_effect, Exception):
+        expected_calls.append(call(boards=[10, 11, 13], frame=0, cabinet=0))
+    bc.power_off.assert_has_calls(expected_calls)
 
 
 @pytest.mark.timeout(1.0)
 def test_set_power_dont_merge(abc, bc):
     # Make sure power commands are only merged with those of the same type
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
     events = [OnDoneEvent() for _ in range(3)]
     with abc:
         abc.set_power(10, False, events[0])
@@ -215,13 +228,16 @@ def test_set_link_enable(abc, bc, link, fpga, addr, enable, value,
                          side_effect, success):
     # Make sure that the set link command works (and failure is reported)
     e = OnDoneEvent()
+    async_bmp_controller._SECONDS_BETWEEN_RETRIES = 0.1
     bc.write_fpga_register.side_effect = side_effect
     bc.read_bmp_version.side_effect = mock_read_bmp_version
     abc.set_link_enable(10, link, enable, e)
     e.wait()
     assert e.success is success
-    bc.write_fpga_register.assert_called_once_with(fpga, addr, value, board=10,
-                                                   frame=0, cabinet=0)
+    expected = [call(fpga, addr, value, board=10, frame=0, cabinet=0)]
+    if isinstance(side_effect, Exception):
+        expected.append(call(fpga, addr, value, board=10, frame=0, cabinet=0))
+    bc.write_fpga_register.assert_has_calls(expected)
     bc.write_fpga_register.reset_mock()
 
 
