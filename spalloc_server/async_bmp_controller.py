@@ -11,11 +11,18 @@ from spinnman.model import BMPConnectionData
 from spinnman.constants import SCP_SCAMP_PORT
 
 from .links import Links
+from six import reraise
+import sys
+import time
 
 # The first BMP version with FPGA register support
 _BMP_VER_MIN = 2
 
 _N_FPGA_RETRIES = 3
+
+_N_POWER_LINK_RETRIES = 1
+
+_SECONDS_BETWEEN_RETRIES = 15
 
 
 class AsyncBMPController(object):
@@ -172,14 +179,31 @@ class AsyncBMPController(object):
                 fpga, board, self._hostname, fpga_id & _FPGA_FLAG_ID_MASK)
         return ok
 
+    def _power_board(self, boards, power):
+        n_retries = _N_POWER_LINK_RETRIES
+        while n_retries >= 0:
+            try:
+                if power:
+                    self._transceiver.power_on(
+                        boards=boards, frame=0, cabinet=0)
+                else:
+                    self._transceiver.power_off(
+                        boards=boards, frame=0, cabinet=0)
+                return
+            except Exception:
+                if n_retries == 0:
+                    reraise(*sys.exc_info())
+                logging.exception("Retry power command")
+                n_retries -= 1
+                time.sleep(_SECONDS_BETWEEN_RETRIES)
+
     def _boot_board(self, boards):
         # FPGAs are checked after power on - assume incorrect to start
         boards_to_power = boards
         for _try in range(_N_FPGA_RETRIES):
             # Power on - note don't need to power off if in subsequent
             # run of the loop as the BMP handles this correctly
-            self._transceiver.power_on(
-                boards=boards_to_power, frame=0, cabinet=0)
+            self._power_board(boards_to_power, power=True)
 
             # Check if the FPGA number is correct on each FPGA
             retry_boards = []
@@ -219,7 +243,7 @@ class AsyncBMPController(object):
                 self._boot_board(board)
             # If powering off...
             else:
-                self._transceiver.power_off(boards=board, frame=0, cabinet=0)
+                self._power_board(board, power=False)
             return True, None
         except Exception:
             reason = \
@@ -248,8 +272,18 @@ class AsyncBMPController(object):
                 return True, None
 
             fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
-            self._transceiver.write_fpga_register(
-                fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
+            n_retries = _N_POWER_LINK_RETRIES
+            while n_retries >= 0:
+                try:
+                    self._transceiver.write_fpga_register(
+                        fpga, addr, int(not enable), board=board, frame=0,
+                        cabinet=0)
+                except Exception:
+                    if n_retries == 0:
+                        reraise(*sys.exc_info())
+                    logging.exception("Retry link command")
+                    n_retries -= 1
+                    time.sleep(_SECONDS_BETWEEN_RETRIES)
             return True, None
         except Exception:
             reason = "Failed to set link state on BMP {}, board {}, link {},"\
