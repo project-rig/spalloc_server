@@ -278,13 +278,13 @@ class AsyncBMPController(object):
                     self._transceiver.write_fpga_register(
                         fpga, addr, int(not enable), board=board, frame=0,
                         cabinet=0)
+                    return True, None
                 except Exception:
                     if n_retries == 0:
                         reraise(*sys.exc_info())
                     logging.exception("Retry link command")
                     n_retries -= 1
                     time.sleep(_SECONDS_BETWEEN_RETRIES)
-            return True, None
         except Exception:
             reason = "Failed to set link state on BMP {}, board {}, link {},"\
                 " enable={}.".format(self._hostname, board, link, enable)
