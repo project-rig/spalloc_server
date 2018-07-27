@@ -11,13 +11,16 @@ from spinnman.model import BMPConnectionData
 from spinnman.constants import SCP_SCAMP_PORT
 
 from .links import Links
+import time
 
 # The first BMP version with FPGA register support
 _BMP_VER_MIN = 2
 
 _N_FPGA_RETRIES = 3
 
-_N_REQUEST_TRIES = 1
+_N_REQUEST_TRIES = 2
+
+_SECONDS_BETWEEN_TRIES = 15
 
 
 class AsyncBMPController(object):
@@ -209,13 +212,17 @@ class AsyncBMPController(object):
                             break
                         except Exception as e:
                             if (n_tries + 1) == _N_REQUEST_TRIES:
-                                reason = "Request failed on BMP {}".format(
+                                reason = "Requests failed on BMP {}".format(
                                     self._hostname)
                                 logging.exception(reason + ": " + str(e))
                                 request.on_done(False, reason)
                                 break
-                            logging.exception("Retrying request on BMP {}: {}"
-                                              .format(self._hostname, str(e)))
+                            logging.exception(
+                                "Retrying requests on BMP {} after {}"
+                                " seconds: {}".format(
+                                    self._hostname, _SECONDS_BETWEEN_TRIES,
+                                    str(e)))
+                            time.sleep(_SECONDS_BETWEEN_TRIES)
 
                 # If nothing left in the queues, clear the request flag and
                 # break out of queue-processing loop.

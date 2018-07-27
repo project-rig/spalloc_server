@@ -4,6 +4,7 @@ import threading
 
 from spalloc_server.async_bmp_controller import AsyncBMPController,\
     AtomicRequests
+from spalloc_server import async_bmp_controller
 from spalloc_server.links import Links
 from .mock_bmp import MockBMP, SCPVerMessage
 
@@ -13,6 +14,7 @@ def abc():
     """Make an AsyncBMPController and stop it at the end."""
     bmp = MockBMP(responses=[SCPVerMessage(0, 0, b"2.1.0")])
     bmp.start()
+    async_bmp_controller._SECONDS_BETWEEN_TRIES = 0.1
     abc = AsyncBMPController("localhost")
     yield abc
     print("Stopping")
@@ -73,6 +75,7 @@ def test_start_and_stop(on_thread_start):
     # Make sure that if a BMP controller is started, we can stop it immediately
     bmp = MockBMP(responses=[SCPVerMessage(0, 0, b"2.1.0")])
     bmp.start()
+    async_bmp_controller._SECONDS_BETWEEN_TRIES = 0.1
     try:
         abc = AsyncBMPController("localhost", on_thread_start=on_thread_start)
         assert abc._stop is False
@@ -123,14 +126,14 @@ def test_set_power(abc, bc, power_side_effect, success):
     bc.power_off.assert_called_with(boards=[10], frame=0, cabinet=0)
     bc.power_off.reset_mock()
 
-    e = OnDoneEvent()
-    requests = AtomicRequests(e)
-    requests.power(11, True)
-    abc.add_requests(requests)
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
     bc.read_fpga_register.side_effect = mock_read_fpga_register
     bc.read_bmp_version.side_effect = mock_read_bmp_version
+    e = OnDoneEvent()
+    requests = AtomicRequests(e)
+    requests.power(11, True)
+    abc.add_requests(requests)
     e.wait()
     assert e.success is success
     bc.power_on.assert_called_with(boards=[11], frame=0, cabinet=0)
@@ -234,8 +237,8 @@ def test_set_link_enable(abc, bc, link, fpga, addr, enable, value,
     abc.add_requests(requests)
     e.wait()
     assert e.success is success
-    bc.write_fpga_register.assert_called_once_with(fpga, addr, value, board=10,
-                                                   frame=0, cabinet=0)
+    bc.write_fpga_register.assert_called_with(fpga, addr, value, board=10,
+                                              frame=0, cabinet=0)
     bc.write_fpga_register.reset_mock()
 
 
@@ -256,8 +259,8 @@ def test_set_link_enable_blocks(abc, bc):
     assert done_event.wait(0.1) is False
 
     # We should be sure the power command is blocking on the BMP call
-    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=10,
-                                                   frame=0, cabinet=0)
+    bc.write_fpga_register.assert_called_with(0, 0x5C, False, board=10,
+                                              frame=0, cabinet=0)
 
     # When the BMP call completes, so should the done_event!
     event.set()
@@ -289,7 +292,7 @@ def test_atomic_order(abc, bc):
     assert event.wait(0.1) is False
 
     # Make sure just the power command has been called
-    bc.power_on.assert_called_once_with(boards=[10], frame=0, cabinet=0)
+    bc.power_on.assert_called_with(boards=[10], frame=0, cabinet=0)
     bc.power_on.reset_mock()
     assert len(bc.power_off.mock_calls) == 0
     assert len(bc.write_fpga_register.mock_calls) == 0
@@ -303,8 +306,8 @@ def test_atomic_order(abc, bc):
     # We should be sure the power command is blocking on the BMP call
     assert len(bc.power_on.mock_calls) == 0
     assert len(bc.power_off.mock_calls) == 0
-    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=11,
-                                                   frame=0, cabinet=0)
+    bc.write_fpga_register.assert_called_with(0, 0x5C, False, board=11,
+                                              frame=0, cabinet=0)
     bc.write_fpga_register.reset_mock()
 
     # Make BMP call complete and the last event finish
@@ -315,7 +318,7 @@ def test_atomic_order(abc, bc):
 
     # Make sure just the power command has been called a second time (and not
     # the link setting command)
-    bc.power_off.assert_called_once_with(boards=[12], frame=0, cabinet=0)
+    bc.power_off.assert_called_with(boards=[12], frame=0, cabinet=0)
     bc.power_off.reset_mock()
     assert len(bc.power_on.mock_calls) == 0
     assert len(bc.write_fpga_register.mock_calls) == 0
