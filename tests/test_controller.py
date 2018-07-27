@@ -349,7 +349,7 @@ def test_create_job(conn, m):
         assert conn._jobs[job_id1].keepalive == 60.0
 
         # BMPs should have been told to power-on
-        assert all(requests.power_on_boards == range(3)
+        assert all(set(requests.power_on_boards) == set(range(3))
                    for requests in controller.add_requests_calls)
 
         # Links around the allocation should have been disabled
