@@ -13,6 +13,7 @@ from spalloc_server.configuration import Machine
 from spalloc_server.controller import Controller, JobState
 from spalloc_server.links import Links
 from .common import simple_machine
+from spalloc_server.async_bmp_controller import AtomicRequests
 
 pytestmark = pytest.mark.usefixtures("mock_abc")
 
@@ -85,11 +86,12 @@ def test_mock_abc(mock_abc, expected_success):
 
     with abc:
         # If made atomically, should all fire at the end...
-        abc.set_power(None, None, cb)
-        abc.set_link_enable(None, None, None, cb)
+        requests = AtomicRequests(cb)
+        requests.power(None, None)
+        requests.link(None, None, None)
+        abc.add_requests(requests)
 
-        assert abc.set_power_calls == [(None, None, cb)]
-        assert abc.set_link_enable_calls == [(None, None, None, cb)]
+        assert abc.add_requests_calls == [requests]
 
         # Make sure the background thread gets some execution time
         time.sleep(0.05)
@@ -99,9 +101,8 @@ def test_mock_abc(mock_abc, expected_success):
     # Make sure the background thread gets some execution time
     time.sleep(0.05)
 
-    assert len(threads) == 2
+    assert len(threads) == 1
     assert threads[0] != threading.current_thread()
-    assert threads[1] != threading.current_thread()
 
     abc.stop()
     abc.join()
@@ -348,16 +349,17 @@ def test_create_job(conn, m):
         assert conn._jobs[job_id1].keepalive == 60.0
 
         # BMPs should have been told to power-on
-        assert all(_s is True for _b, _s, _f in controller.set_power_calls)
-        assert set(_b for _b, _s, _f in controller.set_power_calls) \
-            == set(range(3))
+        assert all(requests.power_on_boards == range(3)
+                   for requests in controller.add_requests_calls)
 
         # Links around the allocation should have been disabled
         assert all(_e is False
-                   for _b, _l, _e, _f in controller.set_link_enable_calls)
+                   for requests in controller.add_requests_calls
+                   for _b, _l, _e in requests.link_requests)
         assert (  # pragma: no branch
             set((_b, _l)
-                for _b, _l, _e, _f in controller.set_link_enable_calls) ==
+                for requests in controller.add_requests_calls
+                for _b, _l, _e in requests.link_requests) ==
             set((_b, _l)
                 for _b in range(3) for _l in Links
                 if board_down_link(0, 0, _b, _l, 1, 2)[:2] != (0, 0))
@@ -508,22 +510,23 @@ def test_power_on_job_boards(conn, m):
     time.sleep(0.05)
 
     controller = conn._bmp_controllers[m][(0, 0)]
-    controller.set_power_calls = []
-    controller.set_link_enable_calls = []
+    controller.add_requests_calls = []
 
     conn.power_on_job_boards(None, job_id)
 
+    # Should make a request
+    assert len(controller.add_requests_calls) == 1
+    requests = controller.add_requests_calls[0]
+
     # Should power cycle
-    assert len(controller.set_power_calls) == 1
-    assert controller.set_power_calls[0][0] == 0
-    assert controller.set_power_calls[0][1] is True
+    assert requests.power_on_boards == [0]
 
     # Should re-set up the links
-    assert len(controller.set_link_enable_calls) == 6
+    assert len(requests.link_requests) == 6
     assert all(
-        e is False for _b, _l, e, _f in controller.set_link_enable_calls)
+        e is False for _b, _l, e in requests.link_requests)
     assert (  # pragma: no branch
-        set((0, _l) for _b, _l, e, _f in controller.set_link_enable_calls) ==
+        set((0, _l) for _b, _l, e in requests.link_requests) ==
         set((0, _l) for _l in Links)
     )
 
@@ -542,18 +545,19 @@ def test_power_off_job_boards(conn, m):
     time.sleep(0.05)
 
     controller = conn._bmp_controllers[m][(0, 0)]
-    controller.set_power_calls = []
-    controller.set_link_enable_calls = []
+    controller.add_requests_calls = []
 
     conn.power_off_job_boards(None, job_id)
 
+    # Should add a request
+    assert len(controller.add_requests_calls) == 1
+    requests = controller.add_requests_calls[0]
+
     # Should power cycle
-    assert len(controller.set_power_calls) == 1
-    assert controller.set_power_calls[0][0] == 0
-    assert controller.set_power_calls[0][1] is False
+    assert requests.power_off_boards == [0]
 
     # Should not touch the links
-    assert len(controller.set_link_enable_calls) == 0
+    assert len(requests.link_requests) == 0
 
     # Shouldn't crash for non-existent job
     conn.power_off_job_boards(None, 1234)
@@ -570,10 +574,8 @@ def test_destroy_job(conn, m):
     job_id1 = conn.create_job(None, 1, 2, owner="me", keepalive=60.0)
     job_id2 = conn.create_job(None, 1, 2, owner="me", keepalive=60.0)
 
-    controller0.set_power_calls = []
-    controller1.set_power_calls = []
-    controller0.set_link_enable_calls = []
-    controller1.set_link_enable_calls = []
+    controller0.add_requests_calls = []
+    controller1.add_requests_calls = []
 
     # Should be able to kill queued jobs (and reasons should be prefixed to
     # indicate the job never started)
@@ -582,10 +584,8 @@ def test_destroy_job(conn, m):
     assert conn.get_job_state(None, job_id2).reason == "Cancelled: Because."
 
     # ...without powering anything down
-    assert controller0.set_power_calls == []
-    assert controller1.set_power_calls == []
-    assert controller0.set_link_enable_calls == []
-    assert controller1.set_link_enable_calls == []
+    assert controller0.add_requests_calls == []
+    assert controller1.add_requests_calls == []
 
     # Should be able to kill live jobs
     conn.destroy_job(None, job_id1, reason="Because you too.")
@@ -593,14 +593,16 @@ def test_destroy_job(conn, m):
     assert conn.get_job_state(None, job_id1).reason == "Because you too."
 
     # ...powering anything down that was in use
-    assert len(controller0.set_power_calls) == 3
-    assert len(controller1.set_power_calls) == 3
-    assert all(s is False for _b, s, _f in controller0.set_power_calls)
-    assert all(s is False for _b, s, _f in controller1.set_power_calls)
-    assert set(b for b, s, _ in controller0.set_power_calls) == set(range(3))
-    assert set(b for b, s, _ in controller1.set_power_calls) == set(range(3))
-    assert controller0.set_link_enable_calls == []
-    assert controller1.set_link_enable_calls == []
+    assert len(controller0.add_requests_calls) == 1
+    assert len(controller1.add_requests_calls) == 1
+    assert len(controller0.add_requests_calls[0].power_on_boards) == 0
+    assert len(controller1.add_requests_calls[0].power_on_boards) == 0
+    assert (set(controller0.add_requests_calls[0].power_off_boards) ==
+            set(range(3)))
+    assert (set(controller1.add_requests_calls[0].power_off_boards) ==
+            set(range(3)))
+    assert controller0.add_requests_calls[0].link_requests == []
+    assert controller1.add_requests_calls[0].link_requests == []
 
     # Shouldn't fail on bad job ids
     conn.destroy_job(None, 1234)
@@ -916,7 +918,7 @@ def test_bmp_on_request_complete(mock_abc, conn, m,
                     None, job_id).state == JobState.unknown
             else:
                 assert conn.get_job_state(None, job_id).state == mid_state
-            conn._bmp_on_request_complete(job, "mock", success)
+            conn._bmp_on_request_complete(job, success)
 
         assert conn.get_job_state(None, job_id).state == end_state
 
@@ -931,8 +933,7 @@ def test_set_job_power_and_links(mock_abc, conn, m, power, link_enable):
     time.sleep(0.05)
 
     controller = conn._bmp_controllers[m][(0, 0)]
-    controller.set_power_calls = []
-    controller.set_link_enable_calls = []
+    controller.add_requests_calls = []
 
     # Send the command while holding the lock to make sure we see the number of
     # BMP requests expected before a BMP gets chance to decrement the counter.
@@ -945,26 +946,26 @@ def test_set_job_power_and_links(mock_abc, conn, m, power, link_enable):
         assert job.power is power
 
         # Make sure the correct number of completions is requested
-        expected_requests = 1  # Power command always sent
-        if link_enable is not None:
-            expected_requests += 6
-        assert job.bmp_requests_until_ready == expected_requests
+        assert job.bmp_requests_until_ready == 1
 
         # Make sure the correct power commands were sent
-        assert len(controller.set_power_calls) == 1
-        assert controller.set_power_calls[0][0] == 0
-        assert controller.set_power_calls[0][1] == power
+        assert len(controller.add_requests_calls) == 1
+        if power:
+            assert controller.add_requests_calls[0].power_on_boards == [0]
+        else:
+            assert controller.add_requests_calls[0].power_off_boards == [0]
 
         if link_enable is not None:
-            assert len(controller.set_link_enable_calls) == 6
-            assert all(b == 0 for b, l, e, _ in
-                       controller.set_link_enable_calls)
-            assert all(e is link_enable for b, l, e, _ in
-                       controller.set_link_enable_calls)
-            assert set(l for b, l, e, _ in
-                       controller.set_link_enable_calls) == set(Links)
+            assert len(controller.add_requests_calls[0].link_requests) == 6
+            assert all(b == 0 for b, l, e in
+                       controller.add_requests_calls[0].link_requests)
+            assert all(e is link_enable for b, l, e in
+                       controller.add_requests_calls[0].link_requests)
+            assert set(l for b, l, e in
+                       controller.add_requests_calls[0].link_requests) ==\
+                set(Links)
         else:
-            assert len(controller.set_link_enable_calls) == 0
+            assert len(controller.add_requests_calls[0].link_requests) == 0
 
 
 def test_pickle(mock_abc):

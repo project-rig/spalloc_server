@@ -2,7 +2,8 @@ from .mocker import Mock, call
 import pytest
 import threading
 
-from spalloc_server.async_bmp_controller import AsyncBMPController
+from spalloc_server.async_bmp_controller import AsyncBMPController,\
+    AtomicRequests
 from spalloc_server.links import Links
 from .mock_bmp import MockBMP, SCPVerMessage
 
@@ -113,22 +114,26 @@ def test_set_power(abc, bc, power_side_effect, success):
     e = OnDoneEvent()
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
-    abc.set_power(10, False, e)
+    requests = AtomicRequests(e)
+    requests.power(10, False)
+    abc.add_requests(requests)
     e.wait()
     assert e.success is success
     assert len(bc.power_on.mock_calls) == 0
-    bc.power_off.assert_called_once_with(boards=[10], frame=0, cabinet=0)
+    bc.power_off.assert_called_with(boards=[10], frame=0, cabinet=0)
     bc.power_off.reset_mock()
 
     e = OnDoneEvent()
-    abc.set_power(11, True, e)
+    requests = AtomicRequests(e)
+    requests.power(11, True)
+    abc.add_requests(requests)
     bc.power_on.side_effect = power_side_effect
     bc.power_off.side_effect = power_side_effect
     bc.read_fpga_register.side_effect = mock_read_fpga_register
     bc.read_bmp_version.side_effect = mock_read_bmp_version
     e.wait()
     assert e.success is success
-    bc.power_on.assert_called_once_with(boards=[11], frame=0, cabinet=0)
+    bc.power_on.assert_called_with(boards=[11], frame=0, cabinet=0)
     bc.power_on.reset_mock()
     assert len(bc.power_off.mock_calls) == 0
 
@@ -140,14 +145,16 @@ def test_set_power_blocks(abc, bc):
     bc.power_off.side_effect = (lambda *a, **k: event.wait())
 
     done_event = OnDoneEvent()
-    abc.set_power(10, False, done_event)
+    requests = AtomicRequests(done_event)
+    requests.power(10, False)
+    abc.add_requests(requests)
 
     # Block for a short time to ensure the background thread gets chance to
     # execute
     assert done_event.wait(0.1) is False
 
     # We should be sure the power command is blocking on the BMP call
-    bc.power_off.assert_called_once_with(boards=[10], frame=0, cabinet=0)
+    bc.power_off.assert_called_with(boards=[10], frame=0, cabinet=0)
 
     # When the BMP call completes, so should the done_event!
     event.set()
@@ -164,35 +171,40 @@ def test_set_power_merge(abc, bc, power_side_effect, success):
 
     # Make sure we can queue up several power commands which will get merged
     # (and any errors duplicated).
-    events = [OnDoneEvent() for _ in range(3)]
+    event = OnDoneEvent()
     with abc:
-        abc.set_power(10, False, events[0])
-        abc.set_power(11, False, events[1])
-        abc.set_power(13, False, events[2])
+        requests = AtomicRequests(event)
+        requests.power(10, False)
+        requests.power(11, False)
+        requests.power(13, False)
+        abc.add_requests(requests)
 
-    for event in events:
-        event.wait()
-        assert event.success is success
+    event.wait()
+    assert event.success is success
 
-    bc.power_off.assert_called_once_with(boards=[10, 11, 13], frame=0,
-                                         cabinet=0)
+    bc.power_off.assert_called_with(boards=[10, 11, 13], frame=0, cabinet=0)
 
 
 @pytest.mark.timeout(1.0)
 def test_set_power_dont_merge(abc, bc):
     # Make sure power commands are only merged with those of the same type
-    events = [OnDoneEvent() for _ in range(3)]
-    with abc:
-        abc.set_power(10, False, events[0])
-        abc.set_power(11, True, events[1])
-        abc.set_power(12, False, events[2])
+    bc.read_fpga_register.side_effect = mock_read_fpga_register
+    bc.read_bmp_version.side_effect = mock_read_bmp_version
 
-    for event in events:
-        event.wait()
+    event = OnDoneEvent()
+    with abc:
+        requests = AtomicRequests(event)
+        requests.power(10, False)
+        requests.power(11, True)
+        requests.power(12, False)
+        abc.add_requests(requests)
+
+    event.wait()
+
+    assert event.success
 
     assert bc.power_off.mock_calls == [
-        call(boards=[10], frame=0, cabinet=0),
-        call(boards=[12], frame=0, cabinet=0),
+        call(boards=[10, 12], frame=0, cabinet=0)
     ]
     assert bc.power_on.mock_calls == [
         call(boards=[11], frame=0, cabinet=0),
@@ -217,7 +229,9 @@ def test_set_link_enable(abc, bc, link, fpga, addr, enable, value,
     e = OnDoneEvent()
     bc.write_fpga_register.side_effect = side_effect
     bc.read_bmp_version.side_effect = mock_read_bmp_version
-    abc.set_link_enable(10, link, enable, e)
+    requests = AtomicRequests(e)
+    requests.link(10, link, enable)
+    abc.add_requests(requests)
     e.wait()
     assert e.success is success
     bc.write_fpga_register.assert_called_once_with(fpga, addr, value, board=10,
@@ -233,7 +247,9 @@ def test_set_link_enable_blocks(abc, bc):
     bc.read_bmp_version.side_effect = mock_read_bmp_version
 
     done_event = OnDoneEvent()
-    abc.set_link_enable(10, Links.east, True, done_event)
+    requests = AtomicRequests(done_event)
+    requests.link(10, Links.east, True)
+    abc.add_requests(requests)
 
     # Block for a short time to ensure the background thread gets chance to
     # execute
@@ -249,8 +265,8 @@ def test_set_link_enable_blocks(abc, bc):
 
 
 @pytest.mark.timeout(1.0)
-def test_power_no_priority(abc, bc):
-    # Make sure that power queue has higher priority
+def test_atomic_order(abc, bc):
+    # Make sure that requests are run in order
     power_on_event = threading.Event()
     power_off_event = threading.Event()
     link_event = threading.Event()
@@ -260,15 +276,17 @@ def test_power_no_priority(abc, bc):
     bc.read_fpga_register.side_effect = mock_read_fpga_register
     bc.read_bmp_version.side_effect = mock_read_bmp_version
 
+    event = OnDoneEvent()
+    requests = AtomicRequests(event)
     with abc:
-        e1, e2, e3 = (OnDoneEvent() for _ in range(3))
-        abc.set_power(10, True, e1)
-        abc.set_link_enable(11, Links.east, True, e2)
-        abc.set_power(12, False, e3)
+        requests.link(11, Links.east, True)
+        requests.power(12, False)
+        requests.power(10, True)
+        abc.add_requests(requests)
 
     # Block for a short time to ensure the background thread gets chance to
     # execute
-    assert e1.wait(0.1) is False
+    assert event.wait(0.1) is False
 
     # Make sure just the power command has been called
     bc.power_on.assert_called_once_with(boards=[10], frame=0, cabinet=0)
@@ -278,10 +296,9 @@ def test_power_no_priority(abc, bc):
 
     # Let the first power command complete
     power_on_event.set()
-    e1.wait(1.0)
 
     # Block for a short time to ensure background thread gets chance to execute
-    assert e2.wait(0.1) is False
+    assert event.wait(0.1) is False
 
     # We should be sure the power command is blocking on the BMP call
     assert len(bc.power_on.mock_calls) == 0
@@ -292,10 +309,9 @@ def test_power_no_priority(abc, bc):
 
     # Make BMP call complete and the last event finish
     link_event.set()
-    e2.wait(1.0)
 
     # Block for a short time to ensure background thread gets chance to execute
-    assert e3.wait(0.1) is False
+    assert event.wait(0.1) is False
 
     # Make sure just the power command has been called a second time (and not
     # the link setting command)
@@ -306,61 +322,25 @@ def test_power_no_priority(abc, bc):
 
     # Let the second power command complete
     power_off_event.set()
-    e3.wait(1.0)
-
-
-@pytest.mark.timeout(1.0)
-def test_power_removes_link_enables(abc, bc):
-    # Make sure link enable requests are removed for boards with newly added
-    # power commands.
-    bc.read_fpga_register.side_effect = mock_read_fpga_register
-    bc.read_bmp_version.side_effect = mock_read_bmp_version
-    with abc:
-        e1, e2, e3, e4 = (OnDoneEvent() for _ in range(4))
-        abc.set_power(10, True, e1)
-        abc.set_link_enable(10, Links.east, True, e2)
-        abc.set_link_enable(11, Links.east, True, e3)
-        abc.set_power(11, False, e4)
-
-    # Wait for the commands to complete
-    e1.wait()
-    e2.wait()
-    e3.wait()
-    e4.wait()
-
-    # All commands should have finished (but the link enable on board 11 should
-    # have failed)
-    assert e1.success is True
-    assert e2.success is True
-    assert e3.success is False
-    assert e4.success is True
-
-    # Make sure both power commands were sent
-    assert len(bc.power_on.mock_calls) == 1
-    assert len(bc.power_off.mock_calls) == 1
-
-    # But only one link command should be around
-    bc.write_fpga_register.assert_called_once_with(0, 0x5C, False, board=10,
-                                                   frame=0, cabinet=0)
+    event.wait(2.0)
 
 
 @pytest.mark.timeout(1.0)
 def test_stop_drains(abc, bc):
     # Make sure that the queues are emptied before the stop command is
     # processed
-    set_power_done = OnDoneEvent()
-    set_link_enable_done = OnDoneEvent()
+    event = OnDoneEvent()
     bc.read_bmp_version.side_effect = mock_read_bmp_version
     with abc:
-        abc.set_power(10, False, set_power_done)
-        abc.set_link_enable(11, Links.east, False, set_link_enable_done)
+        requests = AtomicRequests(event)
+        requests.power(10, False)
+        requests.link(11, Links.east, False)
+        abc.add_requests(requests)
         abc.stop()
 
     # Both of these should be carried out
-    set_power_done.wait()
-    set_link_enable_done.wait()
-    assert set_power_done.success is True
-    assert set_link_enable_done.success is True
+    event.wait(0.5)
+    assert event.success is True
 
     # And the loop should stop!
     abc.join()
