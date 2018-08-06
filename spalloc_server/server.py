@@ -343,10 +343,11 @@ class Server(PollingServerCore, ConfigurationReloader):
             self._disconnect_client(client)
             return
 
-        peer = client.getpeername()
-        self._client_buffers[client] += data
-
+        peer = "UNKNOWN"
         try:
+            peer = client.getpeername()
+            self._client_buffers[client] += data
+
             # Process any complete commands (whole lines)
             while b"\n" in self._client_buffers[client]:
                 line, _, self._client_buffers[client] = \
