@@ -238,15 +238,21 @@ class Server(PollingServerCore, ConfigurationReloader):
         except Exception:
             log.info("Client %s disconnected.", client)
 
-        # Clear input buffer
-        del self._client_buffers[client]
+        # Clear input buffer if created
+        if client in self._client_buffers:
+            del self._client_buffers[client]
 
         # Clear any watches
         self._client_job_watches.pop(client, None)
         self._client_machine_watches.pop(client, None)
 
         # Stop watching the client's socket for data
-        self.unregister_channel(client)
+        try:
+            self.unregister_channel(client)
+        except KeyError:
+            # The odd case of the unregistered client -
+            # this can be ignored as it wasn't registered anyway
+            pass
 
         # Disconnect the client
         client.close()
