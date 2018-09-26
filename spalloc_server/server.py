@@ -1,8 +1,8 @@
-"""A TCP server which exposes a public interface for allocating boards.
+""" A TCP server which exposes a public interface for allocating boards.
 
-This module is essentially the 'top level' module for the functionality of the
-SpiNNaker Partitioning Server, containing the :py:func:`function <.main>` which
-is mapped to the ``spalloc-server`` command-line tool.
+This module is essentially the 'top level' module for the functionality of the\
+SpiNNaker Partitioning Server, containing the :py:func:`function <.main>`\
+which is mapped to the ``spalloc-server`` command-line tool.
 """
 
 from argparse import ArgumentParser
@@ -24,8 +24,8 @@ from spalloc_server.configuration_reloader import ConfigurationReloader
 BUFFER_SIZE = 1024
 
 _COMMANDS = {}
-"""A dictionary from command names to (unbound) methods of the\
-:py:class:`.Server` class.
+""" A dictionary from command names to (unbound) methods of the\
+    :py:class:`.Server` class.
 """
 
 
@@ -226,7 +226,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         return result
 
     def _disconnect_client(self, client):
-        """Disconnect a client.
+        """ Disconnect a client.
 
         :param client: The client to disconnect
         :type client: :py:class:`socket.Socket`
@@ -509,7 +509,7 @@ class SpallocServer(Server):
 
     @spalloc_command
     def create_job(self, client, *args, **kwargs):
-        """Create a new job (i.e. allocation of boards).
+        """ Create a new job (i.e. allocation of boards).
 
         This function should be called in one of the following styles::
 
@@ -759,7 +759,7 @@ class SpallocServer(Server):
 
     @spalloc_command
     def notify_job(self, client, job_id=None):
-        """Register to be notified about changes to a specific job ID.
+        """ Register to be notified about changes to a specific job ID.
 
         Once registered, a client will be asynchronously be sent notifications\
         form ``{"jobs_changed": [job_id, ...]}\\n`` enumerating job IDs which\
@@ -783,7 +783,7 @@ class SpallocServer(Server):
 
     @spalloc_command
     def no_notify_job(self, client, job_id=None):
-        """Stop being notified about a specific job ID.
+        """ Stop being notified about a specific job ID.
 
         Once this command returns, no further notifications for the specified\
         ID will be received.
@@ -804,7 +804,7 @@ class SpallocServer(Server):
 
     @spalloc_command
     def notify_machine(self, client, machine_name=None):
-        """Register to be notified about a specific machine name.
+        """ Register to be notified about a specific machine name.
 
         Once registered, a client will be asynchronously be sent notifications\
         of the form ``{"machines_changed": [machine_name, ...]}\n``\
@@ -827,7 +827,7 @@ class SpallocServer(Server):
 
     @spalloc_command
     def no_notify_machine(self, client, machine_name=None):
-        """Unregister to be notified about a specific machine name.
+        """ Unregister to be notified about a specific machine name.
 
         Once this command returns, no further notifications for the specified\
         ID will be received.
@@ -1033,10 +1033,10 @@ class SpallocServer(Server):
 
 
 def main(args=None):
-    """Command-line launcher for the server.
+    """ Command-line launcher for the server.
 
     The server may be cleanly terminated using a keyboard interrupt (e.g.,\
-    ctrl+c), and may be told to reload its configuration via SIGHUP.
+    :kbd:`Ctrl+c`), and may be told to reload its configuration via `SIGHUP`.
 
     :param args: The command-line arguments passed to the program.
     """

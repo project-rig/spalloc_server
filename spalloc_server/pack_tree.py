@@ -1,14 +1,14 @@
-"""An algorithm/datastructure for allocating/packing rectangles into a fixed 2D
-space.
+""" An algorithm/datastructure for allocating/packing rectangles into a fixed\
+    2D space.
 
-This algorithm is used to allocate triads of boards in SpiNNaker systems but is
-otherwise a relatively generic 2D packing algorithm.
+This algorithm is used to allocate triads of boards in SpiNNaker systems but\
+is otherwise a relatively generic 2D packing algorithm.
 """
 from .area_to_rect import area_to_rect
 
 
 class PackTree(object):
-    r"""A tree-based datastructure for allocating/packing rectangles into a
+    r""" A tree-based datastructure for allocating/packing rectangles into a
     fixed 2D space.
 
     This tree structure is used to allocate/pack rectangular subregions of
@@ -19,7 +19,7 @@ class PackTree(object):
     """
 
     def __init__(self, x, y, width, height):
-        """Defines a region of which may be allocated and/or divided in two.
+        """ Defines a region of which may be allocated and/or divided in two.
 
         Parameters
         ----------
@@ -42,13 +42,13 @@ class PackTree(object):
         self.children = None
 
     def __contains__(self, xy):
-        """Test whether a coordinate is inside this region."""
+        """ Test whether a coordinate is inside this region."""
         x, y = xy
         return (self.x <= x < (self.x + self.width) and
                 self.y <= y < (self.y + self.height))
 
     def hsplit(self, y):
-        """Split this node along the X axis.
+        """ Split this node along the X axis.
 
         The bottom half of split will be just before the "y" position.
 
@@ -68,7 +68,7 @@ class PackTree(object):
             PackTree(self.x, y, self.width, self.height - (y - self.y)))
 
     def vsplit(self, x):
-        """Split this node along the Y axis.
+        """ Split this node along the Y axis.
 
         The left half of split will be just before the "x" position.
 
@@ -104,7 +104,7 @@ class PackTree(object):
         return None
 
     def alloc(self, width, height, candidate_filter=None):
-        """Attempt to allocate a rectangular region of a specified size.
+        """ Attempt to allocate a rectangular region of a specified size.
 
         Parameters
         ----------
@@ -203,8 +203,9 @@ class PackTree(object):
         return (child.x, child.y)
 
     def alloc_area(self, area, min_ratio=0.0, candidate_filter=None):
-        """Attempt to allocate a rectangular region with at least the specified
-        area which is 'at least as square' as the specified aspect ratio.
+        """ Attempt to allocate a rectangular region with at least the\
+            specified area which is 'at least as square' as the specified\
+            aspect ratio.
 
         Parameters
         ----------
@@ -270,7 +271,7 @@ class PackTree(object):
         return (x, y, width, height)
 
     def request(self, x, y):
-        """Request the allocation of a specific 1x1 block.
+        """ Request the allocation of a specific 1x1 block.
 
         This function may be useful when, e.g., specific boards are required
         for testing.
@@ -337,7 +338,7 @@ class PackTree(object):
         return self.request(x, y)
 
     def free(self, x, y):
-        """Free a previous allocation, allowing the space to be reused.
+        """ Free a previous allocation, allowing the space to be reused.
 
         Parameters
         ----------
@@ -371,5 +372,5 @@ class PackTree(object):
 
 
 class FreeError(Exception):
-    """Thrown when attempting to free a region fails."""
-    pass
+    """ Thrown when attempting to free a region fails.
+    """

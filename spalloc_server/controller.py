@@ -1,4 +1,4 @@
-"""A high-level control interface for scheduling and allocating jobs and
+""" A high-level control interface for scheduling and allocating jobs and
 managing hardware in a collection of SpiNNaker machines.
 """
 
@@ -28,7 +28,7 @@ job_log.addHandler(job_log_handler)
 
 
 class Controller(object):
-    """An object which allocates jobs to machines and manages said machines'
+    """ An object which allocates jobs to machines and manages said machines'
     hardware.
 
     This object is intended to form the core of a server which manages the
@@ -157,7 +157,7 @@ class Controller(object):
         self._init_dynamic_state()
 
     def __getstate__(self):
-        """Called when pickling this object.
+        """ Called when pickling this object.
 
         This object may only be pickled once :py:meth:`.stop` and
         :py:meth:`.join` have returned.
@@ -174,7 +174,7 @@ class Controller(object):
         return state
 
     def __setstate__(self, state):
-        """Called when unpickling this object.
+        """ Called when unpickling this object.
 
         Note that though the object must be pickled when stopped, the unpickled
         object will start running immediately.
@@ -191,7 +191,7 @@ class Controller(object):
         self._init_dynamic_state()
 
     def stop(self):
-        """Request that all background threads stop.
+        """ Request that all background threads stop.
 
         This will cause all outstanding BMP commands to be flushed.
 
@@ -210,7 +210,7 @@ class Controller(object):
                 controller.stop()
 
     def join(self):
-        """Block until all background threads have halted and all queued BMP
+        """ Block until all background threads have halted and all queued BMP
         commands completed.
         """
         # Wait for the BMP controller threads
@@ -247,7 +247,7 @@ class Controller(object):
 
     @machines.setter
     def machines(self, machines):
-        """Update the set of machines available to the controller.
+        """ Update the set of machines available to the controller.
 
         Attempt to update the information about available machines without
         destroying jobs where possible. Machines are matched with existing
@@ -375,7 +375,7 @@ class Controller(object):
             return changed_machines
 
     def create_job(self, ownerhost, *args, **kwargs):
-        """Create a new job (i.e. allocation of boards).
+        """ Create a new job (i.e. allocation of boards).
 
         This function is a wrapper around
         :py:meth:`JobQueue.create_job()
@@ -422,7 +422,7 @@ class Controller(object):
             return job_id
 
     def job_keepalive(self, clienthost, job_id):
-        """Reset the keepalive timer for the specified job.
+        """ Reset the keepalive timer for the specified job.
 
         Note all other job-specific functions implicitly call this method.
         """
@@ -432,7 +432,7 @@ class Controller(object):
                 job.update_keepalive(clienthost)
 
     def get_job_state(self, clienthost, job_id):
-        """Poll the state of a running job.
+        """ Poll the state of a running job.
 
         Returns
         -------
@@ -470,7 +470,7 @@ class Controller(object):
         return JobStateTuple(state, power, keepalive, reason, start_time, host)
 
     def get_job_machine_info(self, clienthost, job_id):
-        """Get information about the machine the job has been allocated.
+        """ Get information about the machine the job has been allocated.
 
         Returns
         -------
@@ -490,7 +490,8 @@ class Controller(object):
         return JobMachineInfoTuple(None, None, None, None, None)
 
     def power_on_job_boards(self, clienthost, job_id):
-        """Power on (or reset if already on) boards associated with a job."""
+        """ Power on (or reset if already on) boards associated with a job.
+        """
         job_log.info("power_job(%s,On) from %s", job_id, clienthost)
         with self._lock:
             self.job_keepalive(clienthost, job_id)
@@ -501,7 +502,8 @@ class Controller(object):
                     job, power=True, link_enable=False)
 
     def power_off_job_boards(self, clienthost, job_id):
-        """Power off boards associated with a job."""
+        """ Power off boards associated with a job.
+        """
         job_log.info("power_job(%s,Off) from %s", job_id, clienthost)
         with self._lock:
             self.job_keepalive(clienthost, job_id)
@@ -512,7 +514,7 @@ class Controller(object):
                     job, power=False, link_enable=None)
 
     def destroy_job(self, clienthost, job_id, reason=None):
-        """Destroy a job.
+        """ Destroy a job.
 
         When the job is finished, or to terminate it early, this function
         releases any resources consumed by the job and removes it from any
@@ -540,11 +542,11 @@ class Controller(object):
                 self._job_queue.destroy_job(job_id, reason)
 
     def list_jobs(self):
-        """Enumerate all current jobs.
+        """ Enumerate all current jobs.
 
         Returns
         -------
-        jobs : [:py:class`.JobTuple`, ...]
+        jobs : [:py:class:`.JobTuple`, ...]
             A list of allocated/queued jobs in order of creation from oldest
             (first) to newest (last).
         """
@@ -569,7 +571,7 @@ class Controller(object):
             return job_list
 
     def list_machines(self):
-        """Enumerates all machines known to the system.
+        """ Enumerates all machines known to the system.
 
         Returns
         -------
@@ -586,7 +588,7 @@ class Controller(object):
             ]
 
     def get_board_position(self, machine_name, x, y, z):
-        """Get the physical location of a specified board.
+        """ Get the physical location of a specified board.
 
         Parameters
         ----------
@@ -608,7 +610,7 @@ class Controller(object):
             return machine.board_locations.get((x, y, z), None)
 
     def get_board_at_position(self, machine_name, cabinet, frame, board):
-        """Get the logical location of a board at the specified physical
+        """ Get the logical location of a board at the specified physical
         location.
 
         Parameters
@@ -638,7 +640,8 @@ class Controller(object):
         return None
 
     def _job_for_location(self, machine, x, y, z):
-        """"Determine what job is running on the given board."""
+        """ Determine what job is running on the given board.
+        """
         for job_id, job in iteritems(self._jobs):
             # NB: If machine is defined, boards must also be defined.
             if (job.allocated_machine == machine and (x, y, z) in job.boards):
@@ -647,7 +650,8 @@ class Controller(object):
         return None, None
 
     def _where_is_by_logical_triple(self, machine_name, x, y, z):
-        """Helper for :py:meth:`.where_is()`"""
+        """ Helper for :py:meth:`where_is`
+        """
         with self._lock:
             # Get the actual Machine
             machine = self._machines.get(machine_name, None)
@@ -692,7 +696,8 @@ class Controller(object):
 
     def _where_is_by_physical_triple(self, machine_name, cabinet, frame,
                                      board):
-        """Helper for :py:meth:`.where_is()`"""
+        """ Helper for :py:meth:`where_is`
+        """
         with self._lock:
             # Get the actual Machine
             machine = self._machines.get(machine_name, None)
@@ -740,7 +745,8 @@ class Controller(object):
             }
 
     def _where_is_by_chip_coordinate(self, machine_name, chip_x, chip_y):
-        """Helper for :py:meth:`.where_is()`"""
+        """ Helper for :py:meth:`where_is`
+        """
         with self._lock:
             # Get the actual Machine
             machine = self._machines.get(machine_name, None)
@@ -782,7 +788,8 @@ class Controller(object):
             }
 
     def _where_is_by_job_chip_coordinate(self, job_id, chip_x, chip_y):
-        """Helper for :py:meth:`.where_is()`"""
+        """ Helper for :py:meth:`where_is`
+        """
         with self._lock:
             # Covert from job-relative chip location
             job = self._jobs.get(job_id, None)
@@ -859,7 +866,7 @@ class Controller(object):
                 (job_chip_y + board_chip_y) % job.height)
 
     def where_is(self, **kwargs):
-        """Find out where a SpiNNaker board or chip is located, logically and
+        """ Find out where a SpiNNaker board or chip is located, logically and
         physically.
 
         May be called in one of the following styles::
@@ -942,7 +949,8 @@ class Controller(object):
                 "Invalid arguments: {}".format(", ".join(keywords)))
 
     def destroy_timed_out_jobs(self):
-        """Destroy any jobs which have timed out."""
+        """ Destroy any jobs which have timed out.
+        """
         with self._lock:
             now = timestamp()
             for job in list(itervalues(self._jobs)):
@@ -951,7 +959,7 @@ class Controller(object):
                     self.destroy_job(None, job.id, "Job timed out.")
 
     def _bmp_on_request_complete(self, job, what, success, reason=None):
-        """Callback function called by an AsyncBMPController when it completes
+        """ Callback function called by an AsyncBMPController when it completes
         a previously issued request.
 
         This function sets the specified Job's state to JobState.ready when
@@ -993,7 +1001,7 @@ class Controller(object):
                         self._on_background_state_change()
 
     def _set_job_power_and_links(self, job, power, link_enable=None):
-        """Power on/off and configure links for the boards associated with a
+        """ Power on/off and configure links for the boards associated with a
         specific job.
 
         Parameters
@@ -1049,7 +1057,8 @@ class Controller(object):
 
     def _job_queue_on_allocate(self, job_id, machine_name, boards,
                                periphery, torus):
-        """Called when a job is successfully allocated to a machine."""
+        """ Called when a job is successfully allocated to a machine.
+        """
         # pylint: disable=too-many-arguments
         with self._lock:
             # Update job metadata
@@ -1090,16 +1099,18 @@ class Controller(object):
             self.power_on_job_boards(job.lasthost, job_id)
 
     def _job_queue_on_free(self, job_id, reason):
-        """Called when a job is freed."""
+        """ Called when a job is freed.
+        """
         self._changed_machines.add(self._jobs[job_id].allocated_machine.name)
         self._teardown_job(job_id, reason)
 
     def _job_queue_on_cancel(self, job_id, reason):
-        """Called when a job is cancelled before having been allocated."""
+        """ Called when a job is cancelled before having been allocated.
+        """
         self._teardown_job(job_id, "Cancelled: {}".format(reason or ""))
 
     def _teardown_job(self, job_id, reason):
-        """Called once job has been removed from the JobQueue.
+        """ Called once job has been removed from the JobQueue.
 
         Powers down any hardware in use and finally removes the job from _jobs.
         """
@@ -1123,7 +1134,8 @@ class Controller(object):
                              job_id, job.lasthost)
 
     def _create_machine_bmp_controllers(self, machine, on_thread_start=None):
-        """Create BMP controllers for a machine."""
+        """ Create BMP controllers for a machine.
+        """
         with self._lock:
             controllers = {}
             self._bmp_controllers[machine.name] = controllers
@@ -1132,7 +1144,7 @@ class Controller(object):
                     hostname, on_thread_start)
 
     def _init_dynamic_state(self):
-        """Initialise all dynamic (non-pickleable) state.
+        """ Initialise all dynamic (non-pickleable) state.
 
         Specifically:
 
@@ -1162,32 +1174,36 @@ class Controller(object):
 
 
 class JobState(IntEnum):
-    """All the possible states that a job may be in."""
+    """ All the possible states that a job may be in.
+    """
 
     unknown = 0
-    """The job ID requested was not recognised"""
+    """ The job ID requested was not recognised.
+    """
 
     queued = 1
-    """The job is waiting in a queue for a suitable machine"""
+    """ The job is waiting in a queue for a suitable machine.
+    """
 
     power = 2
-    """The boards allocated to the job are currently being powered on or
+    """ The boards allocated to the job are currently being powered on or
     powered off.
     """
 
     ready = 3
-    """The job has been allocated boards and the boards are not currently
+    """ The job has been allocated boards and the boards are not currently
     powering on or powering off.
     """
 
     destroyed = 4
-    """The job has been destroyed"""
+    """ The job has been destroyed.
+    """
 
 
 class JobStateTuple(namedtuple("JobStateTuple",
                                "state,power,keepalive,reason,start_time,"
                                "keepalivehost")):
-    """Tuple describing the state of a particular job, returned by
+    """ Tuple describing the state of a particular job, returned by
     :py:meth:`.Controller.get_job_state`.
 
     Parameters
@@ -1219,7 +1235,7 @@ class JobStateTuple(namedtuple("JobStateTuple",
 class JobMachineInfoTuple(namedtuple("JobMachineInfoTuple",
                                      "width,height,connections,"
                                      "machine_name,boards")):
-    """Tuple describing the machine alloated to a job, returned by
+    """ Tuple describing the machine alloated to a job, returned by
     :py:meth:`.Controller.get_job_machine_info`.
 
     Parameters
@@ -1245,7 +1261,7 @@ class JobTuple(namedtuple("JobTuple",
                           "job_id,owner,start_time,keepalive,state,power,"
                           "args,kwargs,allocated_machine_name,boards,"
                           "keepalivehost")):
-    """Tuple describing a job in the list of jobs returned by
+    """ Tuple describing a job in the list of jobs returned by
     :py:meth:`.Controller.list_jobs`.
 
     Parameters
@@ -1291,7 +1307,7 @@ class JobTuple(namedtuple("JobTuple",
 class MachineTuple(namedtuple("MachineTuple",
                               "name,tags,width,height,"
                               "dead_boards,dead_links")):
-    """Tuple describing a machine in the list of machines returned by
+    """ Tuple describing a machine in the list of machines returned by
     :py:meth:`.Controller.list_machines`.
 
     Parameters
@@ -1314,7 +1330,7 @@ class MachineTuple(namedtuple("MachineTuple",
 
 
 class _Job(object):
-    """The metadata, used internally, associated with a non-destroyed job.
+    """ The metadata, used internally, associated with a non-destroyed job.
 
     Attributes
     ----------

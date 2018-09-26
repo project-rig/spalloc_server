@@ -8,10 +8,11 @@ _SIGHUP = signal.SIGHUP if hasattr(signal, "SIGHUP") else None
 
 @add_metaclass(AbstractBase)
 class ConfigurationReloader(object):
-    """A class that provides the core knowledge about how to load and reload\
-    some configuration when a signal is sent to the process. It is probably\
-    wise to only make one concrete subclass instance of this class at a\
-    time."""
+    """ This provides the core knowledge about how to load and reload some\
+        configuration when a signal is sent to the process. It is probably\
+        wise to only make one concrete subclass instance of this class at a\
+        time.
+    """
 
     def __init__(self, configuration_file, callback):
         self._config_filename = configuration_file
@@ -23,13 +24,12 @@ class ConfigurationReloader(object):
                      "send SIGHUP to trigger reload")
 
     def _sighup_handler(self, signum, _frame):
-        """Handler for SIGHUP. If such a signal is delivered, will trigger a
-        reread of the configuration file.
+        """ Handler for SIGHUP. If such a signal is delivered, will trigger a\
+            reread of the configuration file.
 
-        Parameters
-        ----------
-        signum : int
-        _frame :
+        :param signum: the signal number
+        :type signum: int
+        :param _frame: the stack frame where the signal occurred (ignored)
         """
         if signum == _SIGHUP:
             self._reload_config = True
@@ -37,24 +37,24 @@ class ConfigurationReloader(object):
 
     @property
     def config_needs_reloading(self):
-        """Describes whether a reload is pending."""
+        """ Describes whether a reload is pending.
+        """
         return self._reload_config
 
     @property
     def configuration_file(self):
-        """Describes where the configuration will be (re)loaded from."""
+        """ Describes where the configuration will be (re)loaded from.
+        """
         return self._config_filename
 
     def read_config_file(self):
-        """(Re-)read the server configuration.
+        """ (Re-)read the server configuration.
 
-        If reading of the configuration file fails, the current configuration
+        If reading of the configuration file fails, the current configuration\
         is retained, unchanged.
 
-        Returns
-        -------
-        bool
-            True if reading succeeded, False otherwise.
+        :return: True if the reading succeeded.
+        :rtype: bool
         """
         self._reload_config = False
         try:
@@ -93,49 +93,33 @@ class ConfigurationReloader(object):
 
     @abstractmethod
     def _parse_config(self, config_file_contents):
-        """How to parse the contents of the configuration file. Note that\
-        this is intended to be a basic parse, not an extended semantic check\
-        for high-level validity.
+        """ How to parse the contents of the configuration file. Note that\
+            this is intended to be a basic parse, not an extended semantic\
+            check for high-level validity.
 
-        Parameters
-        ----------
-        config_file_contents : str
-
-        Returns
-        -------
-        object
-            Some parsed description of the configuration. Will be passed to\
-            validator method.
-
-        Throws
-        ------
-        Any exception or error if the parse fails
+        :param config_file_contents: the contents of the file
+        :type config_file_contents: str
+        :return: Some parsed description of the configuration. Will be passed\
+            to validator method.
+        :raises Exception: if the parse fails
         """
 
     @abstractmethod
     def _validate_config(self, parsed_config):
-        """How to check the parsed contents of the configuration for\
-        high-level semantic validity.
+        """ How to check the parsed contents of the configuration for\
+            high-level semantic validity.
 
-        Parameters
-        ----------
-        parsed_config : object
-            Whatever was produced by the parser method.
-
-        Returns
-        -------
-        object
-            The validated configuration object, or None if the configuration\
+        :param parsed_config: Whatever was produced by the parser method.
+        :return: \
+            The validated configuration object, or `None` if the configuration\
             was invalid.
         """
 
     @abstractmethod
     def _load_valid_config(self, validated_config):
-        """How to install the validated configuration. Not expected to have\
-        a failure mode under normal circumstances.
+        """ How to install the validated configuration. Not expected to have\
+            a failure mode under normal circumstances.
 
-        Parameters
-        ----------
-        validated_config : object
+        :param validated_config: \
             Whatever was produced by the validator method.
         """

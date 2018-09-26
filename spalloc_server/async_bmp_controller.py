@@ -1,4 +1,4 @@
-"""Provide (basic) asynchronous control over a BMP responsible for controlling
+""" Provide (basic) asynchronous control over a BMP responsible for controlling
 a whole rack.
 """
 import threading
@@ -16,7 +16,7 @@ _N_FPGA_RETRIES = 3
 
 
 class AsyncBMPController(object):
-    """An object which provides an asynchronous interface to a power and link
+    """ An object which provides an asynchronous interface to a power and link
     control commands of a SpiNNaker BMP.
 
     Since BMP commands, particularly power-on commands, take some time to
@@ -36,7 +36,7 @@ class AsyncBMPController(object):
     """
 
     def __init__(self, hostname, on_thread_start=None):
-        """Start a new asynchronous BMP Controller
+        """ Start a new asynchronous BMP Controller
 
         Parameters
         ----------
@@ -76,7 +76,8 @@ class AsyncBMPController(object):
         self._thread.start()
 
     def __enter__(self):
-        """When used as a context manager, make requests 'atomic'."""
+        """ When used as a context manager, make requests 'atomic'.
+        """
         self._lock.acquire()
 
     def __exit__(self, _type=None, _value=None, _traceback=None):
@@ -84,7 +85,7 @@ class AsyncBMPController(object):
         return False
 
     def set_power(self, board, state, on_done):
-        """Set the power state of a single board.
+        """ Set the power state of a single board.
 
         Parameters
         ----------
@@ -118,7 +119,7 @@ class AsyncBMPController(object):
             request.on_done(False, "Cancelled")
 
     def set_link_enable(self, board, link, enable, on_done):
-        """Enable or disable a link.
+        """ Enable or disable a link.
 
         Parameters
         ----------
@@ -145,15 +146,16 @@ class AsyncBMPController(object):
             self._requests_pending.set()
 
     def stop(self):
-        """Stop the background thread, as soon as possible after completing all
-        queued actions.
+        """ Stop the background thread, as soon as possible after completing\
+            all queued actions.
         """
         with self._lock:
             self._stop = True
             self._requests_pending.set()
 
     def join(self):
-        """Wait for the thread to actually stop."""
+        """ Wait for the thread to actually stop.
+        """
         self._thread.join()
 
     def _good_fpga(self, board, fpga):
@@ -163,7 +165,7 @@ class AsyncBMPController(object):
         ok = (fpga_id & _FPGA_FLAG_ID_MASK) == fpga
         if not ok:  # pragma: no cover
             logging.warn(
-                "FPGA %d on board %d of %s has incorrect FPGA id flag %d",
+                "FPGA %d on board %d of %s has incorrect FPGA ID flag %d",
                 fpga, board, self._hostname, fpga_id & _FPGA_FLAG_ID_MASK)
         return ok
 
@@ -197,11 +199,11 @@ class AsyncBMPController(object):
                 return
         else:  # pragma: no cover
             raise Exception(
-                "Could not get correct FPGA id after {} tries".format(
+                "Could not get correct FPGA ID after {} tries".format(
                     _N_FPGA_RETRIES))
 
     def _set_board_state(self, state, board):
-        """Set the power state of a board.
+        """ Set the power state of a board.
 
         :param state: What to set the state to. True for on, False for off
         :type state: bool
@@ -226,7 +228,7 @@ class AsyncBMPController(object):
             return False, reason
 
     def _set_link_state(self, link, enable, board):
-        """Set the power state of a link.
+        """ Set the power state of a link.
 
         :param link: The link (direction) to set the enable-state of.
         :type link: value in Links enum
@@ -255,7 +257,7 @@ class AsyncBMPController(object):
             return False, reason
 
     def _run(self):
-        """The background thread for interacting with the BMP.
+        """ The background thread for interacting with the BMP.
         """
         try:
             if self._on_thread_start is not None:
@@ -311,13 +313,11 @@ class AsyncBMPController(object):
             raise
 
     def _get_atomic_power_request(self):
-        """If any power requests are outstanding, return a (boards, state)
-        tuple which combines as many of the requests at the head of the queue
-        as possible.
+        """ If any power requests are outstanding, return a (boards, state)\
+            tuple which combines as many of the requests at the head of the\
+            queue as possible.
 
-        Returns
-        -------
-        :py:class:`._PowerRequest` or None
+        :rtype: :py:class:`._PowerRequest` or None
         """
         with self._lock:
             # Special case: no requests
@@ -336,11 +336,9 @@ class AsyncBMPController(object):
             return _PowerRequest(state, boards, on_done)
 
     def _get_atomic_link_request(self):
-        """Pop the next link state change request, if one exists.
+        """ Pop the next link state change request, if one exists.
 
-        Returns
-        -------
-        :py:class:`._LinkRequest` or None
+        :rtype: :py:class:`._LinkRequest` or None
         """
         with self._lock:
             if not self._link_requests:
@@ -349,7 +347,7 @@ class AsyncBMPController(object):
 
 
 class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
-    """Requests that a specific board should have its power state set to a
+    """ Requests that a specific board should have its power state set to a
     particular value.
 
     Parameters
@@ -367,7 +365,7 @@ class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
 
 
 class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
-    """Requests that a specific board should have its power state set to a
+    """ Requests that a specific board should have its power state set to a
     particular value.
 
     Parameters
@@ -392,7 +390,7 @@ _N_FPGAS = 3
 # The FLAG register address in the FPGAs
 _FPGA_FLAG_REGISTER_ADDRESS = 0x40004
 
-# The FPGA id field within the FLAG register value
+# The FPGA ID field within the FLAG register value
 _FPGA_FLAG_ID_MASK = 0x3
 
 # Gives the FPGA number and register addresses for the STOP register (which

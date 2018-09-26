@@ -1,17 +1,17 @@
-"""A datastructure representing links in a SpiNNaker machine.
+""" A data structure representing links in a SpiNNaker machine.
 """
 from enum import IntEnum
 from six import iteritems
 
 
 class Links(IntEnum):
-    """Enumeration of links from a SpiNNaker chip.
+    """ Enumeration of links from a SpiNNaker chip.
 
     Note that the numbers chosen have two useful properties:
 
-    * The integer values assigned are chosen to match the numbers used to
+    * The integer values assigned are chosen to match the numbers used to\
       identify the links in the low-level software API and hardware registers.
-    * The links are ordered consecutively in anticlockwise order meaning the
+    * The links are ordered consecutively in anticlockwise order meaning the\
       opposite link is `(link+3)%6`.
 
     Attributes
@@ -33,20 +33,21 @@ class Links(IntEnum):
 
     @classmethod
     def from_vector(cls, vector):
-        """Given a vector from one node to a neighbour, get the link direction.
+        """ Given a vector from one node to a neighbour, get the link\
+            direction.
 
-        Note that any vector whose magnitude in any given dimension is greater
+        Note that any vector whose magnitude in any given dimension is greater\
         than 1 will be assumed to use a machine's wrap-around links.
 
-        Note that this method assumes a system larger than 2x2. If a 2x2, 2xN
-        or Nx2 (for N > 2) system is provided the link selected will
-        arbitrarily favour either wrap-around or non-wrap-around links. This
+        Note that this method assumes a system larger than 2x2. If a 2x2, 2xN\
+        or Nx2 (for N > 2) system is provided the link selected will\
+        arbitrarily favour either wrap-around or non-wrap-around links. This\
         function is not meaningful for 1x1 systems.
 
         :param vector: The vector from one node to its logical neighbour.
         :type vector: pair of ints
-        :return: The link direction to travel in the direction indicated by the
-                vector.
+        :return: The link direction to travel in the direction indicated by\
+            the vector.
         :rtype: member of Links enum
         """
         x, y = vector
@@ -72,7 +73,7 @@ class Links(IntEnum):
         return lookup[(x, y)]
 
     def to_vector(self):
-        """Given a link direction, return the equivalent vector.
+        """ Given a link direction, return the equivalent vector.
 
         :return: The vector for this link direction.
         :rtype: pair of int
@@ -82,23 +83,24 @@ class Links(IntEnum):
 
     @property
     def opposite(self):
-        """Get the opposite link to the one given."""
+        """ Get the opposite link to the one given.
+        """
         return Links((self + 3) % 6)
 
 
 class _LinksHelper(object):
-    """Builds the bidirectional map between directions and links. Holds a
-    cache of it internally.
+    """ Builds the bidirectional map between directions and links. Holds a\
+        cache of it internally.
     """
     _link_direction_lookup = None
     _direction_link_lookup = None
 
     @classmethod
     def get_lookups(cls):
-        """Get (and possibly build) the pair of maps.
+        """ Get (and possibly build) the pair of maps.
 
-        :return: The map from directions to links, and from links to
-                directions.
+        :return: The map from directions to links, and from links to\
+            directions.
         :rtype: pair of maps
         """
         if _LinksHelper._link_direction_lookup is None:
