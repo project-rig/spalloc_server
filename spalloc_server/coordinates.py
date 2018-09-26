@@ -1,4 +1,4 @@
-r"""Utilities for working with board/triad coordinates.
+r""" Utilities for working with board/triad coordinates.
 
 This software assumes that all machines provided to it are interconnected in a
 valid (subset of) a hexagonal torus topology. Boards locations are expressed
@@ -139,8 +139,7 @@ link_to_vector = {
     (2, Links.east): (0, 0, -1),
 }
 
-"""
-A lookup from (z, :py:class:`spalloc_server.links.Links`) to (dx, dy, dz).
+""" A lookup from (z, :py:class:`spalloc_server.links.Links`) to (dx, dy, dz).
 """
 link_to_vector.update({
     (z + dz, link.opposite): (-dx, -dy, -dz)
@@ -149,7 +148,7 @@ link_to_vector.update({
 
 
 def board_down_link(x1, y1, z1, link, width, height):
-    """Get the coordinates of the board down the specified link.
+    """ Get the coordinates of the board down the specified link.
 
     Parameters
     ----------
@@ -185,7 +184,7 @@ def board_down_link(x1, y1, z1, link, width, height):
 
 
 def board_to_chip(x, y, z):
-    """Convert a board coordinate into a chip coordinate.
+    """ Convert a board coordinate into a chip coordinate.
 
     Assumes a regular torus composed of SpiNN-5 boards.
 
@@ -214,7 +213,7 @@ def board_to_chip(x, y, z):
 
 
 def chip_to_board(x, y, w, h):
-    """Convert a chip coordinate into a board coordinate.
+    """ Convert a chip coordinate into a board coordinate.
 
     Assumes a regular torus composed of SpiNN-5 boards.
 
@@ -256,7 +255,7 @@ def chip_to_board(x, y, w, h):
 
 
 def triad_dimensions_to_chips(w, h, torus):
-    """Convert the dimensions of a system from numbers of triads to numbers of
+    """ Convert the dimensions of a system from numbers of triads to numbers of
     chips in the underlying network.
 
     Assumes a regular torus composed of SpiNN-5 boards.
@@ -265,7 +264,7 @@ def triad_dimensions_to_chips(w, h, torus):
     ----------
     w, h : int
         Dimensions of the system in triads.
-    torus : :py:class`.WrapAround`
+    torus : :py:class:`.WrapAround`
         What wrap-around connections are present?
 
     Returns
@@ -290,7 +289,7 @@ def triad_dimensions_to_chips(w, h, torus):
 
 
 class WrapAround(IntEnum):
-    """Defines what type of wrap-around links a torus has, if any.
+    """ Defines what type of wrap-around links a torus has, if any.
 
     Values chosen have the following useful properties::
 
@@ -308,13 +307,17 @@ class WrapAround(IntEnum):
     """
 
     none = 0b00
-    """No wrap-around links."""
+    """ No wrap-around links.
+    """
 
     x = 0b01
-    """Has wrap around links around X-axis."""
+    """ Has wrap around links around X-axis.
+    """
 
     y = 0b10
-    """Has wrap around links around Y-axis."""
+    """ Has wrap around links around Y-axis.
+    """
 
     both = 0b11
-    """Has wrap around links on X and Y axes."""
+    """ Has wrap around links on X and Y axes.
+    """
