@@ -30,12 +30,6 @@ authors:
   affiliation: "University Of Manchester"
   email: Andrew.Rowley@manchester.ac.uk
   website: https://www.researchgate.net/profile/Andrew_Rowley2
-- family-names: Stokes
-  given-names: Alan
-  orcid: https://orcid.org/0000-0002-6110-1484
-  affiliation: "University Of Manchester"
-  email: alan.stokes-2@manchester.ac.uk
-  website: http://www.cs.man.ac.uk/~stokesa6/
 
 title: The server side of the SpiNNaker machine allocation software
 version:
