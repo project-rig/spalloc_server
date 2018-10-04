@@ -1,5 +1,3 @@
-six:six
 enum-compat:enum
-pytz:pytz
 SpiNNMan:spinnman
 SpiNNMachine:spinn_machine
