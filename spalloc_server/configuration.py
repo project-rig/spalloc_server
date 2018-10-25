@@ -90,7 +90,7 @@ use any code you like to pragmatically specify machines, etc. which you use.
 
 Configuration File API Reference
 ````````````````````````````````
-"""
+"""  # noqa: W605
 
 from collections import namedtuple
 import re
@@ -414,7 +414,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         def ip_to_int(ip):
             """ Convert from string-based IP to a 32-bit integer.
             """
-            match = re.match("^(\d+).(\d+).(\d+).(\d+)$", ip)
+            match = re.match(r"^(\d+).(\d+).(\d+).(\d+)$", ip)
             if not match:
                 raise ValueError("Malformed IPv4 address '{}'".format(ip))
 
