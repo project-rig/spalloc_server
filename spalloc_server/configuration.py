@@ -97,7 +97,6 @@ import re
 import csv
 from itertools import chain
 from six import iteritems, itervalues
-
 from .coordinates import chip_to_board
 
 

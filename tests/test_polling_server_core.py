@@ -1,6 +1,6 @@
-from spalloc_server.polling_server_core import PollingServerCore
 import socket
 import time
+from spalloc_server.polling_server_core import PollingServerCore
 
 
 def test_ready_channels_timeout():

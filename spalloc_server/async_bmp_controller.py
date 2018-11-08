@@ -1,15 +1,12 @@
 """ Provide (basic) asynchronous control over a BMP responsible for controlling
 a whole rack.
 """
-
 import threading
 import logging
 from collections import namedtuple, deque
-
 from spinnman.transceiver import create_transceiver_from_hostname
 from spinnman.model import BMPConnectionData
 from spinnman.constants import SCP_SCAMP_PORT
-
 from .links import Links
 
 # The first BMP version with FPGA register support

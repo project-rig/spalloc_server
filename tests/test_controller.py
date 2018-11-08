@@ -1,13 +1,12 @@
 from collections import OrderedDict
 from datetime import datetime
-from .mocker import Mock
 import pickle
 import pytest
-from pytz import utc
-from six import iteritems
 import threading
 import time
-
+from pytz import utc
+from six import iteritems
+from .mocker import Mock
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.configuration import Machine
 from spalloc_server.controller import Controller, JobState
