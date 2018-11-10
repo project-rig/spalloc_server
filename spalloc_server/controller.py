@@ -5,18 +5,16 @@ managing hardware in a collection of SpiNNaker machines.
 from collections import namedtuple, OrderedDict, defaultdict
 from datetime import datetime
 from enum import IntEnum
-from functools import partial
 import logging
 from logging.handlers import TimedRotatingFileHandler
-from pytz import utc
-from six import itervalues, iteritems
 from threading import RLock
 from time import time as timestamp
-
+from functools import partial
+from pytz import utc
+from six import itervalues, iteritems
 from spinn_machine import SpiNNakerTriadGeometry
-
-from .coordinates import \
-    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
+from .coordinates import (
+    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround)
 from .job_queue import JobQueue
 from .async_bmp_controller import AsyncBMPController, AtomicRequests
 

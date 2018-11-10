@@ -1,9 +1,7 @@
 """ A multi-machine and job queueing and allocation mechanism.
 """
-
 from collections import deque, OrderedDict
 from six import itervalues
-
 from .allocator import Allocator
 
 

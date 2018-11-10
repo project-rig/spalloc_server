@@ -116,14 +116,10 @@ Utilities
 The following utilities are provided for working with the above coordinate
 systems.
 """
-
 from enum import IntEnum
 from six import iteritems
-
 from spinn_machine import SpiNNakerTriadGeometry
-
 from .links import Links
-
 
 link_to_vector = {
     (0, Links.north): (0, 0, 2),

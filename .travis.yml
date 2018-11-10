@@ -15,7 +15,7 @@ before_install:
 install:
         - python setup.py develop
         - pip install -r requirements-test.txt
-        - pip install python-coveralls
+        - pip install python-coveralls 'coverage>=4.4'
 script:
         - py.test tests/ --cov spalloc_server --cov tests --durations=10
         # Code quality check

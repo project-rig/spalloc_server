@@ -1,7 +1,6 @@
-from .mocker import Mock, call
-import pytest
 import random
-
+import pytest
+from .mocker import Mock, call
 from spalloc_server.pack_tree import PackTree, FreeError
 
 
