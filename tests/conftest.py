@@ -41,8 +41,7 @@ def mock_abc(monkeypatch):  # pragma: no cover
             self._thread.start()
 
             # Protected only by the GIL...
-            self.set_power_calls = []
-            self.set_link_enable_calls = []
+            self.add_requests_calls = []
 
         def _run(self):
             """Background thread, just take things from the request queue and
@@ -79,19 +78,11 @@ def mock_abc(monkeypatch):  # pragma: no cover
         def __exit__(self, _type=None, _value=None, _traceback=None):
             self._lock.release()
 
-        def set_power(self, board, state, on_done):
-            self.set_power_calls.append((board, state, on_done))
+        def add_requests(self, requests):
+            self.add_requests_calls.append(requests)
             with self._lock:
                 assert not self._stop
-                self._request_queue.append(on_done)
-                self._event.set()
-
-        def set_link_enable(self, board, link, enable, on_done):
-            self.set_link_enable_calls.append((board, link, enable, on_done))
-            with self._lock:
-
-                assert not self._stop
-                self._request_queue.append(on_done)
+                self._request_queue.append(requests.on_done)
                 self._event.set()
 
         def stop(self):
