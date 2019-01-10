@@ -1,6 +1,6 @@
 -r requirements.txt
 # Test suite requirements
-pytest>=2.8
+# pytest will be brought in by pytest-cov
 pytest-cov
 pytest-timeout<1.3
 flake8
