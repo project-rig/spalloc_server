@@ -4,6 +4,11 @@ python:
         - 3.5
         - 3.6
 dist: trusty
+matrix:
+  include:
+    - python: 3.7
+      dist: xenial
+      sudo: true
 cache: pip
 
 before_install:
