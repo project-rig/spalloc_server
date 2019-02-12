@@ -9,7 +9,13 @@ the form of Python functions.
 
 from six import iteritems
 # from functools import wraps
-from inspect import getargspec, formatargspec
+from inspect import formatargspec
+try:
+    from inspect import getfullargspec
+except ImportError:
+    # Python 2.7 hack
+    from inspect import getargspec as getfullargspec
+
 
 from spalloc_server.server import _COMMANDS
 from spalloc_server.controller import JobState as _JobState
@@ -26,7 +32,7 @@ for name, f in iteritems(_COMMANDS):
 
     # Get the arguments of the command and strip out the method 'self' argument
     # and the internally used 'client' argument.
-    argspec = getargspec(f)
+    argspec = getfullargspec(f)
     argspec.args.remove("self")
     argspec.args.remove("client")
 
