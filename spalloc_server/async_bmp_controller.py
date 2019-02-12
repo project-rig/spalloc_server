@@ -3,7 +3,10 @@ a whole rack.
 """
 import threading
 import logging
-from collections import namedtuple, deque
+try:
+    from collections.abc import namedtuple, deque
+except ImportError:
+    from collections import namedtuple, deque
 from spinnman.transceiver import create_transceiver_from_hostname
 from spinnman.model import BMPConnectionData
 from spinnman.constants import SCP_SCAMP_PORT

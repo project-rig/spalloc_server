@@ -6,7 +6,10 @@ which is mapped to the ``spalloc-server`` command-line tool.
 """
 
 from argparse import ArgumentParser
-from collections import OrderedDict
+try:
+    from collections.abc import OrderedDict
+except ImportError:
+    from collections import OrderedDict
 from json import dumps as json, loads as dejson
 import logging as log
 from os import path
