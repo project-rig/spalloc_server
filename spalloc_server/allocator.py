@@ -3,7 +3,10 @@ the granularity of individual SpiNNaker boards and with awareness of the
 functionality of a machine.
 """
 from enum import Enum
-from collections import deque
+try:
+    from collections.abc import deque
+except ImportError:
+    from collections import deque
 from math import ceil
 from six import next  # pylint: disable=redefined-builtin
 from .links import Links

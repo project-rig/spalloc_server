@@ -1,4 +1,7 @@
-from collections import deque
+try:
+    from collections.abc import deque
+except ImportError:
+    from collections import deque
 from threading import Thread
 import struct
 import traceback
