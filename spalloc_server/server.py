@@ -6,17 +6,18 @@ which is mapped to the ``spalloc-server`` command-line tool.
 """
 
 from argparse import ArgumentParser
-from collections import OrderedDict
+try:
+    from collections.abc import OrderedDict
+except ImportError:
+    from collections import OrderedDict
 from json import dumps as json, loads as dejson
 import logging as log
 from os import path
 from pickle import dump as pickle, load as unpickle
-from six import iteritems, string_types
 from threading import Thread
 from time import sleep
-
+from six import iteritems, string_types
 from spinn_utilities.overrides import overrides
-
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
 from spalloc_server.controller import Controller
@@ -242,15 +243,21 @@ class Server(PollingServerCore, ConfigurationReloader):
         except Exception:
             log.info("Client %s disconnected.", client)
 
-        # Clear input buffer
-        del self._client_buffers[client]
+        # Clear input buffer if created
+        if client in self._client_buffers:
+            del self._client_buffers[client]
 
         # Clear any watches
         self._client_job_watches.pop(client, None)
         self._client_machine_watches.pop(client, None)
 
         # Stop watching the client's socket for data
-        self.unregister_channel(client)
+        try:
+            self.unregister_channel(client)
+        except KeyError:
+            # The odd case of the unregistered client -
+            # this can be ignored as it wasn't registered anyway
+            pass
 
         # Disconnect the client
         client.close()
@@ -347,10 +354,11 @@ class Server(PollingServerCore, ConfigurationReloader):
             self._disconnect_client(client)
             return
 
-        peer = client.getpeername()
-        self._client_buffers[client] += data
-
+        peer = "UNKNOWN"
         try:
+            peer = client.getpeername()
+            self._client_buffers[client] += data
+
             # Process any complete commands (whole lines)
             while b"\n" in self._client_buffers[client]:
                 line, _, self._client_buffers[client] = \

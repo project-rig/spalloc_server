@@ -1,29 +1,42 @@
 language: python
-python:
-        - 2.7
-        - 3.5
-        - 3.6
-dist: trusty
+matrix:
+  include:
+    - python: 2.7
+      dist: trusty
+      sudo: false
+    - python: 3.5
+      dist: trusty
+      sudo: false
+    - python: 3.6
+      dist: trusty
+      sudo: false
+    - python: 3.7
+      dist: xenial
+      sudo: true
+  fast_finish: true
 cache: pip
 
 before_install:
-        - pip install --upgrade pip setuptools wheel
-        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNUtils.git@${TRAVIS_BRANCH} || pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNUtils.git@master
-        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMachine.git@${TRAVIS_BRANCH} || pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMachine.git@master
-        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNStorageHandlers.git@${TRAVIS_BRANCH} || pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNStorageHandlers.git@master
-        - pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMan.git@${TRAVIS_BRANCH} || pip install --upgrade git+git://github.com/SpiNNakerManchester/SpiNNMan.git@master
+  # Work around ludicrous Travis bug
+  - git clone https://github.com/SpiNNakerManchester/SupportScripts.git support
+  - python support/travis_blocking_stdout.py
+  # Bring pip up to date 
+  - pip install --upgrade pip setuptools wheel
+  # SpiNNakerManchester internal dependencies; development mode
+  - support/pipinstall.sh git://github.com/SpiNNakerManchester/SpiNNUtils.git
+  - support/pipinstall.sh git://github.com/SpiNNakerManchester/SpiNNMachine.git
+  - support/pipinstall.sh git://github.com/SpiNNakerManchester/SpiNNStorageHandlers.git
+  - support/pipinstall.sh git://github.com/SpiNNakerManchester/SpiNNMan.git
 install:
-        - python setup.py develop
-        - pip install -r requirements-test.txt
-        - pip install python-coveralls 'coverage>=4.4'
+  - python setup.py develop
+  - pip install -r requirements-test.txt
+  - pip install python-coveralls 'coverage>=4.4'
 script:
-        - py.test tests/ --cov spalloc_server --cov tests --durations=10
-        # Code quality check
-        - flake8
+  - py.test tests/ --cov spalloc_server --durations=10
+  # Code quality check
+  - flake8
 after_success:
-        - coveralls
+  - coveralls
 
 notifications:
-        email: false
-matrix:
-        fast_finish: true
+  email: false

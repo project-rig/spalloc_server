@@ -1,7 +1,10 @@
 import sys
 import re
 import time
-from collections import defaultdict
+try:
+    from collections.abc import defaultdict
+except ImportError:
+    from collections import defaultdict
 
 
 class Counter(object):
@@ -85,29 +88,29 @@ def scan_logfile(log_file_name):
     with open(log_file_name, "r") as log:
         for line in log:
             match_create = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " create_job\(\(.*\),(\{.*\})\) from (.*)", line)
+                r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+                r" create_job\(\(.*\),(\{.*\})\) from (.*)", line)
             if match_create is not None:
                 process_create(match_create)
                 continue
 
             match_power_on = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " power_job\((\d+),(On|Off)\) from (.*)", line)
+                r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+                r" power_job\((\d+),(On|Off)\) from (.*)", line)
             if match_power_on is not None:
                 process_power_on(match_power_on)
                 continue
 
             match_completed = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " completed shutdown of job (\d+)", line)
+                r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+                r" completed shutdown of job (\d+)", line)
             if match_completed is not None:
                 process_completed(match_completed)
                 continue
 
             match_destroyed = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " destroy_job", line)
+               r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+               " destroy_job", line)
             if match_destroyed is None:
                 print("Unknown line format for line {}".format(line))
 
