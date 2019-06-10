@@ -1,6 +1,5 @@
-from .mocker import Mock
 import pytest
-
+from .mocker import Mock
 from spalloc_server.links import Links
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.job_queue import JobQueue

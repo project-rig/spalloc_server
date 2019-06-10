@@ -1,9 +1,8 @@
 import pytest
-
 from spalloc_server.links import Links
 from spalloc_server.coordinates import board_down_link, WrapAround
-from spalloc_server.allocator import \
-    _AllocationType, _CandidateFilter, Allocator
+from spalloc_server.allocator import (
+    _AllocationType, _CandidateFilter, Allocator)
 
 
 class TestCandidateFilter(object):

@@ -1,9 +1,10 @@
 """ A multi-machine and job queueing and allocation mechanism.
 """
-
-from collections import deque, OrderedDict
+try:
+    from collections.abc import deque, OrderedDict
+except ImportError:
+    from collections import deque, OrderedDict
 from six import itervalues
-
 from .allocator import Allocator
 
 
@@ -443,8 +444,8 @@ class JobQueue(object):
             self.on_cancel(job.id, reason)
         else:
             # Job was allocated somewhere, deallocate it
-            job.machine.allocator.free(job.allocation_id)
             self.on_free(job.id, reason)
+            job.machine.allocator.free(job.allocation_id)
 
         self._process_queue()
 
