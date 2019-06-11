@@ -47,5 +47,7 @@ setup(
             "spalloc-server = spalloc_server.server:main",
             "spalloc_server = spalloc_server.server:main",
         ],
-    }
+    },
+    maintainer="SpiNNakerTeam",
+    maintainer_email="spinnakerusers@googlegroups.com"
 )
