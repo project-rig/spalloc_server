@@ -1,25 +1,37 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 language: python
-matrix:
-  include:
-    - python: 2.7
-      dist: trusty
-      sudo: false
-    - python: 3.5
-      dist: trusty
-      sudo: false
-    - python: 3.6
-      dist: trusty
-      sudo: false
-    - python: 3.7
-      dist: xenial
-      sudo: true
-  fast_finish: true
+dist: xenial
+python:
+  - 2.7
+  - 3.5
+  - 3.6
+  - 3.7
 cache: pip
+addons:
+  apt:
+    packages:
+      - openjdk-8-jre-headless
+      - ant
 
 before_install:
   # Work around ludicrous Travis bug
   - git clone https://github.com/SpiNNakerManchester/SupportScripts.git support
   - python support/travis_blocking_stdout.py
+  - support/rat.sh download
   # Bring pip up to date 
   - pip install --upgrade pip setuptools wheel
   # SpiNNakerManchester internal dependencies; development mode
@@ -35,6 +47,8 @@ script:
   - py.test tests/ --cov spalloc_server --durations=10
   # Code quality check
   - flake8
+  # Copyright check
+  - support/rat.sh run
 after_success:
   - coveralls
 
