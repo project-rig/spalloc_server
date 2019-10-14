@@ -42,8 +42,8 @@ setup(
         "Operating System :: Microsoft :: Windows",
         "Operating System :: MacOS",
 
-        "Programming Language :: Python :: 2",
-        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
     ],
     keywords="spinnaker allocation packing management supercomputer",
 
@@ -52,8 +52,8 @@ setup(
         "six",
         "enum-compat",
         "pytz",
-        "SpiNNMachine >= 1!4.0.1, <1!5.0.0",
-        "SpiNNMan >= 1!4.0.1, <1!5.0.0",
+        "SpiNNMachine >= 1!5.0.0, <1!6.0.0",
+        "SpiNNMan >= 1!5.0.0, <1!6.0.0",
     ],
 
     # Scripts
