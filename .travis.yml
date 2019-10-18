@@ -42,11 +42,12 @@ before_install:
 install:
   - python setup.py develop
   - pip install -r requirements-test.txt
-  - pip install python-coveralls 'coverage>=4.4'
+  - pip install pylint python-coveralls 'coverage>=4.4'
 script:
   - py.test tests/ --cov spalloc_server --durations=10
   # Code quality check
   - flake8
+  - ( pylint --output-format=colorized --disable=R,C spalloc_server; exit $(($? & 35)) )
   # Copyright check
   - support/rat.sh run
 after_success:
