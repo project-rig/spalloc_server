@@ -63,7 +63,7 @@ their physical layout defined by `SpiNNer
 `spinner-ethernet-chips
 <http://spinner.readthedocs.org/en/stable/spinner-ethernet-chips.html>`_
 describing machine layouts and the :py:meth:`.Machine.with_standard_ips`
-constructor produces :py:class:`.Machine`\ s with IP addresses based on the
+constructor produces :py:class:`.Machine`s with IP addresses based on the
 standard IP addressing scheme. These may be used together like so::
 
     # spinner-ethernet-chips -n 1200 > ethernet_chips.csv

@@ -85,7 +85,7 @@ class Links(IntEnum):
             y = -1 if y > 0 else 1
 
         lookup, _ = _LinksHelper.get_lookups()
-        return lookup[(x, y)]
+        return lookup[(x, y)]  # pylint: disable=unsubscriptable-object
 
     def to_vector(self):
         """ Given a link direction, return the equivalent vector.
@@ -94,7 +94,7 @@ class Links(IntEnum):
         :rtype: pair of int
         """
         _, lookup = _LinksHelper.get_lookups()
-        return lookup[self]
+        return lookup[self]  # pylint: disable=unsubscriptable-object
 
     @property
     def opposite(self):

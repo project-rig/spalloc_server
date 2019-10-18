@@ -82,7 +82,7 @@ class ConfigurationReloader(object):
 
         try:
             parsed_config = self._parse_config(config_script)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # Executing the config file failed, don't update any settings
             log.exception("Error while evaluating config file %s",
                           self._config_filename)
@@ -98,7 +98,7 @@ class ConfigurationReloader(object):
         # Update the configuration
         try:
             self._load_valid_config(validated)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # Config loading failed
             log.exception("Configuration loading file resulted in exception")
             return False
