@@ -128,7 +128,7 @@ class AsyncBMPController(object):
             board=board, cabinet=0, frame=0)
         ok = (fpga_id & _FPGA_FLAG_ID_MASK) == fpga
         if not ok:  # pragma: no cover
-            logging.warn(
+            logging.warning(
                 "FPGA %d on board %d of %s has incorrect FPGA ID flag %d",
                 fpga, board, self._hostname, fpga_id & _FPGA_FLAG_ID_MASK)
         return ok
@@ -157,14 +157,12 @@ class AsyncBMPController(object):
                     retry_boards.append(board)
 
             # try again with incorrect boards only
-            if len(retry_boards):
-                boards_to_power = retry_boards
-            else:
+            if not len(retry_boards):
                 return
-        else:  # pragma: no cover
-            raise Exception(
-                "Could not get correct FPGA ID after {} tries".format(
-                    _N_FPGA_RETRIES))
+            boards_to_power = retry_boards
+        raise Exception(
+            "Could not get correct FPGA ID after {} tries".format(
+                _N_FPGA_RETRIES))
 
     def _set_link_state(self, link, enable, board):
         """ Set the power state of a link.
@@ -222,18 +220,18 @@ class AsyncBMPController(object):
                             # Exit the retry loop if the requests all worked
                             request.on_done(True, None)
                             break
-                        except Exception as e:
-                            if (n_tries + 1) == _N_REQUEST_TRIES:
+                        except Exception as e:  # pylint: disable=broad-except
+                            if n_tries + 1 == _N_REQUEST_TRIES:
                                 reason = "Requests failed on BMP {}".format(
                                     self._hostname)
-                                logging.exception(reason + ": " + str(e))
+                                logging.exception("%s: %s", reason, str(e))
                                 request.on_done(False, reason)
                                 break
                             logging.exception(
-                                "Retrying requests on BMP {} after {}"
-                                " seconds: {}".format(
-                                    self._hostname, _SECONDS_BETWEEN_TRIES,
-                                    str(e)))
+                                "Retrying requests on BMP %s after %d"
+                                " seconds: %s",
+                                self._hostname, _SECONDS_BETWEEN_TRIES,
+                                str(e))
                             time.sleep(_SECONDS_BETWEEN_TRIES)
 
                 # If nothing left in the queues, clear the request flag and

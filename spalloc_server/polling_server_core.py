@@ -48,6 +48,7 @@ class PollingServerCore(object):
     """ Wrapper around the operating system's poll() call. Also knows the\
         basics of making sockets.
     """
+    # pylint: disable=no-member
 
     MILLISECOND_TO_SECOND_CONVERTER = 1000.0
 

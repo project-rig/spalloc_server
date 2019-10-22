@@ -150,7 +150,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                     self._controller = unpickle(f)
                 log.info("Server warm-starting from %s.",
                          self._state_filename)
-            except Exception:
+            except Exception:  # pylint: disable=broad-except
                 # Some other error occurred during unpickling.
                 log.exception(
                     "Server state could not be unpacked from %s.",
@@ -176,6 +176,12 @@ class Server(PollingServerCore, ConfigurationReloader):
         self._server_thread.start()
         self._running = True
 
+    def _send_change_notifications(self):
+        raise NotImplementedError
+
+    def _clear_watches(self, client):
+        raise NotImplementedError
+
     def _get_state_filename(self, cfg):
         """ How to get the name of the state file from the name of another\
             file (expected to be the config file). Assumes that the config\
@@ -196,7 +202,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         g = {}
         g.update(configuration.__dict__)
         g.update(coordinates.__dict__)
-        exec(config_file_contents, g)
+        exec(config_file_contents, g)  # pylint: disable=exec-used
         return g
 
     @overrides(ConfigurationReloader._validate_config)
@@ -252,7 +258,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             log.info("Client %s disconnected.", client.getpeername())
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             log.info("Client %s disconnected.", client)
 
         # Clear input buffer if created
@@ -260,8 +266,7 @@ class Server(PollingServerCore, ConfigurationReloader):
             del self._client_buffers[client]
 
         # Clear any watches
-        self._client_job_watches.pop(client, None)
-        self._client_machine_watches.pop(client, None)
+        self._clear_watches(client)
 
         # Stop watching the client's socket for data
         try:
@@ -280,7 +285,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         try:
             client, addr = self._server_socket.accept()
         except IOError as e:  # pragma: no cover
-            log.warn("problem when accepting connection", exc_info=e)
+            log.warning("problem when accepting connection", exc_info=e)
             return
         log.info("New client connected from %s", addr)
 
@@ -345,7 +350,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         # Execute the specified command
         try:
             return {"return": command(self, client, *args, **kwargs)}
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             return {"exception": str(e)}
 
     def _handle_commands(self, client):
@@ -379,7 +384,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                 if line:
                     self._msg_client(client,
                                      self._handle_command(client, line))
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # If any of the above fails for any reason (e.g. invalid JSON,
             # unrecognised command, command crashes, etc.), just disconnect
             # the client.
@@ -486,7 +491,8 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             return None if client is None else str(client.getpeername()[0])
-        except Exception:  # pragma: no cover
+        except Exception:  # pylint: disable=broad-except
+            # pragma: no cover
             return None
 
 
@@ -782,6 +788,10 @@ class SpallocServer(Server):
             watches.discard(_id)
             if not watches:
                 del watchset[client]
+
+    def _clear_watches(self, client):
+        self._client_job_watches.pop(client, None)
+        self._client_machine_watches.pop(client, None)
 
     @spalloc_command
     def notify_job(self, client, job_id=None):
@@ -1105,7 +1115,7 @@ def main(args=None):
         return 1
     except KeyboardInterrupt:
         server.stop_and_join()
-    except Exception:
+    except Exception:  # pylint: disable=broad-except
         log.exception("unexpected failure")
         return 2
 
