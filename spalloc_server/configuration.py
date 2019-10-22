@@ -107,10 +107,7 @@ Configuration File API Reference
 ````````````````````````````````
 """  # noqa: W605
 
-try:
-    from collections.abc import namedtuple
-except ImportError:
-    from collections import namedtuple
+from collections import namedtuple
 import re
 import csv
 from itertools import chain

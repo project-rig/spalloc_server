@@ -16,10 +16,7 @@
 """ A high-level control interface for scheduling and allocating jobs and
 managing hardware in a collection of SpiNNaker machines.
 """
-try:
-    from collections.abc import namedtuple, OrderedDict, defaultdict
-except ImportError:
-    from collections import namedtuple, OrderedDict, defaultdict
+from collections import namedtuple, OrderedDict, defaultdict
 from datetime import datetime
 from enum import IntEnum
 import logging
