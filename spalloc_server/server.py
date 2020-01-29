@@ -372,6 +372,7 @@ class Server(PollingServerCore, ConfigurationReloader):
             return
 
         peer = "UNKNOWN"
+        line = ""
         try:
             peer = client.getpeername()
             self._client_buffers[client] += data
