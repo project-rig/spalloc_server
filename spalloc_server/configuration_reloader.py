@@ -1,5 +1,20 @@
-import signal
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import logging as log
+import signal
 from six import add_metaclass
 from spinn_utilities.abstract_base import AbstractBase, abstractmethod
 
@@ -67,7 +82,7 @@ class ConfigurationReloader(object):
 
         try:
             parsed_config = self._parse_config(config_script)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # Executing the config file failed, don't update any settings
             log.exception("Error while evaluating config file %s",
                           self._config_filename)
@@ -83,7 +98,7 @@ class ConfigurationReloader(object):
         # Update the configuration
         try:
             self._load_valid_config(validated)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # Config loading failed
             log.exception("Configuration loading file resulted in exception")
             return False

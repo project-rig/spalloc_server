@@ -1,24 +1,36 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ A high-level control interface for scheduling and allocating jobs and
 managing hardware in a collection of SpiNNaker machines.
 """
-
 from collections import namedtuple, OrderedDict, defaultdict
 from datetime import datetime
 from enum import IntEnum
-from functools import partial
 import logging
 from logging.handlers import TimedRotatingFileHandler
-from pytz import utc
-from six import itervalues, iteritems
 from threading import RLock
 from time import time as timestamp
-
+from functools import partial
+from pytz import utc
+from six import itervalues, iteritems
 from spinn_machine import SpiNNakerTriadGeometry
-
-from .coordinates import \
-    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround
+from .coordinates import (
+    board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround)
 from .job_queue import JobQueue
-from .async_bmp_controller import AsyncBMPController
+from .async_bmp_controller import AsyncBMPController, AtomicRequests
 
 job_log = logging.Logger("jobs")
 job_log.propagate = False
@@ -971,7 +983,7 @@ class Controller(object):
         with self._lock:
             self._job_queue.check_free()
 
-    def _bmp_on_request_complete(self, job, what, success, reason=None):
+    def _bmp_on_request_complete(self, job, success, reason=None):
         """ Callback function called by an AsyncBMPController when it completes
         a previously issued request.
 
@@ -986,16 +998,13 @@ class Controller(object):
         job : :py:class:`._Job`
             The job whose state should be set. (To be defined by wrapping this
             method in a partial).
-        what : str
-            The type of thing that was being configured.
         success : bool
             Command success indicator provided by the AsyncBMPController.
         """
         with self._lock:
             # If a BMP command failed, cancel the job
             if not success:
-                message = "Machine configuration failed while handling {}."\
-                    .format(what)
+                message = "Machine configuration failed."
                 if reason is not None:
                     message += " Error: " + reason
                 self.destroy_job(None, job.id, message)
@@ -1032,38 +1041,37 @@ class Controller(object):
         with self._lock:
             machine = job.allocated_machine
 
-            on_done_b = partial(self._bmp_on_request_complete, job, "board")
-            on_done_l = partial(self._bmp_on_request_complete, job, "link")
+            on_done = partial(self._bmp_on_request_complete, job)
 
             # Group commands by the frame they interact with to allow all
             # commands within a frame to be sent atomically
-            frame_commands = defaultdict(list)
+            frame_commands = defaultdict(partial(AtomicRequests, on_done))
 
             controllers = self._bmp_controllers[machine.name]
 
             # Power commands
-            job.bmp_requests_until_ready += len(job.boards)
             for xyz in job.boards:
                 c, f, b = machine.board_locations[xyz]
                 controller = controllers[(c, f)]
-                frame_commands[controller].append(
-                    partial(controller.set_power, b, power, on_done_b))
+                job_log.info("power(%s, %s) on BMP %s for job %s",
+                             b, power, controller.hostname, job.id)
+                frame_commands[controller].power(b, bool(power))
 
             # Link state commands
             if link_enable is not None:
-                job.bmp_requests_until_ready += len(job.periphery)
                 for x, y, z, link in job.periphery:
                     c, f, b = machine.board_locations[(x, y, z)]
                     controller = controllers[(c, f)]
-                    frame_commands[controller].append(
-                        partial(controller.set_link_enable,
-                                b, link, link_enable, on_done_l))
+                    job_log.info(
+                        "link(%s, %s, %s) on BMP %s for job %s",
+                        b, link, link_enable, controller.hostname, job.id)
+                    frame_commands[controller].link(b, link, bool(link_enable))
 
             # Send power/link commands atomically for each frame
+            job.bmp_requests_until_ready += len(frame_commands)
             for controller, commands in iteritems(frame_commands):
                 with controller:
-                    for command in commands:
-                        command()
+                    controller.add_requests(commands)
 
             # Update job state
             job.state = JobState.power

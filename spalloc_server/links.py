@@ -1,8 +1,22 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ A data structure representing links in a SpiNNaker machine.
 """
-
-from six import iteritems
 from enum import IntEnum
+from six import iteritems
 
 
 class Links(IntEnum):
@@ -71,7 +85,7 @@ class Links(IntEnum):
             y = -1 if y > 0 else 1
 
         lookup, _ = _LinksHelper.get_lookups()
-        return lookup[(x, y)]
+        return lookup[(x, y)]  # pylint: disable=unsubscriptable-object
 
     def to_vector(self):
         """ Given a link direction, return the equivalent vector.
@@ -80,7 +94,7 @@ class Links(IntEnum):
         :rtype: pair of int
         """
         _, lookup = _LinksHelper.get_lookups()
-        return lookup[self]
+        return lookup[self]  # pylint: disable=unsubscriptable-object
 
     @property
     def opposite(self):

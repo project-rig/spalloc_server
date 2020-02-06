@@ -1,21 +1,38 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ Provide (basic) asynchronous control over a BMP responsible for controlling
 a whole rack.
 """
-
 import threading
 import logging
 from collections import namedtuple, deque
-
 from spinnman.transceiver import create_transceiver_from_hostname
 from spinnman.model import BMPConnectionData
 from spinnman.constants import SCP_SCAMP_PORT
-
 from .links import Links
+import time
 
 # The first BMP version with FPGA register support
 _BMP_VER_MIN = 2
 
 _N_FPGA_RETRIES = 3
+
+_N_REQUEST_TRIES = 2
+
+_SECONDS_BETWEEN_TRIES = 15
 
 
 class AsyncBMPController(object):
@@ -67,11 +84,8 @@ class AsyncBMPController(object):
         # required.
         self._requests_pending = threading.Event()
 
-        # A queue of power change states
-        self._power_requests = deque()
-
-        # A queue of link-enabled state changes
-        self._link_requests = deque()
+        # A queue of requests to be done
+        self._requests = deque()
 
         self._thread = threading.Thread(
             target=self._run,
@@ -87,65 +101,12 @@ class AsyncBMPController(object):
         self._lock.release()
         return False
 
-    def set_power(self, board, state, on_done):
-        """ Set the power state of a single board.
-
-        Parameters
-        ----------
-        board : int
-            The board to control.
-        state : bool
-            True = on, False = off.
-        on_done : function(success)
-            Function to call when the command completes. May be called from
-            another thread. Success is a bool which is True if the command
-            completed successfully and False if it did not (or was cancelled).
+    def add_requests(self, atomic_requests):
+        """ Add an atomic request to be performed
         """
-        # Verify that our arguments are sane
-        board = int(board)
-        state = bool(state)
         with self._lock:
             assert not self._stop
-
-            # Cancel any existing link enable commands for this board
-            cancelled = []
-            for request in list(self._link_requests):
-                if request.board == board:
-                    self._link_requests.remove(request)
-                    cancelled.append(request)
-
-            # Enqueue the request
-            self._power_requests.append(_PowerRequest(state, board, on_done))
-            self._requests_pending.set()
-
-        for request in cancelled:
-            request.on_done(False, "Cancelled")
-
-    def set_link_enable(self, board, link, enable, on_done):
-        """ Enable or disable a link.
-
-        Parameters
-        ----------
-        board : int
-            The board on which the link resides.
-        link : :py:class:`spalloc_server.links.Links`
-            The link to configure.
-        enable : bool
-            True = link enabled, False = link disabled.
-        on_done : function(success)
-            Function to call when the command completes. May be called from
-            another thread. Success is a bool which is True if the command
-            completed successfully and False if it did not (or was cancelled).
-        """
-        # Verify that our arguments are sane
-        board = int(board)
-        enable = bool(enable)
-        with self._lock:
-            assert not self._stop
-
-            # Enqueue the request
-            self._link_requests.append(
-                _LinkRequest(board, link, enable, on_done))
+            self._requests.append(atomic_requests)
             self._requests_pending.set()
 
     def stop(self):
@@ -167,12 +128,12 @@ class AsyncBMPController(object):
             board=board, cabinet=0, frame=0)
         ok = (fpga_id & _FPGA_FLAG_ID_MASK) == fpga
         if not ok:  # pragma: no cover
-            logging.warn(
+            logging.warning(
                 "FPGA %d on board %d of %s has incorrect FPGA ID flag %d",
                 fpga, board, self._hostname, fpga_id & _FPGA_FLAG_ID_MASK)
         return ok
 
-    def _boot_board(self, boards):
+    def _power_on_and_check(self, boards):
         # FPGAs are checked after power on - assume incorrect to start
         boards_to_power = boards
         for _try in range(_N_FPGA_RETRIES):
@@ -196,39 +157,12 @@ class AsyncBMPController(object):
                     retry_boards.append(board)
 
             # try again with incorrect boards only
-            if len(retry_boards):
-                boards_to_power = retry_boards
-            else:
+            if not len(retry_boards):
                 return
-        else:  # pragma: no cover
-            raise Exception(
-                "Could not get correct FPGA ID after {} tries".format(
-                    _N_FPGA_RETRIES))
-
-    def _set_board_state(self, state, board):
-        """ Set the power state of a board.
-
-        :param state: What to set the state to. True for on, False for off
-        :type state: bool
-        :param board: Which board or boards to set the state of
-        :type board: int or iterable
-        """
-        try:
-            # If powering on...
-            if state:
-                self._boot_board(board)
-            # If powering off...
-            else:
-                self._transceiver.power_off(boards=board, frame=0, cabinet=0)
-            return True, None
-        except Exception:
-            reason = \
-                "Failed to set board power on BMP {}, boards {}, state={}."\
-                .format(self._hostname, board, state)
-
-            # Communication issue with the machine, log it
-            logging.exception(reason)
-            return False, reason
+            boards_to_power = retry_boards
+        raise Exception(
+            "Could not get correct FPGA ID after {} tries".format(
+                _N_FPGA_RETRIES))
 
     def _set_link_state(self, link, enable, board):
         """ Set the power state of a link.
@@ -240,24 +174,15 @@ class AsyncBMPController(object):
         :param board: Which board or boards to set the link enable-state of.
         :type board: int or iterable
         """
-        try:
-            # skip FPGA link configuration if old BMP version
-            vi = self._transceiver.read_bmp_version(
-                board=board, frame=0, cabinet=0)
-            if vi.version_number[0] < _BMP_VER_MIN:
-                return True, None
+        # skip FPGA link configuration if old BMP version
+        vi = self._transceiver.read_bmp_version(
+            board=board, frame=0, cabinet=0)
+        if vi.version_number[0] < _BMP_VER_MIN:
+            return
 
-            fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
-            self._transceiver.write_fpga_register(
-                fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
-            return True, None
-        except Exception:
-            reason = "Failed to set link state on BMP {}, board {}, link {},"\
-                " enable={}.".format(self._hostname, board, link, enable)
-
-            # Communication issue with the machine, log it
-            logging.exception(reason)
-            return False, reason
+        fpga, addr = FPGA_LINK_STOP_REGISTERS[link]
+        self._transceiver.write_fpga_register(
+            fpga, addr, int(not enable), board=board, frame=0, cabinet=0)
 
     def _run(self):
         """ The background thread for interacting with the BMP.
@@ -269,37 +194,50 @@ class AsyncBMPController(object):
             while True:
                 self._requests_pending.wait()
 
-                # Priority 0: Power commands
-                power_request = self._get_atomic_power_request()
-                if power_request:
-                    # Send the power command
-                    success, reason = self._set_board_state(
-                        power_request.state, power_request.board)
+                if self._requests:
+                    request = self._requests.popleft()
 
-                    # Alert all waiting threads
-                    for on_done in power_request.on_done:
-                        on_done(success, reason)
+                    for n_tries in range(_N_REQUEST_TRIES):
+                        try:
+                            # Send any power on commands
+                            if request.power_on_boards:
+                                self._power_on_and_check(
+                                    request.power_on_boards)
 
-                    continue
+                            # Process link requests next
+                            for link_request in request.link_requests:
+                                # Set the link state, as required
+                                self._set_link_state(
+                                    link_request.link, link_request.enable,
+                                    link_request.board)
 
-                # Priority 1: Link enable/disable commands
-                link_request = self._get_atomic_link_request()
-                if link_request:
-                    # Set the link state, as required
-                    success, reason = self._set_link_state(
-                        link_request.link, link_request.enable,
-                        link_request.board)
+                            # Finally send any power off commands
+                            if request.power_off_boards:
+                                self._transceiver.power_off(
+                                    boards=request.power_off_boards,
+                                    frame=0, cabinet=0)
 
-                    # Alert waiting thread
-                    link_request.on_done(success, reason)
-
-                    continue
+                            # Exit the retry loop if the requests all worked
+                            request.on_done(True, None)
+                            break
+                        except Exception as e:  # pylint: disable=broad-except
+                            if n_tries + 1 == _N_REQUEST_TRIES:
+                                reason = "Requests failed on BMP {}".format(
+                                    self._hostname)
+                                logging.exception("%s: %s", reason, str(e))
+                                request.on_done(False, reason)
+                                break
+                            logging.exception(
+                                "Retrying requests on BMP %s after %d"
+                                " seconds: %s",
+                                self._hostname, _SECONDS_BETWEEN_TRIES,
+                                str(e))
+                            time.sleep(_SECONDS_BETWEEN_TRIES)
 
                 # If nothing left in the queues, clear the request flag and
                 # break out of queue-processing loop.
                 with self._lock:
-                    if (not self._power_requests and  # pragma: no branch
-                            not self._link_requests):
+                    if not self._requests:
                         self._requests_pending.clear()
 
                         # If we've been told to stop, actually stop the thread
@@ -315,59 +253,56 @@ class AsyncBMPController(object):
                 self._stop = True
             raise
 
-    def _get_atomic_power_request(self):
-        """ If any power requests are outstanding, return a (boards, state)\
-            tuple which combines as many of the requests at the head of the\
-            queue as possible.
-
-        :rtype: :py:class:`._PowerRequest` or None
-        """
-        with self._lock:
-            # Special case: no requests
-            if not self._power_requests:
-                return None
-
-            # Otherwise, accumulate as many boards as possible
-            state = self._power_requests[0].state
-            boards = list()
-            on_done = []
-            while (self._power_requests and
-                   self._power_requests[0].state == state):
-                request = self._power_requests.popleft()
-                boards.append(request.board)
-                on_done.append(request.on_done)
-            return _PowerRequest(state, boards, on_done)
-
-    def _get_atomic_link_request(self):
-        """ Pop the next link state change request, if one exists.
-
-        :rtype: :py:class:`._LinkRequest` or None
-        """
-        with self._lock:
-            if not self._link_requests:
-                return None
-            return self._link_requests.popleft()
+    @property
+    def hostname(self):
+        return self._hostname
 
 
-class _PowerRequest(namedtuple("_PowerRequest", "state board on_done")):
-    """ Requests that a specific board should have its power state set to a
-    particular value.
-
-    Parameters
-    ----------
-    state : bool
-        On (True) or off (False).
-    board : int
-        Board to change the state of
-    on_done : function(success)
-        A function to call when the request has been completed.
+class AtomicRequests(object):
+    """ A list of requests that need to be done atomically; these are carried
+        out in order of power on, link enable or disable, power off
     """
 
-    # Python 3.4 Workaround: https://bugs.python.org/issue24931
-    __slots__ = tuple()
+    __slots__ = [
+        "_on_done",
+        "_power_on_boards",
+        "_power_off_boards",
+        "_link_requests"
+    ]
+
+    def __init__(self, on_done):
+        self._on_done = on_done
+        self._power_on_boards = list()
+        self._power_off_boards = list()
+        self._link_requests = list()
+
+    def power(self, board, power):
+        if power:
+            self._power_on_boards.append(board)
+        else:
+            self._power_off_boards.append(board)
+
+    def link(self, board, link, enable):
+        self._link_requests.append(LinkRequest(board, link, enable))
+
+    @property
+    def on_done(self):
+        return self._on_done
+
+    @property
+    def power_on_boards(self):
+        return self._power_on_boards
+
+    @property
+    def power_off_boards(self):
+        return self._power_off_boards
+
+    @property
+    def link_requests(self):
+        return self._link_requests
 
 
-class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
+class LinkRequest(namedtuple("LinkRequest", "board link enable")):
     """ Requests that a specific board should have its power state set to a
     particular value.
 
@@ -379,8 +314,6 @@ class _LinkRequest(namedtuple("_LinkRequest", "board link enable on_done")):
         The link whose state should be changed
     enable : bool
         State of the link: Enabled (True), disabled (False).
-    on_done : function(success)
-        A function to call when the request has been completed.
     """
 
     # Python 3.4 Workaround: https://bugs.python.org/issue24931

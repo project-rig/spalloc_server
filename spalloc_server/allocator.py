@@ -1,14 +1,27 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ Algorithm/data structure for allocating boards in SpiNNaker machines at
 the granularity of individual SpiNNaker boards and with awareness of the
 functionality of a machine.
 """
-
 from enum import Enum
 from collections import deque
 from math import ceil
 from six import next  # pylint: disable=redefined-builtin
 from datetime import datetime
-
 from .links import Links
 from .pack_tree import PackTree
 from .area_to_rect import area_to_rect

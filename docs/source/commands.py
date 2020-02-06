@@ -1,3 +1,18 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 ###############################################################################
 # This module creates mock functions and classes for Sphinx-autodoc to scan and
 # document based on the commands implemented in the server object.
@@ -9,7 +24,13 @@ the form of Python functions.
 
 from six import iteritems
 # from functools import wraps
-from inspect import getargspec, formatargspec
+from inspect import formatargspec
+try:
+    from inspect import getfullargspec
+except ImportError:
+    # Python 2.7 hack
+    from inspect import getargspec as getfullargspec
+
 
 from spalloc_server.server import _COMMANDS
 from spalloc_server.controller import JobState as _JobState
@@ -26,7 +47,7 @@ for name, f in iteritems(_COMMANDS):
 
     # Get the arguments of the command and strip out the method 'self' argument
     # and the internally used 'client' argument.
-    argspec = getargspec(f)
+    argspec = getfullargspec(f)
     argspec.args.remove("self")
     argspec.args.remove("client")
 

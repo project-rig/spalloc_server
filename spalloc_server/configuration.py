@@ -1,3 +1,18 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ A configuration file is used to describe the machines which are to be
 managed.  Configuration files are Python scripts which define a global
 ``configuration`` variable which is an instance of the
@@ -48,7 +63,7 @@ their physical layout defined by `SpiNNer
 `spinner-ethernet-chips
 <http://spinner.readthedocs.org/en/stable/spinner-ethernet-chips.html>`_
 describing machine layouts and the :py:meth:`.Machine.with_standard_ips`
-constructor produces :py:class:`.Machine`\ s with IP addresses based on the
+constructor produces :py:class:`.Machine`s with IP addresses based on the
 standard IP addressing scheme. These may be used together like so::
 
     # spinner-ethernet-chips -n 1200 > ethernet_chips.csv
@@ -90,14 +105,13 @@ use any code you like to pragmatically specify machines, etc. which you use.
 
 Configuration File API Reference
 ````````````````````````````````
-"""
+"""  # noqa: W605
 
 from collections import namedtuple
 import re
 import csv
 from itertools import chain
 from six import iteritems, itervalues
-
 from .coordinates import chip_to_board
 
 
@@ -416,7 +430,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         def ip_to_int(ip):
             """ Convert from string-based IP to a 32-bit integer.
             """
-            match = re.match("^(\d+).(\d+).(\d+).(\d+)$", ip)
+            match = re.match(r"^(\d+).(\d+).(\d+).(\d+)$", ip)
             if not match:
                 raise ValueError("Malformed IPv4 address '{}'".format(ip))
 

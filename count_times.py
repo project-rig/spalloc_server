@@ -1,3 +1,18 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import sys
 import re
 import time
@@ -85,29 +100,29 @@ def scan_logfile(log_file_name):
     with open(log_file_name, "r") as log:
         for line in log:
             match_create = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " create_job\(\(.*\),(\{.*\})\) from (.*)", line)
+                r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+                r" create_job\(\(.*\),(\{.*\})\) from (.*)", line)
             if match_create is not None:
                 process_create(match_create)
                 continue
 
             match_power_on = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " power_job\((\d+),(On|Off)\) from (.*)", line)
+                r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+                r" power_job\((\d+),(On|Off)\) from (.*)", line)
             if match_power_on is not None:
                 process_power_on(match_power_on)
                 continue
 
             match_completed = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " completed shutdown of job (\d+)", line)
+                r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+                r" completed shutdown of job (\d+)", line)
             if match_completed is not None:
                 process_completed(match_completed)
                 continue
 
             match_destroyed = re.search(
-                "(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
-                " destroy_job", line)
+               r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):"
+               " destroy_job", line)
             if match_destroyed is None:
                 print("Unknown line format for line {}".format(line))
 

@@ -1,3 +1,18 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ A TCP server which exposes a public interface for allocating boards.
 
 This module is essentially the 'top level' module for the functionality of the\
@@ -11,12 +26,10 @@ from json import dumps as json, loads as dejson
 import logging as log
 from os import path
 from pickle import dump as pickle, load as unpickle
-from six import iteritems, string_types
 from threading import Thread
 from time import sleep
-
+from six import iteritems, string_types
 from spinn_utilities.overrides import overrides
-
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
 from spalloc_server.controller import Controller
@@ -37,6 +50,10 @@ def spalloc_command(f):
     """
     _COMMANDS[f.__name__] = f
     return f
+
+
+class _CriticalStop(Exception):
+    pass
 
 
 class Server(PollingServerCore, ConfigurationReloader):
@@ -133,7 +150,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                     self._controller = unpickle(f)
                 log.info("Server warm-starting from %s.",
                          self._state_filename)
-            except Exception:
+            except Exception:  # pylint: disable=broad-except
                 # Some other error occurred during unpickling.
                 log.exception(
                     "Server state could not be unpacked from %s.",
@@ -153,11 +170,17 @@ class Server(PollingServerCore, ConfigurationReloader):
         # being started.
         if not self.read_config_file():
             self._controller.stop()
-            raise Exception("Config file could not be loaded.")
+            raise _CriticalStop("Config file could not be loaded.")
 
         # Start the server
         self._server_thread.start()
         self._running = True
+
+    def _send_change_notifications(self):
+        raise NotImplementedError
+
+    def _clear_watches(self, client):
+        raise NotImplementedError
 
     def _get_state_filename(self, cfg):
         """ How to get the name of the state file from the name of another\
@@ -179,7 +202,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         g = {}
         g.update(configuration.__dict__)
         g.update(coordinates.__dict__)
-        exec(config_file_contents, g)
+        exec(config_file_contents, g)  # pylint: disable=exec-used
         return g
 
     @overrides(ConfigurationReloader._validate_config)
@@ -237,18 +260,23 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             log.info("Client %s disconnected.", client.getpeername())
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             log.info("Client %s disconnected.", client)
 
-        # Clear input buffer
-        del self._client_buffers[client]
+        # Clear input buffer if created
+        if client in self._client_buffers:
+            del self._client_buffers[client]
 
         # Clear any watches
-        self._client_job_watches.pop(client, None)
-        self._client_machine_watches.pop(client, None)
+        self._clear_watches(client)
 
         # Stop watching the client's socket for data
-        self.unregister_channel(client)
+        try:
+            self.unregister_channel(client)
+        except KeyError:
+            # The odd case of the unregistered client -
+            # this can be ignored as it wasn't registered anyway
+            pass
 
         # Disconnect the client
         client.close()
@@ -259,7 +287,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         try:
             client, addr = self._server_socket.accept()
         except IOError as e:  # pragma: no cover
-            log.warn("problem when accepting connection", exc_info=e)
+            log.warning("problem when accepting connection", exc_info=e)
             return
         log.info("New client connected from %s", addr)
 
@@ -324,7 +352,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         # Execute the specified command
         try:
             return {"return": command(self, client, *args, **kwargs)}
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             return {"exception": str(e)}
 
     def _handle_commands(self, client):
@@ -345,10 +373,12 @@ class Server(PollingServerCore, ConfigurationReloader):
             self._disconnect_client(client)
             return
 
-        peer = client.getpeername()
-        self._client_buffers[client] += data
-
+        peer = "UNKNOWN"
+        line = ""
         try:
+            peer = client.getpeername()
+            self._client_buffers[client] += data
+
             # Process any complete commands (whole lines)
             while b"\n" in self._client_buffers[client]:
                 line, _, self._client_buffers[client] = \
@@ -357,7 +387,7 @@ class Server(PollingServerCore, ConfigurationReloader):
                 if line:
                     self._msg_client(client,
                                      self._handle_command(client, line))
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # If any of the above fails for any reason (e.g. invalid JSON,
             # unrecognised command, command crashes, etc.), just disconnect
             # the client.
@@ -467,7 +497,8 @@ class Server(PollingServerCore, ConfigurationReloader):
         """
         try:
             return None if client is None else str(client.getpeername()[0])
-        except Exception:  # pragma: no cover
+        except Exception:  # pylint: disable=broad-except
+            # pragma: no cover
             return None
 
 
@@ -763,6 +794,10 @@ class SpallocServer(Server):
             watches.discard(_id)
             if not watches:
                 del watchset[client]
+
+    def _clear_watches(self, client):
+        self._client_job_watches.pop(client, None)
+        self._client_machine_watches.pop(client, None)
 
     @spalloc_command
     def notify_job(self, client, job_id=None):
@@ -1068,9 +1103,9 @@ def main(args=None):
             level=log.INFO,
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
-    server = SpallocServer(config_filename=args.config,
-                           cold_start=args.cold_start, port=args.port)
     try:
+        server = SpallocServer(config_filename=args.config,
+                               cold_start=args.cold_start, port=args.port)
         # NB: Originally this loop was replaced with a call to server.join
         # however in Python 2, such blocking calls are not interruptible so we
         # use this rather ugly workaround instead.
@@ -1079,8 +1114,16 @@ def main(args=None):
                 sleep(0.1)
             except IOError:
                 pass
+    except _CriticalStop as e:
+        # NB: No stack trace from a critical stop! The code that threw should
+        # have logged the issue if a trace was relevant.
+        log.error(str(e))
+        return 1
     except KeyboardInterrupt:
         server.stop_and_join()
+    except Exception:  # pylint: disable=broad-except
+        log.exception("unexpected failure")
+        return 2
 
     return 0
 

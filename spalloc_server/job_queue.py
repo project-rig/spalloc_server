@@ -1,9 +1,22 @@
+# Copyright (c) 2017-2019 The University of Manchester
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """ A multi-machine and job queueing and allocation mechanism.
 """
-
 from collections import deque, OrderedDict
 from six import itervalues
-
 from .allocator import Allocator
 
 
@@ -453,6 +466,7 @@ class JobQueue(object):
         else:
             # Job was allocated somewhere, deallocate it
             self.on_free(job.id, reason)
+            job.machine.allocator.free(job.allocation_id)
 
         self._process_queue()
 
