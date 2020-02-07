@@ -466,7 +466,6 @@ class JobQueue(object):
         else:
             # Job was allocated somewhere, deallocate it
             self.on_free(job.id, reason)
-            job.machine.allocator.free(job.allocation_id)
 
         self._process_queue()
 
