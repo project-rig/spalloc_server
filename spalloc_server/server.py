@@ -230,6 +230,8 @@ class Server(PollingServerCore, ConfigurationReloader):
 
         # Update the controller
         self._controller.max_retired_jobs = validated_config.max_retired_jobs
+        self._controller.seconds_before_free = \
+            validated_config.seconds_before_free
         self._controller.machines = OrderedDict(
             (m.name, m) for m in validated_config.machines)
         self.wake()
@@ -434,6 +436,9 @@ class Server(PollingServerCore, ConfigurationReloader):
 
             # Cull any jobs which have timed out
             self._controller.destroy_timed_out_jobs()
+
+            # Check if any new free spaces have appeared
+            self._controller.check_free()
 
             # Send any job/machine change notifications out
             self._send_change_notifications()

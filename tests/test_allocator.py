@@ -14,6 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import time
 from spalloc_server.links import Links
 from spalloc_server.coordinates import board_down_link, WrapAround
 from spalloc_server.allocator import (
@@ -525,7 +526,8 @@ class TestAllocator(object):
         assert torus is WrapAround.none
 
     def test_free_board(self):
-        a = Allocator(2, 1, dead_boards=set([(0, 0, 1)]))
+        a = Allocator(2, 1, dead_boards=set([(0, 0, 1)]),
+                      seconds_before_free=0.1)
 
         # Allocate the two boards on triad 0, 0
         id00, _1, _2, _3 = a._alloc_board(0, 0, 0)
@@ -547,8 +549,16 @@ class TestAllocator(object):
         assert a.pack_tree.children[1].allocated is True
 
         # Freeing a board should bring it back into the single boards triads
-        # dictionary
+        # dictionary, but only after timeout
         a.free(id00)
+        assert len(a.single_board_triads) == 0
+        assert a.full_single_board_triads == set([(0, 0), (1, 0)])
+        assert a.pack_tree.allocated is False
+        assert a.pack_tree.children is not None
+        assert a.pack_tree.children[0].allocated is True
+        assert a.pack_tree.children[1].allocated is True
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.single_board_triads == {(0, 0): set([0])}
         assert a.full_single_board_triads == set([(1, 0)])
 
@@ -561,6 +571,14 @@ class TestAllocator(object):
         # Freeing the only other working board in a triad should remove the
         # triad entirely
         a.free(id02)
+        assert a.single_board_triads == {(0, 0): set([0])}
+        assert a.full_single_board_triads == set([(1, 0)])
+        assert a.pack_tree.allocated is False
+        assert a.pack_tree.children is not None
+        assert a.pack_tree.children[0].allocated is True
+        assert a.pack_tree.children[1].allocated is True
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.single_board_triads == {}
         assert a.full_single_board_triads == set([(1, 0)])
 
@@ -572,6 +590,14 @@ class TestAllocator(object):
 
         # Freeing should move into the single boards dictionary
         a.free(id10)
+        assert a.single_board_triads == {}
+        assert a.full_single_board_triads == set([(1, 0)])
+        assert a.pack_tree.allocated is False
+        assert a.pack_tree.children is not None
+        assert a.pack_tree.children[0].allocated is False
+        assert a.pack_tree.children[1].allocated is True
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.single_board_triads == {(1, 0): set([0])}
         assert a.full_single_board_triads == set()
 
@@ -584,6 +610,14 @@ class TestAllocator(object):
         # Freeing another board in the same triad (but not the last) should
         # just update the dictionary.
         a.free(id11)
+        assert a.single_board_triads == {(1, 0): set([0])}
+        assert a.full_single_board_triads == set()
+        assert a.pack_tree.allocated is False
+        assert a.pack_tree.children is not None
+        assert a.pack_tree.children[0].allocated is False
+        assert a.pack_tree.children[1].allocated is True
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.single_board_triads == {(1, 0): set([0, 1])}
         assert a.full_single_board_triads == set()
 
@@ -595,6 +629,14 @@ class TestAllocator(object):
 
         # Freeing the last board should remove it as before...
         a.free(id12)
+        assert a.single_board_triads == {(1, 0): set([0, 1])}
+        assert a.full_single_board_triads == set()
+        assert a.pack_tree.allocated is False
+        assert a.pack_tree.children is not None
+        assert a.pack_tree.children[0].allocated is False
+        assert a.pack_tree.children[1].allocated is True
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.single_board_triads == {}
         assert a.full_single_board_triads == set()
 
@@ -603,7 +645,7 @@ class TestAllocator(object):
         assert a.pack_tree.children is None
 
     def test_free_triad(self):
-        a = Allocator(2, 1)
+        a = Allocator(2, 1, seconds_before_free=0.1)
 
         id0, _0, _1, _2 = a._alloc_triads(1, 1)
         id1, _0, _1, _2 = a._alloc_triads(1, 1)
@@ -614,8 +656,14 @@ class TestAllocator(object):
         assert a.pack_tree.children[0].allocated is True
         assert a.pack_tree.children[1].allocated is True
 
-        # Triad should be freed
+        # Triad should be freed after timeout and allocation
         a.free(id1)
+        assert a.pack_tree.allocated is False
+        assert a.pack_tree.children is not None
+        assert a.pack_tree.children[0].allocated is True
+        assert a.pack_tree.children[1].allocated is True
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.pack_tree.allocated is False
         assert a.pack_tree.children is not None
         assert a.pack_tree.children[0].allocated is True
@@ -623,6 +671,8 @@ class TestAllocator(object):
 
         # Full tree should be freed too
         a.free(id0)
+        time.sleep(a.seconds_before_free)
+        a.check_free()
         assert a.pack_tree.allocated is False
         assert a.pack_tree.children is None
 
