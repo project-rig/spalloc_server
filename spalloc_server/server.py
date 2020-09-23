@@ -1073,6 +1073,54 @@ class SpallocServer(Server):
         """
         return self._controller.where_is(**kwargs)
 
+    @spalloc_command
+    def report_problem(self, _client, board_ip, x=None, y=None, p=None):
+        """ Report a problem somewhere.
+
+        :param ~socket.Socket _client:
+        :param str board_ip: Which board has the problem.
+        :param int x: X coordinate of the problem chip on the board. Optional.
+        :param int y: Y coordinate of the problem chip on the board. Optional.
+        :param int p: Processor with the problem. Optional.
+        """
+        name = self._name(_client)
+        if x is not None and y is not None and p is not None:
+            self._report_core_problem(
+                name, str(board_ip), (int(x), int(y), int(p)))
+        elif x is not None and y is not None:
+            self._report_chip_problem(name, str(board_ip), (int(x), int(y)))
+        elif x is not None or y is not None or p is not None:
+            raise KeyError
+        else:
+            self._report_board_problem(name, str(board_ip))
+
+    def _report_board_problem(self, name, board):
+        """
+        :param str name:
+        :param str board:
+        """
+        log.warning("%s reports undiagnosed problem on board %s", name, board)
+
+    def _report_chip_problem(self, name, board, chip):
+        """
+        :param str name:
+        :param str board:
+        :param tuple(int,int) chip:
+        """
+        log.warning(
+            "%s reports undiagnosed problem on chip %s of board %s",
+            name, repr(chip), board)
+
+    def _report_core_problem(self, name, board, core):
+        """
+        :param str name:
+        :param str board:
+        :param tuple(int,int,int) core:
+        """
+        log.warning(
+            "%s reports undiagnosed problem on core %s of board %s",
+            name, repr(core), board)
+
 
 def main(args=None):
     """ Command-line launcher for the server.
