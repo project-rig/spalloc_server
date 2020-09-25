@@ -1157,10 +1157,11 @@ def main(args=None):
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     # Directly configure the special failure logger
-    failurehandler = log.StreamHandler(open(args.failurelog))
-    failurehandler.setLevel(log.WARNING)
-    failurehandler.setFormatter(log.Formatter("%(asctime)s - %(message)s"))
-    failure_log.addHandler(failurehandler)
+    if args.failurelog != "":
+        failurehandler = log.StreamHandler(open(args.failurelog, "a"))
+        failurehandler.setLevel(log.WARNING)
+        failurehandler.setFormatter(log.Formatter("%(asctime)s - %(message)s"))
+        failure_log.addHandler(failurehandler)
 
     try:
         server = SpallocServer(config_filename=args.config,
