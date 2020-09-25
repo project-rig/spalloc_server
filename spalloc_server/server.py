@@ -36,6 +36,8 @@ from spalloc_server.controller import Controller
 from spalloc_server.polling_server_core import PollingServerCore
 from spalloc_server.configuration_reloader import ConfigurationReloader
 
+failure_log = log.Logger("board_failures")
+
 BUFFER_SIZE = 1024
 
 _COMMANDS = {}
@@ -1099,7 +1101,8 @@ class SpallocServer(Server):
         :param str name:
         :param str board:
         """
-        log.warning("%s reports undiagnosed problem on board %s", name, board)
+        failure_log.warning(
+            "%s reports undiagnosed problem on board %s", name, board)
 
     def _report_chip_problem(self, name, board, chip):
         """
@@ -1107,7 +1110,7 @@ class SpallocServer(Server):
         :param str board:
         :param tuple(int,int) chip:
         """
-        log.warning(
+        failure_log.warning(
             "%s reports undiagnosed problem on chip %s of board %s",
             name, repr(chip), board)
 
@@ -1117,7 +1120,7 @@ class SpallocServer(Server):
         :param str board:
         :param tuple(int,int,int) core:
         """
-        log.warning(
+        failure_log.warning(
             "%s reports undiagnosed problem on core %s of board %s",
             name, repr(core), board)
 
@@ -1144,12 +1147,20 @@ def main(args=None):
                              "saved state")
     parser.add_argument("--port", "-p", type=int, default=22244,
                         help="port to run the service on")
+    parser.add_argument("--failurelog", "-f", type=str, default="failure.log",
+                        help="file to log failed board information into")
     args = parser.parse_args(args)
 
     if not args.quiet:
         log.basicConfig(
             level=log.INFO,
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+
+    # Directly configure the special failure logger
+    failurehandler = log.StreamHandler(open(args.failurelog))
+    failurehandler.setLevel(log.WARNING)
+    failurehandler.setFormatter(log.Formatter("%(asctime)s - %(message)s"))
+    failure_log.addHandler(failurehandler)
 
     try:
         server = SpallocServer(config_filename=args.config,
