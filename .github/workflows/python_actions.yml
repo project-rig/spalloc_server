@@ -97,7 +97,7 @@ jobs:
     - name: Build documentation with sphinx
       if: matrix.python-version == 3.6
       run: |
-        pip install -r requirements-docs.txt
+        pip install -r requirements-doc.txt
         cd docs/source
         sphinx-build -W -T -E -b html -d _build/doctrees-readthedocsdirhtml -D language=en . _build/html
 
