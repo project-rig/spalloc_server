@@ -48,15 +48,19 @@ for name, f in iteritems(_COMMANDS):
     # Get the arguments of the command and strip out the method 'self' argument
     # and the internally used 'client' argument.
     argspec = getfullargspec(f)
-    argspec.args.remove("self")
-    argspec.args.remove("client")
+    if "self" in argspec.args:
+        argspec.args.remove("self")
+    if "client" in argspec.args:
+        argspec.args.remove("client")
+    if "_client" in argspec.args:
+        argspec.args.remove("_client")
 
     # Modify the docstring to include the modified function prototype and to
     # modify references to other commands from being method references to
     # function references.
     globals()[name].__doc__ = "{}{}\n{}".format(
         name, formatargspec(*argspec),
-        f.__doc__replace(":py:meth:`.", ":py:func:`.")
+        f.__doc__.replace(":py:meth:`.", ":py:func:`.")
         .replace("`~spalloc_server.controller.JobState", "`.JobState")
     )
 

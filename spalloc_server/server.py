@@ -590,50 +590,47 @@ class SpallocServer(Server):
         Once a job has been allocated some boards, these boards will be\
         automatically powered on and left unbooted ready for use.
 
-        :param owner:
+        :param str owner:
             **Required.** The name of the owner of this job.
-        :type owner: str
         :param keepalive:
-            The maximum number of seconds which may elapse between a query on\
-            this job before it is automatically destroyed. If None, no timeout\
+            The maximum number of seconds which may elapse between a query on
+            this job before it is automatically destroyed. If None, no timeout
             is used. (Default: 60.0)
         :type keepalive: float or None
-        :param machine: \
-            Specify the name of a machine which this job must be executed on.\
-            If None, the first suitable machine available will be used,\
-            according to the tags selected below. Must be None when tags are\
+        :param machine:
+            Specify the name of a machine which this job must be executed on.
+            If None, the first suitable machine available will be used,
+            according to the tags selected below. Must be None when tags are
             given. (Default: None)
         :type machine: str or None
-        :param tags: \
-            The set of tags which any machine running this job must have. If\
-            None is supplied, only machines with the "default" tag will be\
-            used. If machine is given, this argument must be None.\
+        :param tags:
+            The set of tags which any machine running this job must have. If
+            None is supplied, only machines with the "default" tag will be
+            used. If machine is given, this argument must be None.
             (Default: None)
-        :type tags: [str, ...] or None
-        :param min_ratio: \
-            The aspect ratio (h/w) which the allocated region must be 'at\
-            least as square as'. Set to 0.0 for any allowable shape, 1.0 to be\
-            exactly square. Ignored when allocating single boards or specific\
+        :type tags: list(str) or None
+        :param float min_ratio:
+            The aspect ratio (h/w) which the allocated region must be 'at
+            least as square as'. Set to 0.0 for any allowable shape, 1.0 to be
+            exactly square. Ignored when allocating single boards or specific
             rectangles of triads.
-        :type min_ratio: float
-        :param max_dead_boards: \
-            The maximum number of broken or unreachable boards to allow in the\
-            allocated region. If None, any number of dead boards is permitted,\
-            as long as the board on the bottom-left corner is alive (Default:\
+        :param max_dead_boards:
+            The maximum number of broken or unreachable boards to allow in the
+            allocated region. If None, any number of dead boards is permitted,
+            as long as the board on the bottom-left corner is alive (Default:
             None).
         :type max_dead_boards: int or None
-        :param max_dead_links: \
-            The maximum number of broken links allow in the allocated region.\
-            When require_torus is True this includes wrap-around links,\
-            otherwise peripheral links are not counted.  If None, any number\
+        :param max_dead_links:
+            The maximum number of broken links allow in the allocated region.
+            When require_torus is True this includes wrap-around links,
+            otherwise peripheral links are not counted.  If None, any number
             of broken links is allowed. (Default: None).
         :type max_dead_links: int or None
-        :param require_torus: \
-            If True, only allocate blocks with torus connectivity. In general\
-            this will only succeed for requests to allocate an entire machine\
-            (when the machine is otherwise not in use!). Must be False when\
+        :param bool require_torus:
+            If True, only allocate blocks with torus connectivity. In general
+            this will only succeed for requests to allocate an entire machine
+            (when the machine is otherwise not in use!). Must be False when
             allocating boards. (Default: False)
-        :type require_torus: bool
         :return: The job ID given to the newly allocated job.
         :rtype: int
         """
@@ -652,6 +649,7 @@ class SpallocServer(Server):
         """ Reset the keepalive timer for the specified job.
 
         .. note::
+
             All other job-specific commands implicitly do this.
 
         :param job_id: A job ID to be kept alive.
@@ -663,26 +661,26 @@ class SpallocServer(Server):
     def get_job_state(self, client, job_id):
         """ Poll the state of a running job.
 
-        :param job_id: A job ID to get the state of.
-        :type job_id: int
-        :rtype: dict
+        :param int job_id: A job ID to get the state of.
+        :rtype: dict(str, ...)
         :return: A dictionary with the following keys:
-            state : :py:class:`~spalloc_server.controller.JobState`
+
+            ``state`` : :py:class:`~spalloc_server.controller.JobState`
                 The current state of the queried job.
-            power : bool or None
-                If job is in the ready or power states, indicates whether the\
-                boards are power{ed,ing} on (True), or power{ed,ing} off\
-                (False). In other states, this value is None.
-            keepalive : float or None
-                The Job's keepalive value: the number of seconds between\
-                queries about the job before it is automatically destroyed.\
-                None if no timeout is active (or when the job has been\
+            ``power`` : bool or None
+                If job is in the ready or power states, indicates whether the
+                boards are power{ed,ing} on (``True``), or power{ed,ing} off
+                (``False``). In other states, this value is ``None``.
+            ``keepalive`` : float or None
+                The Job's keepalive value: the number of seconds between
+                queries about the job before it is automatically destroyed.
+                ``None`` if no timeout is active (or when the job has been
                 destroyed).
-            reason : str or None
-                If the job has been destroyed, this may be a string describing\
+            ``reason`` : str or None
+                If the job has been destroyed, this may be a string describing
                 the reason the job was terminated.
-            start_time : float or None
-                For queued and allocated jobs, gives the Unix time (UTC) at\
+            ``start_time`` : float or None
+                For queued and allocated jobs, gives the Unix time (UTC) at
                 which the job was created (or None otherwise).
         """
         out = self._controller.get_job_state(
@@ -694,22 +692,22 @@ class SpallocServer(Server):
     def get_job_machine_info(self, client, job_id):
         """ Get the list of Ethernet connections to the allocated machine.
 
-        :param job_id: A job ID to get the machine info for.
-        :type job_id: int
-        :rtype: dict
+        :param int job_id: A job ID to get the machine info for.
+        :rtype: dict(str, ...)
         :return: A dictionary with the following keys:
-            width, height : int or None
-                The dimensions of the machine in chips, e.g. for booting.\
-                None if no boards are allocated to the job.
-            connections : [[[x, y], hostname], ...] or None
-                A list giving Ethernet-connected chip coordinates in the\
-                machine to hostname.\
-                None if no boards are allocated to the job.
-            machine_name : str or None
-                The name of the machine the job is allocated on.\
-                None if no boards are allocated to the job.
-            boards : [[x, y, z], ...] or None
-                All the boards allocated to the job or None if no boards\
+
+            ``width``, ``height`` : int or None
+                The dimensions of the machine in chips, e.g. for booting.
+                ``None`` if no boards are allocated to the job.
+            ``connections`` : [[[x, y], hostname], ...] or None
+                A list giving Ethernet-connected chip coordinates in the
+                machine to hostname.
+                ``None`` if no boards are allocated to the job.
+            ``machine_name`` : str or None
+                The name of the machine the job is allocated on.
+                ``None`` if no boards are allocated to the job.
+            ``boards`` : [[x, y, z], ...] or None
+                All the boards allocated to the job or ``None`` if no boards
                 allocated.
         """
         width, height, connections, machine_name, boards = \
@@ -729,11 +727,10 @@ class SpallocServer(Server):
     def power_on_job_boards(self, client, job_id):
         """ Power on (or reset if already on) boards associated with a job.
 
-        Once called, the job will enter the 'power' state until the power\
+        Once called, the job will enter the 'power' state until the power
         state change is complete, this may take some time.
 
-        :param job_id: A job ID to turn boards on for.
-        :type job_id: int
+        :param int job_id: A job ID to turn boards on for.
         """
         self._controller.power_on_job_boards(self._name(client), job_id)
 
@@ -741,11 +738,10 @@ class SpallocServer(Server):
     def power_off_job_boards(self, client, job_id):
         """ Power off boards associated with a job.
 
-        Once called, the job will enter the 'power' state until the power\
+        Once called, the job will enter the 'power' state until the power
         state change is complete, this may take some time.
 
-        :param job_id: A job ID to turn boards off for.
-        :type job_id: int
+        :param int job_id: A job ID to turn boards off for.
         """
         self._controller.power_off_job_boards(self._name(client), job_id)
 
@@ -753,16 +749,14 @@ class SpallocServer(Server):
     def destroy_job(self, client, job_id, reason=None):
         """ Destroy a job.
 
-        Call when the job is finished, or to terminate it early, this function\
-        releases any resources consumed by the job and removes it from any\
+        Call when the job is finished, or to terminate it early, this function
+        releases any resources consumed by the job and removes it from any
         queues.
 
-        :param job_id: A job ID to destroy.
-        :type job_id: int
-        :param reason: \
-            An optional human-readable description of the reason for the job's\
+        :param int job_id: A job ID to destroy.
+        :param str reason:
+            An optional human-readable description of the reason for the job's
             destruction.
-        :type reason: str
         """
         self._controller.destroy_job(self._name(client), job_id, reason)
 
@@ -803,15 +797,15 @@ class SpallocServer(Server):
     def notify_job(self, client, job_id=None):
         """ Register to be notified about changes to a specific job ID.
 
-        Once registered, a client will be asynchronously be sent notifications\
-        form ``{"jobs_changed": [job_id, ...]}\\n`` enumerating job IDs which\
-        have changed. Notifications are sent when a job changes state, for\
-        example when created, queued, powering on/off, powered on and\
-        destroyed. The specific nature of the change is not reflected in the\
+        Once registered, a client will be asynchronously be sent notifications
+        form ``{"jobs_changed": [job_id, ...]}\\n`` enumerating job IDs which
+        have changed. Notifications are sent when a job changes state, for
+        example when created, queued, powering on/off, powered on and
+        destroyed. The specific nature of the change is not reflected in the
         notification.
 
-        :param job_id: \
-            A job ID to be notified of or None if all job state changes should\
+        :param job_id:
+            A job ID to be notified of or None if all job state changes should
             be reported. Defaults to None (i.e., all jobs).
         :type job_id: int or None
 
@@ -827,13 +821,13 @@ class SpallocServer(Server):
     def no_notify_job(self, client, job_id=None):
         """ Stop being notified about a specific job ID.
 
-        Once this command returns, no further notifications for the specified\
+        Once this command returns, no further notifications for the specified
         ID will be received.
 
-        :param job_id: \
-            A job ID to no longer be notified of or None to not be notified of\
-            any jobs. Note that if all job IDs were registered for\
-            notification, this command only has an effect if the specified\
+        :param job_id:
+            A job ID to no longer be notified of or None to not be notified of
+            any jobs. Note that if all job IDs were registered for
+            notification, this command only has an effect if the specified
             job_id is None. Defaults to None (i.e., all jobs).
         :type job_id: int or None
 
@@ -848,14 +842,14 @@ class SpallocServer(Server):
     def notify_machine(self, client, machine_name=None):
         """ Register to be notified about a specific machine name.
 
-        Once registered, a client will be asynchronously be sent notifications\
-        of the form ``{"machines_changed": [machine_name, ...]}\n``\
-        enumerating machine names which have changed. Notifications are sent\
-        when a machine changes state, for example when created, change,\
+        Once registered, a client will be asynchronously be sent notifications
+        of the form ``{"machines_changed": [machine_name, ...]}\\n``
+        enumerating machine names which have changed. Notifications are sent
+        when a machine changes state, for example when created, change,
         removed, allocated a job or an allocated job is destroyed.
 
-        :param machine_name: \
-            A machine name to be notified of or None if all machine state\
+        :param machine_name:
+            A machine name to be notified of or None if all machine state
             changes should be reported. Defaults to None (i.e., all machines).
         :type machine_name: str or None
 
@@ -871,14 +865,14 @@ class SpallocServer(Server):
     def no_notify_machine(self, client, machine_name=None):
         """ Unregister to be notified about a specific machine name.
 
-        Once this command returns, no further notifications for the specified\
+        Once this command returns, no further notifications for the specified
         ID will be received.
 
-        :param machine_name: \
-            A machine name to no longer be notified of or None to not be\
-            notified of any machines. Note that if all machines were\
-            registered for notification, this command only has an effect if\
-            the specified machine_name is None. Defaults to None (i.e., all\
+        :param machine_name:
+            A machine name to no longer be notified of or None to not be
+            notified of any machines. Note that if all machines were
+            registered for notification, this command only has an effect if
+            the specified machine_name is None. Defaults to None (i.e., all
             machines).
         :type machine_name: str or None
 
@@ -893,42 +887,52 @@ class SpallocServer(Server):
     def list_jobs(self, _client):
         """ Enumerate all non-destroyed jobs.
 
-        :rtype: list(dict)
-        :return: \
-            A list of allocated/queued jobs in order of creation from oldest\
-            (first) to newest (last). Each job is described by a dictionary\
+        :rtype: list(dict(str, ...))
+        :return:
+            A list of allocated/queued jobs in order of creation from oldest
+            (first) to newest (last). Each job is described by a dictionary
             with the following keys:
 
-            "job_id" is the ID of the job.
+            ``job_id``
+                the ID of the job.
 
-            "owner" is the string giving the name of the Job's owner.
+            ``owner``
+                the string giving the name of the Job's owner.
 
-            "start_time" is the time the job was created (Unix time, UTC).
+            ``start_time``
+                the time the job was created (Unix time, UTC).
 
-            "keepalive" is the maximum time allowed between queries for this\
-            job before it is automatically destroyed (or None if the job can\
-            remain allocated indefinitely).
+            ``keepalive``
+                the maximum time allowed between queries for this job before
+                it is automatically destroyed (or ``None`` if the job can
+                remain allocated indefinitely).
 
-            "state" is the current\
-            :py:class:`~spalloc_server.controller.JobState` of the job.
+            ``state``
+                the current
+                :py:class:`~spalloc_server.controller.JobState` of the job.
 
-            "power" indicates whether the boards are powered on or not. If job\
-            is in the ready or power states, indicates whether the boards are\
-            power{ed,ing} on (True), or power{ed,ing} off (False). In other\
-            states, this value is None.
+            ``power``
+                indicates whether the boards are powered on or not. If job
+                is in the ready or power states, indicates whether the boards
+                are power{ed,ing} on (``True``), or power{ed,ing} off
+                (``False``). In other states, this value is ``None``.
 
-            "args" and "kwargs" are the arguments to the alloc function\
-            which specifies the type/size of allocation requested and the\
-            restrictions on dead boards, links and torus connectivity.
+            ``args`` and ``kwargs``
+                the arguments to the alloc function which specifies the
+                type/size of allocation requested and the restrictions on
+                dead boards, links and torus connectivity.
 
-            "allocated_machine_name" is the name of the machine the job has\
-            been allocated to run on (or None if not allocated yet).
+            ``allocated_machine_name``
+                the name of the machine the job has been allocated to run on
+                (or ``None`` if not allocated yet).
 
-            "boards" is a list [(x, y, z), ...] of boards allocated to the job.
+            ``boards``
+                a list [(x, y, z), ...] of boards allocated to the job.
 
-            "keepalivehost" is the IP address of the host reckoned to be\
-            keeping this job alive (i.e., the host that did a request most\
-            recently that updated the internal keep-alive timeout).
+            ``keepalivehost``
+                the IP address of the host reckoned to be keeping this job
+                alive (i.e., the host that did a request most recently that
+                updated the internal keep-alive timeout).
         """
         out = []
         for job in self._controller.list_jobs():
@@ -945,24 +949,29 @@ class SpallocServer(Server):
     def list_machines(self, _client):
         """ Enumerates all machines known to the system.
 
-        :rtype: list(dict)
-        :return: \
-            The list of machines known to the system in order of priority from\
-            highest (first) to lowest (last). Each machine is described by a\
+        :rtype: list(dict(str, ...))
+        :return:
+            The list of machines known to the system in order of priority from
+            highest (first) to lowest (last). Each machine is described by a
             dictionary with the following keys:
 
-            "name" is the name of the machine.
+            ``name``
+                the name of the machine.
 
-            "tags" is the list ['tag', ...] of tags the machine has.
+            ``tags``
+                the list ['tag', ...] of tags the machine has.
 
-            "width" and "height" are the dimensions of the machine in triads.
+            ``width`` and ``height``
+                the dimensions of the machine in triads.
 
-            "dead_boards" is a list([(x, y, z), ...]) giving the coordinates\
-            of known-dead boards.
+            ``dead_boards``
+                a list([(x, y, z), ...]) giving the coordinates
+                of known-dead boards.
 
-            "dead_links" is a list([(x, y, z, link), ...]) giving the\
-            locations of known-dead links from the perspective of the sender.\
-            Links to dead boards may or may not be included in this list.
+            ``dead_links``
+                a list([(x, y, z, link), ...]) giving the locations of
+                known-dead links from the perspective of the sender.
+                Links to dead boards may or may not be included in this list.
         """
         out = []
         for machine in self._controller.list_machines():
@@ -979,16 +988,12 @@ class SpallocServer(Server):
     def get_board_position(self, _client, machine_name, x, y, z):
         """ Get the physical location of a specified board.
 
-        :param machine_name: The name of the machine containing the board.
-        :type machine_name: str
-        :param x: Logical address within machine: first coordinate.
-        :type x: int
-        :param y: Logical address within machine: second coordinate.
-        :type y: int
-        :param z: Logical address within machine: third coordinate.
-        :type z: int
-        :return: \
-            The physical location of the board (cabinet, frame, board) at the\
+        :param str machine_name: The name of the machine containing the board.
+        :param int x: Logical address within machine: first coordinate.
+        :param int y: Logical address within machine: second coordinate.
+        :param int z: Logical address within machine: third coordinate.
+        :return:
+            The physical location of the board (cabinet, frame, board) at the
             specified location or None if the machine/board are not recognised.
         :rtype: list(int) or None
         """
@@ -999,16 +1004,12 @@ class SpallocServer(Server):
         """ Get the logical location of a board at the specified physical\
             location.
 
-        :param machine_name: The name of the machine containing the board.
-        :type machine_name: str
-        :param x: Physical address within machine: cabinet ID.
-        :type x: int
-        :param y: Physical address within machine: frame ID.
-        :type y: int
-        :param z: Physical address within machine: board ID.
-        :type z: int
-        :return: \
-            The logical location of the board (a triple) at the specified\
+        :param str machine_name: The name of the machine containing the board.
+        :param int x: Physical address within machine: cabinet ID.
+        :param int y: Physical address within machine: frame ID.
+        :param int z: Physical address within machine: board ID.
+        :return:
+            The logical location of the board (a triple) at the specified
             location or None if the machine/board are not recognised.
         :rtype: list(int) or None
         """
@@ -1038,38 +1039,43 @@ class SpallocServer(Server):
         Only these patterns of use are supported; all keyword arguments\
         listed above are mandatory when used for a particular query.
 
-        :rtype: dict or None
-        :return: \
-            If a board exists at the supplied location, a dictionary giving\
-            the location of the board/chip, supplied in a number of\
-            alternative forms. If the supplied coordinates do not specify a\
-            specific chip, the chip coordinates given are those of the\
+        :rtype: dict(str, ...) or None
+        :return:
+            If a board exists at the supplied location, a dictionary giving
+            the location of the board/chip, supplied in a number of
+            alternative forms. If the supplied coordinates do not specify a
+            specific chip, the chip coordinates given are those of the
             Ethernet connected chip on that board.
 
-            If no board exists at the supplied position, None is returned\
+            If no board exists at the supplied position, ``None`` is returned
             instead.
 
             The dictionary will have the following keys:
 
-            ``machine`` gives the name of the machine containing the board.
+            ``machine``
+                the name of the machine containing the board.
 
-            ``logical`` the logical board coordinate, (x, y, z) within the\
-            machine.
+            ``logical``
+                the logical board coordinate, (x, y, z) within the machine.
 
-            ``physical`` the physical board location, (cabinet, frame, board),\
-            within the machine.
+            ``physical``
+                the physical board location, (cabinet, frame, board),
+                within the machine.
 
-            ``chip`` the coordinates of the chip, (x, y), if the whole machine\
-            were booted as a single machine.
+            ``chip``
+                the coordinates of the chip, (x, y), if the whole machine
+                were booted as a single machine.
 
-            ``board_chip`` the coordinates of the chip, (x, y), within its\
-            board.
+            ``board_chip``
+                the coordinates of the chip, (x, y), within its board.
 
-            ``job_id`` is the job ID of the job currently allocated to the\
-            board identified or None if the board is not allocated to a job.
+            ``job_id``
+                the job ID of the job currently allocated to the board
+                identified or ``None`` if the board is not allocated to a job.
 
-            ``job_chip`` the coordinates of the chip, (x, y), within its\
-            job, if a job is allocated to the board or None otherwise.
+            ``job_chip``
+                the coordinates of the chip, (x, y), within its job,
+                if a job is allocated to the board, or ``None`` otherwise.
         """
         return self._controller.where_is(**kwargs)
 
