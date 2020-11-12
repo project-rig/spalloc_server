@@ -7,9 +7,9 @@ SpiNNaker Machine Partitioning and Allocation Server (``spalloc_server``)
 .. image:: https://readthedocs.org/projects/spalloc_server/badge/?version=stable
  :target: http://spalloc_server.readthedocs.org/
  :alt: Documentation
-.. image:: https://travis-ci.org/SpiNNakerManchester/spalloc_server.svg?branch=master
- :target: https://travis-ci.org/SpiNNakerManchester/spalloc_server
+.. image:: https://github.com/SpiNNakerManchester/spalloc_server/workflows/Python%20Build/badge.svg?branch=master
  :alt: Build Status
+ :target: https://github.com/SpiNNakerManchester/spalloc_server/actions?query=workflow%3A%22Python+Build%22+branch%3Amaster
 .. image:: https://coveralls.io/repos/SpiNNakerManchester/spalloc_server/badge.svg?branch=master
  :target: https://coveralls.io/r/SpiNNakerManchester/spalloc_server?branch=master
  :alt: Coverage Status

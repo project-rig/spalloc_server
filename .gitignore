@@ -59,6 +59,7 @@ target/
 
 # Hidden files
 .*
+!.github
 
 # Virtualenv nonsense
 pip-selfcheck.json
@@ -66,4 +67,3 @@ pip-selfcheck.json
 # Ignore test configs and csv files
 *.cfg
 *.csv
-

@@ -13,8 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--r requirements-doc.txt
--e git+https://github.com/SpiNNakerManchester/SpiNNUtils.git@master#egg=spinn_utilities
--e git+https://github.com/SpiNNakerManchester/SpiNNMachine.git@master#egg=SpiNNMachine
--e git+https://github.com/SpiNNakerManchester/SpiNNMan.git@master#egg=spinnman
--e git+https://github.com/SpiNNakerManchester/spalloc.git@master#egg=spalloc
+sphinx
+numpydoc
+six
+enum-compat
+sentinel
+mock
