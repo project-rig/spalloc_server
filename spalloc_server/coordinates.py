@@ -111,10 +111,9 @@ illustrated below, *starting from the top-right corner*::
                         4 3 2 1 0
 
 A mapping from board coordinates to physical coordinates is supplied by the
-user and is unique to the machine being built. A tool such as SpiNNer_ may be
+user and is unique to the machine being built. A tool such as
+`SpiNNer <https://github.com/SpiNNakerManchester/SpiNNer>`__ may be
 used to generate such mappings.
-
-.. _SpiNNer: https://github.com/SpiNNakerManchester/SpiNNer
 
 
 Ethernet chip coordinates

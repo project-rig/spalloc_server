@@ -115,8 +115,9 @@ class Allocator(object):
     def __getstate__(self):
         """ Called when pickling this object.
 
-        This object may only be pickled once :py:meth:`.stop` and
-        :py:meth:`.join` have returned.
+        This object may only be pickled once
+        :py:meth:`~spalloc_server.controller.Controller.stop` and
+        :py:meth:`~spalloc_server.controller.Controller.join` have returned.
         """
         state = self.__dict__.copy()
 

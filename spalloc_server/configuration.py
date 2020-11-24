@@ -42,7 +42,7 @@ boards. (See also :py:mod:`spalloc_server.coordinates` for details of
 the coordinate systems used when referring to boards.)
 
 Defining Machines
-`````````````````
+=================
 
 Since defining machines completely by hand can be quite verbose (see example
 below), a some convenience functions are provided to deal with the common case
@@ -63,7 +63,8 @@ their physical layout defined by `SpiNNer
 `spinner-ethernet-chips
 <http://spinner.readthedocs.org/en/stable/spinner-ethernet-chips.html>`_
 describing machine layouts and the :py:meth:`.Machine.with_standard_ips`
-constructor produces :py:class:`.Machine`s with IP addresses based on the
+constructor produces a :py:class:`~spalloc_server.configuration.Machine`
+with IP addresses based on the
 standard IP addressing scheme. These may be used together like so::
 
     # spinner-ethernet-chips -n 1200 > ethernet_chips.csv
@@ -104,7 +105,7 @@ Remember, since the configuration file is just a normal Python file, you can
 use any code you like to pragmatically specify machines, etc. which you use.
 
 Configuration File API Reference
-````````````````````````````````
+================================
 """  # noqa: W605
 
 from collections import namedtuple
