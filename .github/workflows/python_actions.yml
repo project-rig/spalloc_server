@@ -51,21 +51,14 @@ jobs:
     - name: Extra setup
       run: pip install -r requirements-doc.txt
 
-    - name: Test with pytest and coverage
-      if: matrix.python-version == 3.6
-      run: |
-        py.test tests/ --cov spalloc_server --durations=10
     - name: Test with pytest
-      if: matrix.python-version != 3.6
-      run: |
-        py.test tests/ --durations=10
-    - name: Run coveralls and report coverage
-      if: matrix.python-version == 3.6
-      env:
-        COVERALLS_SERVICE_NAME: 'GitHub CI'
-        COVERALLS_REPO_TOKEN : ${{ secrets.COVERALLS_REPO_TOKEN }}
-        NODE_COVERALLS_DEBUG: 1
-      run: coveralls
+      uses: ./support/actions/pytest
+      with:
+        tests: unittests
+        options: --durations=10
+        coverage: ${{ matrix.python-version == 3.6 }}
+        cover-packages: spalloc_server
+        coveralls-token: ${{ secrets.COVERALLS_REPO_TOKEN }}
 
     - name: Lint with flake8
       run: flake8 spalloc_server tests
