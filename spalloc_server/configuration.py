@@ -112,7 +112,6 @@ from collections import namedtuple
 import re
 import csv
 from itertools import chain
-from six import iteritems, itervalues
 from .coordinates import chip_to_board
 
 
@@ -166,14 +165,14 @@ class Configuration(namedtuple("Configuration",
             used_names.add(m.name)
 
             # All BMP IPs must be unique
-            for bmp_ip in itervalues(m.bmp_ips):
+            for bmp_ip in m.bmp_ips.values():
                 if bmp_ip in used_bmp_ips:
                     raise ValueError("BMP IP '{}' used multiple "
                                      "times.".format(bmp_ip))
                 used_bmp_ips.add(bmp_ip)
 
             # All SpiNNaker IPs must be unique
-            for spinnaker_ip in itervalues(m.spinnaker_ips):
+            for spinnaker_ip in m.spinnaker_ips.values():
                 if spinnaker_ip in used_spinnaker_ips:
                     raise ValueError("SpiNNaker IP '{}' used multiple "
                                      "times.".format(spinnaker_ip))
@@ -263,7 +262,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
 
         # All board locations must be sensible
         locations = set()
-        for (x, y, z), (c, f, b) in iteritems(board_locations):
+        for (x, y, z), (c, f, b) in board_locations.items():
             # Board should be within system
             if not (0 <= x < width and
                     0 <= y < height and
@@ -459,8 +458,8 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
         board_locations = _empty_default_dict(board_locations)
 
         # Generate IP addresses for BMPs
-        cabinets_and_frames = set((c, f) for c, f, _ in
-                                  itervalues(board_locations))
+        cabinets_and_frames = set(
+            (c, f) for c, f, _ in board_locations.values())
         bmp_ips = {
             (c, f): int_to_ip(base_ip + (cabinet_stride * c) +
                               (frame_stride * f) + bmp_offset)
@@ -471,7 +470,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             (x, y, z): int_to_ip(base_ip + (cabinet_stride * c) +
                                  (frame_stride * f) + (board_stride * b) +
                                  spinnaker_offset)
-            for (x, y, z), (c, f, b) in iteritems(board_locations)}
+            for (x, y, z), (c, f, b) in board_locations.values()}
 
         return cls(name, set(tags), width, height,
                    dead_boards=set(dead_boards), dead_links=set(dead_links),
@@ -523,5 +522,5 @@ def board_locations_from_spinner(filename):
     return {
         chip_to_board(chip_x, chip_y, width_triads * 12, height_triads * 12):
         cfb
-        for (chip_x, chip_y), cfb in iteritems(chip_locations)
+        for (chip_x, chip_y), cfb in chip_locations.items()
     }

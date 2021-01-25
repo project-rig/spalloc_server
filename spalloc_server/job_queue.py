@@ -16,7 +16,6 @@
 """ A multi-machine and job queueing and allocation mechanism.
 """
 from collections import deque, OrderedDict
-from six import itervalues
 from .allocator import Allocator
 
 
@@ -210,19 +209,17 @@ class JobQueue(object):
             machines = [machine] if machine is not None else []
         else:
             # Select machines according to the job's tags
-            machines = [m for m in itervalues(self._machines)
-                        if job.tags.issubset(m.tags)]
+            machines = (m for m in self._machines.values()
+                        if job.tags.issubset(m.tags))
 
         # Queue the job on all suitable machines
-        found_machine = False
         for machine in machines:
             if machine.allocator.alloc_possible(*job.args, **job.kwargs):
                 machine.queue.append(job)
-                found_machine = True
-
-        # If no candidate machines were found, the job will never be run,
-        # immediately cancel it.
-        if not found_machine:
+                break
+        else:
+            # No candidate machines were found, the job will never be run,
+            # immediately cancel it.
             self.destroy_job(job.id, "No suitable machines available.")
 
         # Advance the queues where possible.
@@ -241,7 +238,7 @@ class JobQueue(object):
 
             # For each machine, attempt to process the current head of their
             # job queue.
-            for machine in itervalues(self._machines):
+            for machine in self._machines.values():
                 while machine.queue:
                     if not machine.queue[0].pending:
                         # Skip queued jobs which have been allocated
@@ -268,11 +265,11 @@ class JobQueue(object):
             return
 
         # Empty all job queues
-        for machine in itervalues(self._machines):
+        for machine in self._machines.values():
             machine.queue.clear()
 
         # Re-allocate/queue all pending jobs
-        for job in itervalues(self._jobs):
+        for job in self._jobs.values():
             if job.pending:
                 self._enqueue_job(job)
 
@@ -376,7 +373,8 @@ class JobQueue(object):
         # Regenerate the queues only after removing the machine
         with self:
             # Free all jobs allocated on the machine.
-            for job in list(itervalues(self._jobs)):
+            # NB: Copy the list of jobs to avoid concurrent modification
+            for job in list(self._jobs.values()):
                 if job.machine is machine:
                     self.destroy_job(job.id, "Machine removed.")
                     self.free(job.id)

@@ -16,7 +16,6 @@
 """ A data structure representing links in a SpiNNaker machine.
 """
 from enum import IntEnum
-from six import iteritems
 
 
 class Links(IntEnum):
@@ -127,7 +126,7 @@ class _LinksHelper(object):
                 (+1, +1): Links.north_east,
                 (-1, -1): Links.south_west}
             _LinksHelper._direction_link_lookup = {
-                l: v for (v, l) in iteritems(ldl)}
+                l: v for (v, l) in ldl.items()}
 
             # Special case: Lets assume we've got a 2xN or Nx2 system (N >= 2)
             # where we can "spiral" around the Z axis to reach places which

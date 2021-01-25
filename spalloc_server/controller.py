@@ -25,7 +25,6 @@ from threading import RLock
 from time import time as timestamp
 from functools import partial
 from pytz import utc
-from six import itervalues, iteritems
 from spinn_machine import SpiNNakerTriadGeometry
 from .coordinates import (
     board_to_chip, chip_to_board, triad_dimensions_to_chips, WrapAround)
@@ -225,7 +224,7 @@ class Controller(object):
         """
         # Stop the BMP controllers
         for machine in self._machines:
-            for controller in itervalues(self._bmp_controllers[machine]):
+            for controller in self._bmp_controllers[machine].values():
                 controller.stop()
 
     def join(self):
@@ -233,8 +232,8 @@ class Controller(object):
         commands completed.
         """
         # Wait for the BMP controller threads
-        for controllers in itervalues(self._bmp_controllers):
-            for controller in itervalues(controllers):
+        for controllers in self._bmp_controllers.values():
+            for controller in controllers.values():
                 controller.join()
 
     @property
@@ -331,7 +330,7 @@ class Controller(object):
                     # Remove the board and its BMP connections
                     old = self._machines.pop(name)
                     shut_down_controllers.extend(
-                        itervalues(self._bmp_controllers.pop(name)))
+                        self._bmp_controllers.pop(name).values())
 
                 # Shut-down the now defunct controllers
                 for controller in shut_down_controllers:
@@ -571,9 +570,9 @@ class Controller(object):
         """
         with self._lock:
             job_list = []
-            for job in itervalues(self._jobs):
+            for job in self._jobs.values():
                 # Strip "job_id" which is only used internally
-                kwargs = {k: v for k, v in iteritems(job.kwargs)
+                kwargs = {k: v for k, v in job.kwargs.items()
                           if k != "job_id"}
 
                 # Machine may not exist
@@ -603,7 +602,7 @@ class Controller(object):
                 MachineTuple(machine.name, machine.tags,
                              machine.width, machine.height,
                              machine.dead_boards, machine.dead_links)
-                for machine in itervalues(self._machines)
+                for machine in self._machines.values()
             ]
 
     def get_board_position(self, machine_name, x, y, z):
@@ -652,7 +651,7 @@ class Controller(object):
             # NB: Assuming this function is only called very rarely,
             # constructing and maintaining a reverse lookup is not worth
             # the trouble so instead we just search.
-            for (x, y, z), (c, f, b) in iteritems(machine.board_locations):
+            for (x, y, z), (c, f, b) in machine.board_locations.items():
                 if (c, f, b) == (cabinet, frame, board):
                     return (x, y, z)
         # No board found
@@ -661,7 +660,7 @@ class Controller(object):
     def _job_for_location(self, machine, x, y, z):
         """ Determine what job is running on the given board.
         """
-        for job_id, job in iteritems(self._jobs):
+        for job_id, job in self._jobs.items():
             # NB: If machine is defined, boards must also be defined.
             if (job.allocated_machine == machine and (x, y, z) in job.boards):
                 return job_id, job
@@ -972,7 +971,8 @@ class Controller(object):
         """
         with self._lock:
             now = timestamp()
-            for job in list(itervalues(self._jobs)):
+            # NB: Copy the list of jobs because we will be modifying it
+            for job in list(self._jobs.values()):
                 if job.keepalive is not None and job.keepalive_until < now:
                     # Job timed out, destroy it
                     self.destroy_job(None, job.id, "Job timed out.")
@@ -1069,7 +1069,7 @@ class Controller(object):
 
             # Send power/link commands atomically for each frame
             job.bmp_requests_until_ready += len(frame_commands)
-            for controller, commands in iteritems(frame_commands):
+            for controller, commands in frame_commands.items():
                 with controller:
                     controller.add_requests(commands)
 
@@ -1162,7 +1162,7 @@ class Controller(object):
         with self._lock:
             controllers = {}
             self._bmp_controllers[machine.name] = controllers
-            for (c, f), hostname in iteritems(machine.bmp_ips):
+            for (c, f), hostname in machine.bmp_ips.items():
                 controllers[(c, f)] = AsyncBMPController(
                     hostname, on_thread_start)
 
@@ -1185,7 +1185,7 @@ class Controller(object):
             assert self._bmp_controllers is None
             self._bmp_controllers = {}
             try:
-                for machine in itervalues(self._machines):
+                for machine in self._machines.values():
                     self._create_machine_bmp_controllers(machine)
 
                 # Reset keepalives to allow remote clients time to reconnect
