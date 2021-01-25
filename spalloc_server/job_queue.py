@@ -213,13 +213,15 @@ class JobQueue(object):
                         if job.tags.issubset(m.tags))
 
         # Queue the job on all suitable machines
+        found_machine = False
         for machine in machines:
             if machine.allocator.alloc_possible(*job.args, **job.kwargs):
                 machine.queue.append(job)
-                break
-        else:
-            # No candidate machines were found, the job will never be run,
-            # immediately cancel it.
+                found_machine = True
+
+        # If no candidate machines were found, the job will never be run,
+        # immediately cancel it.
+        if not found_machine:
             self.destroy_job(job.id, "No suitable machines available.")
 
         # Advance the queues where possible.

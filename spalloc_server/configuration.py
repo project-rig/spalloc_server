@@ -470,7 +470,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             (x, y, z): int_to_ip(base_ip + (cabinet_stride * c) +
                                  (frame_stride * f) + (board_stride * b) +
                                  spinnaker_offset)
-            for (x, y, z), (c, f, b) in board_locations.values()}
+            for (x, y, z), (c, f, b) in board_locations.items()}
 
         return cls(name, set(tags), width, height,
                    dead_boards=set(dead_boards), dead_links=set(dead_links),
