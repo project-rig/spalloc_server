@@ -367,10 +367,7 @@ class Controller(object):
 
                 # Re-order machines to match the specification
                 for name in machines:
-                    # Python 2.7 does not have move_to_end
-                    m = self._machines.pop(name)
-                    self._machines[name] = m
-
+                    self._machines.move_to_end(name)
                     self._job_queue.move_machine_to_end(name)
 
             # Mark all effected machines as changed

@@ -326,10 +326,7 @@ class JobQueue(object):
         name : str
             The name of the machine to move.
         """
-        # Python 2.7 does not have move_to_end
-        m = self._machines.pop(name)
-        self._machines[name] = m
-
+        self._machines.move_to_end(name)
         # NB: No queue regeneration required
 
     def modify_machine(self, name, tags=None,
