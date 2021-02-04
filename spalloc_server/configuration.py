@@ -178,7 +178,7 @@ class Configuration(namedtuple("Configuration",
                                      "times.".format(spinnaker_ip))
                 used_spinnaker_ips.add(spinnaker_ip)
 
-        return super(Configuration, cls).__new__(
+        return super().__new__(
             cls, machines, port, ip, timeout_check_interval, max_retired_jobs,
             seconds_before_free)
 
@@ -299,7 +299,7 @@ class Machine(namedtuple("Machine", "name,tags,width,height,"
             raise ValueError(
                 "SpiNNaker IPs not given for boards {}".format(missing_ips))
 
-        return super(Machine, cls).__new__(
+        return super().__new__(
             cls, name, tags, width, height, frozenset(dead_boards),
             frozenset(dead_links), board_locations, bmp_ips, spinnaker_ips)
 
