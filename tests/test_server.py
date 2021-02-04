@@ -71,7 +71,7 @@ class SimpleClient(SimpleClientSocket):
     """A simple line receiving and sending client."""
 
     def __init__(self, host="127.0.0.1", port=22244):
-        super(SimpleClient, self).__init__(host, port)
+        super().__init__(host, port)
         self.buf = b""
         self.notifications = []
 

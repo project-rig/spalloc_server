@@ -32,8 +32,7 @@ class SCPOKMessage(SDPMessage):
             flags=SDPFlag.REPLY_NOT_EXPECTED, destination_port=0,
             destination_cpu=0, destination_chip_x=x, destination_chip_y=y)
         utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
-        super(SCPOKMessage, self).__init__(
-            sdp_header, data=scp_header.bytestring)
+        super().__init__(sdp_header, data=scp_header.bytestring)
 
 
 class SCPVerMessage(SDPMessage):
@@ -49,7 +48,7 @@ class SCPVerMessage(SDPMessage):
             flags=SDPFlag.REPLY_NOT_EXPECTED, destination_port=0,
             destination_cpu=0, destination_chip_x=x, destination_chip_y=y)
         utils.update_sdp_header_for_udp_send(sdp_header, 0, 0)
-        super(SCPVerMessage, self).__init__(sdp_header)
+        super().__init__(sdp_header)
 
     def set_sequence(self, sequence):
         self._scp_header.sequence = sequence
@@ -71,13 +70,13 @@ class MockBMP(Thread):
 
     def __init__(self, responses=None):
         """
-        :param responses:\
-            An optional list of responses to send in the order to be sent. \
-            If not specified, OK responses will be sent for every request. \
-            Note that responses can include "None" which means that no\
+        :param responses:
+            An optional list of responses to send in the order to be sent.
+            If not specified, OK responses will be sent for every request.
+            Note that responses can include "None" which means that no
             response will be sent to that request
         """
-        super(MockBMP, self).__init__()
+        super().__init__()
 
         # Set up a connection to be the machine
         self._receiver = UDPConnection(local_port=SCP_SCAMP_PORT)

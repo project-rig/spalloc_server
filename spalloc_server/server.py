@@ -126,7 +126,7 @@ class Server(PollingServerCore, ConfigurationReloader):
 
         # ============ SUPERCLASS INITIALISATION ============
 
-        PollingServerCore.__init__(self)
+        super().__init__()
         ConfigurationReloader.__init__(self, config_filename, self.wake)
 
         # ============ ACTIVE OBJECTS ============
@@ -510,7 +510,7 @@ class SpallocServer(Server):
         self._client_job_watches = {}
         self._client_machine_watches = {}
 
-        super(SpallocServer, self).__init__(config_filename, cold_start, port)
+        super().__init__(config_filename, cold_start, port)
 
     def _send_change_notifications(self):
         """ Send any registered change notifications to clients.
