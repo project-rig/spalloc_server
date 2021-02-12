@@ -22,14 +22,8 @@
 the form of Python functions.
 """
 
-from six import iteritems
 # from functools import wraps
-from inspect import formatargspec
-try:
-    from inspect import getfullargspec
-except ImportError:
-    # Python 2.7 hack
-    from inspect import getargspec as getfullargspec
+from inspect import formatargspec, getfullargspec
 
 
 from spalloc_server.server import _COMMANDS
@@ -41,7 +35,7 @@ from spalloc_server.controller import JobState as _JobState
 
 # This module contains fake methods corresponding with the commands in the
 # server which sphinx-autodoc will pick-up and display as documentation.
-for name, f in iteritems(_COMMANDS):
+for name, f in _COMMANDS.items():
     # Create a fake (but unique) function to document
     globals()[name] = (lambda: 1)
 
@@ -59,7 +53,7 @@ for name, f in iteritems(_COMMANDS):
     # modify references to other commands from being method references to
     # function references.
     globals()[name].__doc__ = "{}{}\n{}".format(
-        name, formatargspec(*argspec),
+        name, formatargspec(*argspec),  # pylint: disable=deprecated-method
         f.__doc__.replace(":py:meth:`.", ":py:func:`.")
         .replace("`~spalloc_server.controller.JobState", "`.JobState")
     )
