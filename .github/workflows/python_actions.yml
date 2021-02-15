@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.6, 3.7, 3.8]
+        python-version: [3.6, 3.7, 3.8, 3.9]
 
     steps:
     - name: Set up Python ${{ matrix.python-version }}
@@ -56,7 +56,7 @@ jobs:
       with:
         tests: tests
         options: --durations=10
-        coverage: ${{ matrix.python-version == 3.6 }}
+        coverage: ${{ matrix.python-version == 3.8 }}
         cover-packages: spalloc_server
         coveralls-token: ${{ secrets.COVERALLS_REPO_TOKEN }}
 
@@ -68,10 +68,10 @@ jobs:
         package: spalloc_server
 
     - name: Run rat copyright enforcement
-      if: matrix.python-version == 3.6
+      if: matrix.python-version == 3.8
       uses: ./support/actions/check-copyrights
     - name: Build documentation with sphinx
-      if: matrix.python-version == 3.6
+      if: matrix.python-version == 3.8
       uses: ./support/actions/sphinx
       with:
         directory: docs/source
