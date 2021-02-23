@@ -13,8 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--r requirements-doc.txt
--e git+https://github.com/SpiNNakerManchester/SpiNNUtils.git@master#egg=SpiNNUtilities
--e git+https://github.com/SpiNNakerManchester/SpiNNMachine.git@master#egg=SpiNNMachine
--e git+https://github.com/SpiNNakerManchester/SpiNNMan.git@master#egg=spinnman
--e git+https://github.com/SpiNNakerManchester/spalloc.git@master#egg=spalloc
+version: 2
+build:
+  image: latest
+sphinx:
+  configuration: docs/source/conf.py
+  builder: dirhtml
+  fail_on_warning: false
+formats: [pdf]  # This is ADDITIONAL to HTML
+python:
+  version: 3.8
+  install:
+    - requirements: requirements-docs.txt
