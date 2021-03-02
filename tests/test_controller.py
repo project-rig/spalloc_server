@@ -20,7 +20,6 @@ import pytest
 import threading
 import time
 from pytz import utc
-from six import iteritems
 from .mocker import Mock
 from spalloc_server.coordinates import board_down_link
 from spalloc_server.configuration import Machine
@@ -192,7 +191,7 @@ def test_controller_set_machines(conn, mock_abc):
     assert len(conn._bmp_controllers) == 2
     assert len(conn._bmp_controllers["m0"]) == m0.width * m0.height
     assert len(conn._bmp_controllers["m1"]) == m1.width * m1.height
-    for m_name, controllers in iteritems(conn._bmp_controllers):
+    for m_name, controllers in conn._bmp_controllers.items():
         for c in range(machines[m_name].width):
             for f in range(machines[m_name].height):
                 assert controllers[(c*10, f*10)].hostname \

@@ -15,14 +15,12 @@
 
 import logging as log
 import signal
-from six import add_metaclass
 from spinn_utilities.abstract_base import AbstractBase, abstractmethod
 
 _SIGHUP = signal.SIGHUP if hasattr(signal, "SIGHUP") else None
 
 
-@add_metaclass(AbstractBase)
-class ConfigurationReloader(object):
+class ConfigurationReloader(object, metaclass=AbstractBase):
     """ This provides the core knowledge about how to load and reload some\
         configuration when a signal is sent to the process. It is probably\
         wise to only make one concrete subclass instance of this class at a\

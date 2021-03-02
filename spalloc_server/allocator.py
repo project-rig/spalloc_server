@@ -20,7 +20,6 @@ functionality of a machine.
 from enum import Enum
 from collections import deque
 from math import ceil
-from six import next  # pylint: disable=redefined-builtin
 from datetime import datetime
 from .links import Links
 from .pack_tree import PackTree

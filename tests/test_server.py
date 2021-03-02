@@ -23,7 +23,6 @@ import tempfile
 import threading
 import time
 import pytest
-from six import itervalues
 from .mocker import Mock, MagicMock, call, PropertyMock
 from spalloc_server.links import Links
 from spalloc_server.controller import JobState
@@ -34,6 +33,7 @@ from .common import simple_machine
 
 pytestmark = pytest.mark.usefixtures("mock_abc")
 logging.basicConfig(level=logging.INFO)
+# pylint: disable=redefined-outer-name, broad-except, unused-argument
 
 
 class DisconnectedException(Exception):
@@ -71,7 +71,7 @@ class SimpleClient(SimpleClientSocket):
     """A simple line receiving and sending client."""
 
     def __init__(self, host="127.0.0.1", port=22244):
-        super(SimpleClient, self).__init__(host, port)
+        super().__init__(host, port)
         self.buf = b""
         self.notifications = []
 
@@ -119,7 +119,7 @@ class SimpleClient(SimpleClientSocket):
 class EvilClient(SimpleClient):
     """An evil line receiving and sending client."""
 
-    def call(self, call):
+    def call(self, call):  # pylint: disable=arguments-differ
         self.sock.send(call.replace("'", "\"").encode("utf-8") + b"\n")
         return self.get_return()
 
@@ -814,7 +814,7 @@ def test_job_notify_register_unregister(simple_config, s):
 
             # Get the sockets connected to the clients
             s0 = s1 = None
-            for sock in itervalues(s._fdmap):
+            for sock in s._fdmap.values():
                 try:
                     peer = sock.getpeername()
                 except Exception:
@@ -890,7 +890,7 @@ def test_machine_notify_register_unregister(simple_config, s):
 
             # Get the sockets connected to the clients
             s0 = s1 = None
-            for sock in itervalues(s._fdmap):
+            for sock in s._fdmap.values():
                 try:
                     peer = sock.getpeername()
                 except Exception:

@@ -131,7 +131,6 @@ The following utilities are provided for working with the above coordinate
 systems.
 """
 from enum import IntEnum
-from six import iteritems
 from spinn_machine import SpiNNakerTriadGeometry
 from .links import Links
 
@@ -153,7 +152,7 @@ link_to_vector = {
 """
 link_to_vector.update({
     (z + dz, link.opposite): (-dx, -dy, -dz)
-    for (z, link), (dx, dy, dz) in iteritems(link_to_vector)
+    for (z, link), (dx, dy, dz) in link_to_vector.items()
 })
 
 

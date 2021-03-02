@@ -28,7 +28,6 @@ from os import path
 from pickle import dump as pickle, load as unpickle
 from threading import Thread
 from time import sleep
-from six import iteritems, string_types
 from spinn_utilities.overrides import overrides
 from spalloc_server import __version__, coordinates, configuration
 from spalloc_server.configuration import Configuration
@@ -129,7 +128,7 @@ class Server(PollingServerCore, ConfigurationReloader):
 
         # ============ SUPERCLASS INITIALISATION ============
 
-        PollingServerCore.__init__(self)
+        super().__init__()
         ConfigurationReloader.__init__(self, config_filename, self.wake)
 
         # ============ ACTIVE OBJECTS ============
@@ -333,7 +332,7 @@ class Server(PollingServerCore, ConfigurationReloader):
         if "command" not in cmd_obj:
             raise IOError("no command name given")
         command_name = cmd_obj["command"]
-        if not isinstance(command_name, string_types):
+        if not isinstance(command_name, str):
             raise IOError("parsed gibberish from user")
         if command_name not in _COMMANDS:
             log.info("lookup failure: %s", command_name)
@@ -400,7 +399,7 @@ class Server(PollingServerCore, ConfigurationReloader):
     def _send_notifications(self, label, changes, watches):
         """ How to actually send requested notifications."""
         if changes:
-            for client, items in list(iteritems(watches)):
+            for client, items in list(watches.items()):
                 if items is None or not items.isdisjoint(changes):
                     try:
                         self._msg_client(client, {
@@ -513,7 +512,7 @@ class SpallocServer(Server):
         self._client_job_watches = {}
         self._client_machine_watches = {}
 
-        super(SpallocServer, self).__init__(config_filename, cold_start, port)
+        super().__init__(config_filename, cold_start, port)
 
     def _send_change_notifications(self):
         """ Send any registered change notifications to clients.
@@ -716,7 +715,7 @@ class SpallocServer(Server):
             self._controller.get_job_machine_info(self._name(client), job_id)
 
         if connections is not None:
-            connections = list(iteritems(connections))
+            connections = list(connections.items())
         if boards is not None:
             boards = list(boards)
 

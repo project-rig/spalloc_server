@@ -13,7 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-sphinx >= 2
-numpydoc
-sentinel
-mock
+version: 2
+build:
+  image: latest
+sphinx:
+  configuration: docs/source/conf.py
+  builder: dirhtml
+  fail_on_warning: false
+formats: [pdf]  # This is ADDITIONAL to HTML
+python:
+  version: 3.8
+  install:
+    - requirements: requirements-docs.txt
