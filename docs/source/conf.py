@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2017-2019 The University of Manchester
+# Copyright (c) 2017-2021 The University of Manchester
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -94,7 +94,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'SpiNNaker Partitioning Server'
-copyright = u'2016-2017, the University of Manchester'
+copyright = u'2016-2021, the University of Manchester'
 
 # Autodoc should list members in the same order as the source code.
 autodoc_member_order = "bysource"
