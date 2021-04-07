@@ -35,11 +35,11 @@ for mod_name in MOCK_MODULES:
     except ImportError:
         sys.modules.update({mod_name: Mock()})
 
-AUTHORS = u'Human Brain Project'
+AUTHORS = u'Jonathan Heathcote and the SpiNNaker Project'
 
 
 #
-# Rig documentation build configuration file, created by
+# Spalloc Server documentation build configuration file, created by
 # sphinx-quickstart on Tue Jan 20 15:22:07 2015.
 #
 # This file is execfile()d with the current directory set to its
@@ -94,7 +94,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'SpiNNaker Partitioning Server'
-copyright = u'2016-2017, the University of Manchester'
+copyright = u'2016-2021, the University of Manchester'
 
 # Autodoc should list members in the same order as the source code.
 autodoc_member_order = "bysource"
@@ -322,7 +322,7 @@ htmlhelp_basename = 'spalloc_server_doc'
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 # latex_documents = [
-#    ('index', 'Rig.tex', u'Rig Documentation',
+#    ('index', 'SpallocServer.tex', 'Spalloc Server Documentation',
 #     AUTHORS, 'manual'),
 # ]
 
@@ -352,7 +352,7 @@ htmlhelp_basename = 'spalloc_server_doc'
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 # man_pages = [
-#    ('index', 'rig', u'Rig Documentation',
+#    ('index', 'spalloc_server', 'Spalloc Server Documentation',
 #     [AUTHORS], 1)
 # ]
 
@@ -366,8 +366,8 @@ htmlhelp_basename = 'spalloc_server_doc'
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 # texinfo_documents = [
-#    ('index', 'Rig', u'Rig Documentation',
-#     AUTHORS, 'Rig',
+#    ('index', 'spalloc_server', 'Spalloc Server Documentation',
+#     AUTHORS, 'Spalloc Server',
 #     'Tools for mapping problems to SpiNNaker',
 #     'Miscellaneous'),
 # ]
