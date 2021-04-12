@@ -55,8 +55,8 @@ setup(
     # Requirements
     install_requires=[
         "pytz",
-        "SpiNNMachine >= 1!5.0.1, <1!6.0.0",
-        "SpiNNMan >= 1!5.0.1, <1!6.0.0",
+        "SpiNNMachine == 1!6.0.1",
+        "SpiNNMan == 1!6.0.1",
     ],
 
     # Scripts
