@@ -31,7 +31,7 @@ setup(
                 " machines into smaller ones on demand.",
     license="GPLv2",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
 
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
