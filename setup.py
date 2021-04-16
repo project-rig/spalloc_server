@@ -31,7 +31,7 @@ setup(
                 " machines into smaller ones on demand.",
     license="GPLv2",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
 
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
@@ -55,8 +55,8 @@ setup(
     # Requirements
     install_requires=[
         "pytz",
-        "SpiNNMachine >= 1!5.0.1, <1!6.0.0",
-        "SpiNNMan >= 1!5.0.1, <1!6.0.0",
+        "SpiNNMachine == 1!6.0.1",
+        "SpiNNMan == 1!6.0.1",
     ],
 
     # Scripts
