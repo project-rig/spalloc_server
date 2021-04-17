@@ -35,6 +35,8 @@ from spalloc_server.controller import Controller
 from spalloc_server.polling_server_core import PollingServerCore
 from spalloc_server.configuration_reloader import ConfigurationReloader
 
+failure_log = log.Logger("board_failures")
+
 BUFFER_SIZE = 1024
 
 _COMMANDS = {}
@@ -1078,6 +1080,55 @@ class SpallocServer(Server):
         """
         return self._controller.where_is(**kwargs)
 
+    @spalloc_command
+    def report_problem(self, _client, board_ip, x=None, y=None, p=None):
+        """ Report a problem somewhere.
+
+        :param ~socket.Socket _client:
+        :param str board_ip: Which board has the problem.
+        :param int x: X coordinate of the problem chip on the board. Optional.
+        :param int y: Y coordinate of the problem chip on the board. Optional.
+        :param int p: Processor with the problem. Optional.
+        """
+        name = self._name(_client)
+        if x is not None and y is not None and p is not None:
+            self._report_core_problem(
+                name, str(board_ip), (int(x), int(y), int(p)))
+        elif x is not None and y is not None:
+            self._report_chip_problem(name, str(board_ip), (int(x), int(y)))
+        elif x is not None or y is not None or p is not None:
+            raise KeyError
+        else:
+            self._report_board_problem(name, str(board_ip))
+
+    def _report_board_problem(self, name, board):
+        """
+        :param str name:
+        :param str board:
+        """
+        failure_log.warning(
+            "%s reports undiagnosed problem on board %s", name, board)
+
+    def _report_chip_problem(self, name, board, chip):
+        """
+        :param str name:
+        :param str board:
+        :param tuple(int,int) chip:
+        """
+        failure_log.warning(
+            "%s reports undiagnosed problem on chip %s of board %s",
+            name, repr(chip), board)
+
+    def _report_core_problem(self, name, board, core):
+        """
+        :param str name:
+        :param str board:
+        :param tuple(int,int,int) core:
+        """
+        failure_log.warning(
+            "%s reports undiagnosed problem on core %s of board %s",
+            name, repr(core), board)
+
 
 def main(args=None):
     """ Command-line launcher for the server.
@@ -1101,12 +1152,21 @@ def main(args=None):
                              "saved state")
     parser.add_argument("--port", "-p", type=int, default=22244,
                         help="port to run the service on")
+    parser.add_argument("--failurelog", "-f", type=str, default="failure.log",
+                        help="file to log failed board information into")
     args = parser.parse_args(args)
 
     if not args.quiet:
         log.basicConfig(
             level=log.INFO,
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+
+    # Directly configure the special failure logger
+    if args.failurelog != "":
+        failurehandler = log.StreamHandler(open(args.failurelog, "a"))
+        failurehandler.setLevel(log.WARNING)
+        failurehandler.setFormatter(log.Formatter("%(asctime)s - %(message)s"))
+        failure_log.addHandler(failurehandler)
 
     try:
         server = SpallocServer(config_filename=args.config,
